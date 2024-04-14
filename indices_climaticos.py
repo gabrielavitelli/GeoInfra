@@ -94,12 +94,6 @@ folium.Rectangle(
 # no caso os dados estavam em kg_m2_s e quero transformar em mm/dia
 precip = ds_rec['pr'] * 86400
 
-# no dado que peguei tinha dois horários por dia: 00 e 12, tiro a média por dia ('D')
-#precip=dados_convertidos.resample(time='ME').mean()
-
-#np.set_printoptions(threshold=np.inf)
-#print(ds['pr'].values)
-
 ###############################################################################################
 # CDD #
 # numero maximo de dias secos consecutivos no periodo analisado (chuva <1mm)
