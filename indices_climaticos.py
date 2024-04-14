@@ -132,13 +132,13 @@ def calculate_cdd(data):
     return resultados
 
 cdd_meses = calculate_cdd(precip)
-df = pd.DataFrame([(key[0], key[1], value) for key, value in cdd_meses.items()], columns=['Ano', 'Mês', 'CDD'])
-df.sort_values(by=['Ano', 'Mês'], inplace=True)
+df = pd.DataFrame([(key[0], key[1], value) for key, value in cdd_meses.items()], columns=['Ano', 'Mes', 'CDD'])
+df.sort_values(by=['Ano', 'Mes'])
 
 print (df)
 
-df.to_csv('cdd_meses.txt', sep='\t')
-df.to_csv('cdd_meses.csv')
+df.to_csv('cdd_meses.txt', index=False, sep='\t')
+df.to_csv('cdd_meses.csv', index=False, sep=';')
 
 quit()
 ###############################################################################################
