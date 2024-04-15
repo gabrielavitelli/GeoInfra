@@ -190,6 +190,14 @@ for lat in latitude:
 # gera um mapa para conferir localizacao 
 
 # pega coordenadas do dado
+min_latitude, max_latitude = hadgem_recortado.lat.min().values, hadgem_recortado.lat.max().values
+min_longitude, max_longitude = hadgem_recortado.lon.min().values, hadgem_recortado.lon.max().values
+
+# retangulo para a area do dado
+area_hadgem = box(min_longitude, min_latitude, max_longitude, max_latitude)
+area_dataframe_hadgem = gpd.GeoDataFrame({'geometry': [area_hadgem]}, crs=shp_ma.crs)
+
+# pega coordenadas do dado
 min_latitude, max_latitude = miroc6_recortado.lat.min().values, miroc6_recortado.lat.max().values
 min_longitude, max_longitude = miroc6_recortado.lon.min().values, miroc6_recortado.lon.max().values
 
@@ -197,11 +205,14 @@ min_longitude, max_longitude = miroc6_recortado.lon.min().values, miroc6_recorta
 area = box(min_longitude, min_latitude, max_longitude, max_latitude)
 area_dataframe = gpd.GeoDataFrame({'geometry': [area]}, crs=shp_ma.crs)
 
+
+
 # plotagem
 fig, ax = plt.subplots()
 shp_ma.plot(ax=ax, color='blue')  
 shp_pa.plot(ax=ax, color='blue')  
 area_dataframe.plot(ax=ax, color='red', alpha=0.5)  # Plotar retângulo com transparência
+area_dataframe_hadgem.plot(ax=ax, color='yellow', alpha=0.5)  # Plotar retângulo com transparência
 plt.title ("Localização")
 plt.show()
 
