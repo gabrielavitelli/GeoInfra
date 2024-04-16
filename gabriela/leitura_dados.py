@@ -55,7 +55,53 @@ shp_caminho_ma = f'{caminho_geoinfra}MA_Municipios_2022/MA_Municipios_2022.shp'
 shp_ma=gpd.read_file(shp_caminho_ma)
 
 ###########################################################################################3
+#CORDEX dados diários
+#dados: https://cds.climate.copernicus.eu/cdsapp#!/dataset/projections-cordex-domains-single-levels?tab=overview
+'''Domain:
+South America
+Experiment:
+RCP 8.5
+Horizontal resolution:
+0.20 degree x 0.20 degree
+Temporal resolution:
+Daily mean
+Variable:
+2m air temperature
+Global climate model:
+MIROC-MIROC5 (Japan)
+Regional climate model:
+INPE-Eta (Brasil)
+Ensemble member:
+r1i1p1
+Start year:
+2096
+End year:
+2099'''
+#cordex 
+print ("---------------------------- CORDEX ----------------------------")
+entrada_cordex = "C:/Users/Usuario/gabriela/dados/CORDEX/pr_SAM-20_MIROC-MIROC5_rcp85_r1i1p1_INPE-Eta_v1_day_20960101-20991231.nc"
+ds_cordex = xr.open_mfdataset(entrada_cordex)
+cordex = ds_cordex['pr']*8640
+cordex_recortado = converte_coordenada(ds_cordex)
+
+# cria formato tabela
+df_cordex = cordex_recortado.to_dataframe()
+df_cordex.drop(labels=['time_bnds'], axis=1, inplace=True)
+print (df_cordex.reset_index()) 
+# digitar no terminal: python CMIP6.py > CMIP6.txt
+
+
+# Calculando a resolução para latitude e longitude
+lat_res = abs(cordex_recortado['lat'][1] - cordex_recortado['lat'][0])
+lon_res = abs(cordex_recortado['lon'][1] - cordex_recortado['lon'][0])
+
+print(f"Resolução da Latitude: {lat_res} graus")
+print(f"Resolução da Longitude: {lon_res} graus")
+
+
+###########################################################################################3
 # CMIP6
+'''
 print ("---------------------------- CMIP6 ----------------------------")
 # meu pc
 #entrada_cmpi6="C:/Users/gabri/OneDrive/ESTUDOS/GeoInfra/dados/adaptor.esgf_wps.retrieve-1712753939.4928932-5893-18-0ec3dc54-031f-4f3b-9fad-040d0eaec0b4/tas_day_MIROC6_ssp585_r1i1p1f1_gn_20500101-20991231_v20191016.nc"
@@ -90,33 +136,33 @@ df.drop(labels=['lat_bnds', 'lon_bnds', 'time_bnds'], axis=1, inplace=True)
 print (df.reset_index()) 
 # digitar no terminal: python CMIP6.py > CMIP6.txt
 
-
+'''
 ###########################################################################################3
-
-#HadGem
-print ("---------------------------- HadGEM3-GC31-MM (UK) ----------------------------")
-#entrada_hadgem_note = "C:/Users/gabri/OneDrive/ESTUDOS/GeoInfra/dados/adaptor.esgf_wps.retrieve-1712755790.4155934-28912-10-aa6a2da7-076d-4ed9-9962-4c1a13fc44b2/tas_day_HadGEM3-GC31-MM_ssp585_r1i1p1f3_gn_20500101-20991230_v20200515.nc"
+'''
+#cordex 
+print ("---------------------------- cordex3-GC31-MM (UK) ----------------------------")
+#entrada_cordex_note = "C:/Users/gabri/OneDrive/ESTUDOS/GeoInfra/dados/adaptor.esgf_wps.retrieve-1712755790.4155934-28912-10-aa6a2da7-076d-4ed9-9962-4c1a13fc44b2/tas_day_cordex3-GC31-MM_ssp585_r1i1p1f3_gn_20500101-20991230_v20200515.nc"
 
 #lab geoinfra
-#HadGEM3-GC31-MM (UK)
-entrada_hadgem = "C:/Users/Usuario/gabriela/dados/CMIP6/HadGem/hadgem/pr_day_HadGEM3-GC31-MM_ssp585_r1i1p1f3_gn_20500101-20511230_v20200515.nc"
-ds_hadgem = xr.open_mfdataset(entrada_hadgem)
-hadgem_recortado = converte_coordenada(ds_miroc6)
+#cordex3-GC31-MM (UK)
+entrada_cordex = "C:/Users/Usuario/gabriela/dados/CMIP6/cordex/cordex/pr_day_cordex3-GC31-MM_ssp585_r1i1p1f3_gn_20500101-20511230_v20200515.nc"
+ds_cordex = xr.open_mfdataset(entrada_cordex)
+cordex_recortado = converte_coordenada(ds_miroc6)
 
 # cria formato tabela
-df_hadgem = hadgem_recortado.to_dataframe()
-df_hadgem.drop(labels=['lat_bnds', 'lon_bnds', 'time_bnds'], axis=1, inplace=True)
-print (df_hadgem.reset_index()) 
+df_cordex = cordex_recortado.to_dataframe()
+df_cordex.drop(labels=['lat_bnds', 'lon_bnds', 'time_bnds'], axis=1, inplace=True)
+print (df_cordex.reset_index()) 
 # digitar no terminal: python CMIP6.py > CMIP6.txt
 
 
 # Calculando a resolução para latitude e longitude
-lat_res = abs(hadgem_recortado['lat'][1] - hadgem_recortado['lat'][0])
-lon_res = abs(hadgem_recortado['lon'][1] - hadgem_recortado['lon'][0])
+lat_res = abs(cordex_recortado['lat'][1] - cordex_recortado['lat'][0])
+lon_res = abs(cordex_recortado['lon'][1] - cordex_recortado['lon'][0])
 
 print(f"Resolução da Latitude: {lat_res} graus")
 print(f"Resolução da Longitude: {lon_res} graus")
-
+'''
 
 ###########################################################################################3
 
@@ -150,10 +196,10 @@ print (df.reset_index())
 
 
 # mapa da localizacao do dado, zoom
-m = folium.Map(location=[(miroc6_recortado.lat).mean(), (miroc6_recortado.lon).mean()])
+m = folium.Map(location=[(cordex_recortado.lat).mean(), (cordex_recortado.lon).mean()])
 
-latitude = miroc6_recortado.lat.values
-longitude = miroc6_recortado.lon.values
+latitude = cordex_recortado.lat.values
+longitude = cordex_recortado.lon.values
 for lat, lon in zip(latitude, longitude):
     folium.Marker([lat, lon]).add_to(m)
 for lat in latitude:
@@ -177,9 +223,9 @@ for lat in latitude:
 #temperatura=ds_cmip6['tas'] - 273.15
 #media_temporal = (temperatura.mean(dim=['lat', 'lon']))
 
-# temperatura HadGem
-#temperatura_hadgem=ds_hadgem['tas'] - 273.15
-#media_temporal_hadgem = (temperatura_hadgem.mean(dim=['lat', 'lon']))
+# temperatura cordex
+#temperatura_cordex=ds_cordex['tas'] - 273.15
+#media_temporal_cordex = (temperatura_cordex.mean(dim=['lat', 'lon']))
 
 # precipitacao CHIRPS
 #precipitacao_chirps = chirps_recortado['pr']
@@ -190,16 +236,16 @@ for lat in latitude:
 # gera um mapa para conferir localizacao 
 
 # pega coordenadas do dado
-min_latitude, max_latitude = hadgem_recortado.lat.min().values, hadgem_recortado.lat.max().values
-min_longitude, max_longitude = hadgem_recortado.lon.min().values, hadgem_recortado.lon.max().values
+min_latitude, max_latitude = cordex_recortado.lat.min().values, cordex_recortado.lat.max().values
+min_longitude, max_longitude = cordex_recortado.lon.min().values, cordex_recortado.lon.max().values
 
 # retangulo para a area do dado
-area_hadgem = box(min_longitude, min_latitude, max_longitude, max_latitude)
-area_dataframe_hadgem = gpd.GeoDataFrame({'geometry': [area_hadgem]}, crs=shp_ma.crs)
+area_cordex = box(min_longitude, min_latitude, max_longitude, max_latitude)
+area_dataframe_cordex = gpd.GeoDataFrame({'geometry': [area_cordex]}, crs=shp_ma.crs)
 
 # pega coordenadas do dado
-min_latitude, max_latitude = miroc6_recortado.lat.min().values, miroc6_recortado.lat.max().values
-min_longitude, max_longitude = miroc6_recortado.lon.min().values, miroc6_recortado.lon.max().values
+min_latitude, max_latitude = cordex_recortado.lat.min().values, cordex_recortado.lat.max().values
+min_longitude, max_longitude = cordex_recortado.lon.min().values, cordex_recortado.lon.max().values
 
 # retangulo para a area do dado
 area = box(min_longitude, min_latitude, max_longitude, max_latitude)
@@ -212,7 +258,7 @@ fig, ax = plt.subplots()
 shp_ma.plot(ax=ax, color='blue')  
 shp_pa.plot(ax=ax, color='blue')  
 area_dataframe.plot(ax=ax, color='red', alpha=0.5)  # Plotar retângulo com transparência
-area_dataframe_hadgem.plot(ax=ax, color='yellow', alpha=0.5)  # Plotar retângulo com transparência
+area_dataframe_cordex.plot(ax=ax, color='yellow', alpha=0.5)  # Plotar retângulo com transparência
 plt.title ("Localização")
 plt.show()
 
@@ -221,7 +267,7 @@ plt.show()
 
 # plotagem modelos
 #plt.plot(chirps_recortado.time, media_temporal_CHIRPS.values)
-#plt.plot(ds_hadgem.time, media_temporal_hadgem.values)
+#plt.plot(ds_cordex.time, media_temporal_cordex.values)
 
 # plotagem localizacao 
 #fig, ax = plt.subplots(figsize=(10, 10))  # Ajuste o tamanho conforme necessário
