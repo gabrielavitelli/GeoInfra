@@ -93,10 +93,31 @@ folium.Rectangle(
 
 # no caso os dados estavam em kg_m2_s e quero transformar em mm/dia
 precip = ds_rec['pr'] * 86400
+print (precip)
+maio=precip.sel(time=slice("1989-05-01", "1989-05-30"))
+print (maio)
 
+fig, ax = plt.subplots(figsize=(10, 6))
+media_maio= maio.mean(dim=['lat','lon'])
+
+ax.plot(media_maio, marker='o', linestyle='-')
+
+#ax.plot(precip['time'].values, precip[:,0,0].values, marker='o', linestyle='-')
+ax.set_title(f'Maio')
+ax.set_xlabel('tempo')
+ax.set_ylabel('chuva (mm/dia)')
+ax.grid(True)
+
+plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Ajustar o layout
+plt.show()
+
+
+
+#print (precip)
 ###############################################################################################
 # CDD #
 # numero maximo de dias secos consecutivos no periodo analisado (chuva <1mm)
+
 def calculate_cdd(data):       
     resultados = {}
     # itera no tempo, para todas lat lon
@@ -128,15 +149,21 @@ def calculate_cdd(data):
                         max_dias_secos = dias_secos
                         
                     resultados[(ano, meses)] = max_dias_secos  
-        
+            print (meses)
+            #print (precipitacao_dia.values)
+            print ("-----------------------------------")
     return resultados
 
 cdd_meses = calculate_cdd(precip)
 df = pd.DataFrame([(key[0], key[1], value) for key, value in cdd_meses.items()], columns=['Ano', 'Mes', 'CDD'])
 df.sort_values(by=['Ano', 'Mes'])
 
-print (df)
+#df_maio= df.sel(dim='time'=='5')
+#print (df_maio)
 
+plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Ajustar o layout
+plt.show()
+quit()
 df.to_csv('cdd_meses.txt', index=False, sep='\t')
 df.to_csv('cdd_meses.csv', index=False, sep=';')
 
