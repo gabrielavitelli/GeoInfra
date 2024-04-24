@@ -114,6 +114,7 @@ print(f"Resolução da Latitude: {lat_res} graus")
 print(f"Resolução da Longitude: {lon_res} graus")
 
 
+
 ###########################################################################################3
 # CMIP6
 '''
@@ -271,12 +272,10 @@ area_dataframe = gpd.GeoDataFrame({'geometry': [area]}, crs=shp_ma.crs)
 # plotagem
 fig, ax = plt.subplots()
 shp.plot(ax=ax)
-shp_ma.plot(ax=ax, color='blue')  
-shp_pa.plot(ax=ax, color='blue')  
+shp_ma.plot(ax=ax, facecolor='none', linewidth=3)  
+shp_pa.plot(ax=ax, facecolor='none', linewidth=3)  
 area_dataframe.plot(ax=ax, color='red', alpha=0.5)  # Plotar retângulo com transparência
 area_dataframe_cordex.plot(ax=ax, color='yellow', alpha=0.5)  # Plotar retângulo com transparência
-
-
 
 plt.title ("Localização")
 plt.show()
