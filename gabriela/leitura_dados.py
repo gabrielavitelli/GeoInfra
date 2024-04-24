@@ -11,6 +11,8 @@ import matplotlib.dates as mdates
 import geopandas as gpd
 import folium
 from shapely.geometry import box
+import numpy
+import pandas as pd
 
 ####################################################################################################
 # no meu github tem o lat_lon_efc.py que pega as duas camadas de linha kml que transformei em shp e 
@@ -53,6 +55,17 @@ shp_caminho_pa = f'{caminho_geoinfra}PA_Municipios_2022/PA_Municipios_2022.shp'
 shp_pa=gpd.read_file(shp_caminho_pa)
 shp_caminho_ma = f'{caminho_geoinfra}MA_Municipios_2022/MA_Municipios_2022.shp'
 shp_ma=gpd.read_file(shp_caminho_ma)
+# efc #
+shp= gpd.read_file("C:/Users/Usuario/gabriela/dados/shp/EFC/extensao_efc_shp.shp")
+
+#efc = pd.read_file('C:/Users/Usuario/gabriela/dados/shp/EFC/extensao1_efc.shp')
+#coords=[]
+#for linha in efc.geoms
+#        coords.extend(list(linha.coords)
+#extensao=pd.GeoDataFrame(coords, columns=['X','Y','Z'])
+#extensao.to_csv('lista.csv', index=False, sep=';')
+
+###########################################################################################3
 
 ###########################################################################################3
 #CORDEX dados diários
@@ -79,17 +92,19 @@ End year:
 2099'''
 #cordex 
 print ("---------------------------- CORDEX ----------------------------")
-entrada_cordex = "C:/Users/Usuario/gabriela/dados/CORDEX/pr_SAM-20_MIROC-MIROC5_rcp85_r1i1p1_INPE-Eta_v1_day_20960101-20991231.nc"
+entrada_cordex = "C:/Users/Usuario/gabriela/dados/CORDEX/historico/pr_SAM-20_MOHC-HadGEM2-ES_historical_r1i1p1_INPE-Eta_v1_day_19610101-19651230.nc"
 ds_cordex = xr.open_mfdataset(entrada_cordex)
 cordex = ds_cordex['pr']*8640
 cordex_recortado = converte_coordenada(ds_cordex)
+print (cordex_recortado)
 
 # cria formato tabela
 df_cordex = cordex_recortado.to_dataframe()
 df_cordex.drop(labels=['time_bnds'], axis=1, inplace=True)
-print (df_cordex.reset_index()) 
-# digitar no terminal: python CMIP6.py > CMIP6.txt
-
+tabela_cordex=df_cordex.reset_index()
+pd.set_option('display.max_rows', None)
+tabela_cordex.to_csv('cordex.csv', index=False, sep=';')
+tabela_cordex.to_csv('cordex.txt', index=False, sep='\t')
 
 # Calculando a resolução para latitude e longitude
 lat_res = abs(cordex_recortado['lat'][1] - cordex_recortado['lat'][0])
@@ -194,7 +209,7 @@ print (df.reset_index())
 '''
 ###########################################################################################3
 
-
+'''
 # mapa da localizacao do dado, zoom
 m = folium.Map(location=[(cordex_recortado.lat).mean(), (cordex_recortado.lon).mean()])
 
@@ -206,14 +221,14 @@ for lat in latitude:
     for lon in longitude:
         folium.Marker([lat, lon]).add_to(m)
 
-#m.save("cmip6.html")
+m.save("cordex.html")
 
 # Adicionar um marcador para o local
-#folium.Marker([latitude, longitude], popup=f'TAS: {recorte.values}').add_to(m)
+folium.Marker([latitude, longitude], popup=f'TAS: {recorte.values}').add_to(m)
 
    
 #plt.show()
-
+'''
 
 
 
@@ -255,10 +270,14 @@ area_dataframe = gpd.GeoDataFrame({'geometry': [area]}, crs=shp_ma.crs)
 
 # plotagem
 fig, ax = plt.subplots()
+shp.plot(ax=ax)
 shp_ma.plot(ax=ax, color='blue')  
 shp_pa.plot(ax=ax, color='blue')  
 area_dataframe.plot(ax=ax, color='red', alpha=0.5)  # Plotar retângulo com transparência
 area_dataframe_cordex.plot(ax=ax, color='yellow', alpha=0.5)  # Plotar retângulo com transparência
+
+
+
 plt.title ("Localização")
 plt.show()
 
