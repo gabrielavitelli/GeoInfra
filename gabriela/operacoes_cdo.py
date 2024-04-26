@@ -23,8 +23,8 @@ print (dado_bruto)
 
 Min_Longitude = -50.12517419989768
 Min_Latitude = -6.014153889871978
-Max_Longitude = -44.29318420965952
-Max_Latitude = -2.621573681489544
+Max_Longitude = -43.29318420965952
+Max_Latitude = -1.621573681489544
 saida='/mnt/c/Users/Usuario/gabriela'
 cdo = Cdo()
 
@@ -47,6 +47,7 @@ cdo.debug=True
 cdo.copy(input=entrada, options='-b F64')
 #cdo.sinfon(input='outfile.nc')
 
+#muda de kg/m2/s para mm/dia
 cdo.mulc(86400, input=entrada, output='mmday.nc')
 
 cdo.selvar('pr', input='mmday.nc', returnXArray='pr', output=f'{saida}/pr.nc')
@@ -54,21 +55,26 @@ cdo.seltimestep('1/30', input=f'{saida}/pr.nc', options='-b F64', output=f'{said
 
 cdo.sellonlatbox(Min_Longitude,Max_Longitude,Min_Latitude,Max_Latitude, input=f'{saida}/janeiro.nc', output=f'{saida}/area.nc')
 
-cdo.remapbil ('r360x180', input=f'{saida}/area.nc', output=f'{saida}/interpolacao.nc')
+#cdo.remapbil ('r648x324', input=f'{saida}/area.nc', output=f'{saida}/interpolacao.nc')
+#cdo.remapbic ('r720x360', input=f'{saida}/area.nc', output=f'{saida}/interpolacao.nc')
+#data = xr.open_dataset(f'{saida}/area.nc')
 
+#ds_interp = data.interp(method='linear')
+#cdo.remapbil ('r360x180', input=f'{saida}/area.nc', output=f'{saida}/interpolacao.nc')
+# 360 180
 
 data = xr.open_dataset(f'{saida}/area.nc')
-#plt.figure(figsize=(10, 5))
-fig, ax = plt.subplots(figsize=(50, 50), subplot_kw={'projection': ccrs.PlateCarree()})
-#ax.add_feature(cartopy.feature.BORDERS, linestyle='-', linewidth=1)
-#ax.set_extent([Min_Longitude, Max_Longitude, Min_Latitude, Max_Latitude], crs=ccrs.PlateCarree())
 
-#ax.coastlines()
+#print (data)
+#fig, ax = plt.subplots(figsize=(10, 6), subplot_kw={'projection': ccrs.PlateCarree()})
+#data['pr'].isel(time=0).plot(ax=ax, transform=ccrs.PlateCarree())
+#plt.title('Sem interpolacao')
+#plt.show()
 
 
 
+# shapefiles #
 caminho_geoinfra = "/mnt/c/Users/Usuario/gabriela/dados/shp/"
-
 shp_caminho_pa = f'{caminho_geoinfra}PA_Municipios_2022/PA_Municipios_2022.shp'
 shp_pa= gpd.read_file(shp_caminho_pa)
 shp_caminho_ma = f'{caminho_geoinfra}MA_Municipios_2022/MA_Municipios_2022.shp'
@@ -77,30 +83,39 @@ shp_ma=gpd.read_file(shp_caminho_ma)
 shp= gpd.read_file("/mnt/c//Users/Usuario/gabriela/dados/shp/EFC/extensao_efc_shp.shp")
 
 
-ax.set_xlim([shp_ma.bounds.minx.min(), shp_ma.bounds.maxx.max()])
-ax.set_ylim([shp_ma.bounds.miny.min(), shp_ma.bounds.maxy.max()])
-data['pr'].isel(time=0).plot(ax=ax, transform=ccrs.PlateCarree())
 
-# plotagem
-shp.plot(ax=ax)
+# plotagem #
+fig, ax = plt.subplots(figsize=(10, 6), subplot_kw={'projection': ccrs.PlateCarree()})
+ax.set_xlim([shp.bounds.minx.min(), shp.bounds.maxx.max()])
+ax.set_ylim([shp.bounds.miny.min(), shp.bounds.maxy.max()])
+
+#plt.contourf(ds_interp['lon'], ds_interp['lat'], ds_interp['pr'], cmap='viridis')
+cbar_kwargs = {
+    'label': 'Precipitação (mm/dia)',  # Título da colorbar
+    'orientation': 'vertical'
+}
+data['pr'].isel(time=0).plot(ax=ax, transform=ccrs.PlateCarree(), cbar_kwargs={'label':'precipitação (mm/dia'})
+#colorbar = fig.colorbar(pr, ax=ax, orientation='vertical')
+#colorbar.set_label('Precipitação (mm/dia)') 
+
 shp_ma.plot(ax=ax, facecolor='none', linewidth=3) 
 shp_pa.plot(ax=ax, facecolor='none', linewidth=3)
+shp.plot(ax=ax)
+plt.show()
+quit()
+
+
+
+
+#ax.set_xlabel('precipitação (mm/dia)')
 #area = box(min_longitude, min_latitude, max_longitude, max_latitude)
 #area_dataframe = gpd.GeoDataFrame({'geometry': [area]}, crs=shp_ma.crs)
 #area_dataframe.plot(ax=ax, color='red', alpha=0.5)  # Plotar retângulo com transparência
 #area_dataframe_cordex.plot(ax=ax, color='yellow', alpha=0.5)  # Plotar retângulo com transparência
-plt.show()
-quit()
+#ax.add_feature(cartopy.feature.BORDERS, linestyle='-', linewidth=1)
+#ax.set_extent([Min_Longitude, Max_Longitude, Min_Latitude, Max_Latitude], crs=ccrs.PlateCarree())
 
-
-########### ate aqui dados de janeiro no recorte da EFC para precipitacao #######
-
-
-
+#ax.coastlines()
 
 #plt.ylabel('Precipitacao (mm/dia)')
-plt.show()
 
-
-
-quit()
