@@ -23,8 +23,8 @@ print (dado_bruto)
 
 Min_Longitude = -50.12517419989768
 Min_Latitude = -6.014153889871978
-Max_Longitude = -43.29318420965952
-Max_Latitude = -1.621573681489544
+Max_Longitude = -44.29318420965952
+Max_Latitude = -2.621573681489544
 saida='/mnt/c/Users/Usuario/gabriela'
 cdo = Cdo()
 
@@ -101,6 +101,7 @@ data['pr'].isel(time=0).plot(ax=ax, transform=ccrs.PlateCarree(), cbar_kwargs={'
 shp_ma.plot(ax=ax, facecolor='none', linewidth=3) 
 shp_pa.plot(ax=ax, facecolor='none', linewidth=3)
 shp.plot(ax=ax)
+plt.axis('equal')
 plt.show()
 quit()
 
