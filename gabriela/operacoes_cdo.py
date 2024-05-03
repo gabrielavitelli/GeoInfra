@@ -12,18 +12,19 @@ from shapely.geometry import mapping
 
 #####################################################################################################################################
 #/mnt/c/Users/Usuario/gabriela/
-entrada='/mnt/c/Users/Usuario/gabriela//dados/CORDEX/pr_SAM-20_MIROC-MIROC5_rcp85_r1i1p1_INPE-Eta_v1_day_20960101-20991231.nc'
+#entrada='/mnt/c/Users/Usuario/gabriela//dados/CORDEX/pr_SAM-20_MIROC-MIROC5_rcp85_r1i1p1_INPE-Eta_v1_day_20960101-20991231.nc'
+entrada='/mnt/c/Users/Usuario/gabriela/dados/CORDEX/historico/dataset-projections-cordex-domains-single-levels-3896b270-7908-453f-8171-ddedafe35bde/pr_SAM-20_MIROC-MIROC5_historical_r1i1p1_INPE-Eta_v1_day_20010101-20051231.nc'
 
-#print ('xarray')
 dado_bruto = xr.open_dataset(entrada)
 print (dado_bruto)
 
-#pr = dado_bruto['pr']
-#Crie o gráfico
-#fig, ax = plt.subplots(subplot_kw={'projection': ccrs.PlateCarree()}, figsize=(6,6))
-#ax.contourf(pr.lon, pr.lat, pr[1,:,:], cmap='coolwarm')
-#plt.show()
-#quit()
+# Calculando a resolução para latitude e longitude
+lat_res = abs(dado_bruto['lat'][1] - dado_bruto['lat'][0])
+lon_res = abs(dado_bruto['lon'][1] - dado_bruto['lon'][0])
+
+print(f"Resolução da Latitude: {lat_res} graus")
+print(f"Resolução da Longitude: {lon_res} graus")
+
 
 saida='/mnt/c/Users/Usuario/gabriela'
 
@@ -40,25 +41,21 @@ shp= gpd.read_file("/mnt/c/Users/Usuario/gabriela/dados/shp/EFC/extensao_efc_shp
 
 
 #####################################################################################################################################
-cdo = Cdo()
+'''cdo = Cdo()
 print(cdo.version())
-
 tempPath = './tmp/'
 cdo = Cdo(tempdir=tempPath)
 cdo.cleanTempDir()
-
 #print (cdo.operators)
 cdo.debug=True
-#print(cdo.sinfon(input=entrada))
-#ds = xr.open_dataset(entrada)
-#print(ds.info())
 
+#####################################################################################################################################
+# operacoes com cdo, conversao de unidade 
 cdo.copy(input=entrada, options='-b F64')
-#cdo.sinfon(input='outfile.nc')
-#muda de kg/m2/s para mm/dia
-cdo.mulc(86400, input=entrada, output='mmday.nc')
+cdo.mulc(86400, input=entrada, output='mmday.nc') #muda de kg/m2/s para mm/dia
 cdo.selvar('pr', input='mmday.nc', returnXArray='pr', output=f'{saida}/pr.nc')
 cdo.seltimestep('1/30', input=f'{saida}/pr.nc', options='-b F64', output=f'{saida}/janeiro.nc')
+
 bbox = shp.total_bounds
 min_lon, min_lat, max_lon, max_lat = bbox
 cdo.sellonlatbox(min_lon, max_lon, min_lat, max_lat, input=f'{saida}/janeiro.nc', output=f'{saida}/area.nc')
@@ -92,14 +89,77 @@ recortado['pr'].isel(time=0).plot(ax=ax, transform=ccrs.PlateCarree(), cbar_kwar
 shp_ma.plot(ax=ax, facecolor='none', linewidth=3) 
 shp_pa.plot(ax=ax, facecolor='none', linewidth=3)
 shp.plot(ax=ax)
+ax.set_xlabel('Longitude')
+ax.set_ylabel('Latitude')
+
+#ax.set_xticks(np.arange(shp_pa[0], sho_pa[-1], step=1)) # -120, 1
+#ax.set_yticks(np.arange(shp_pa[0], shp_pa[-1], step=1))
+
+ax.set_xticks(np.arange(recortado['pr'].lon[0], recortado['pr'].lon[-1], step=1)) # -120, 1
+ax.set_yticks(np.arange(recortado['pr'].lat[0], recortado['pr'].lat[-1], step=1))
+		
 plt.axis('equal')
 
 
 
 
 plt.show()
+'''
+
+############################################################################################################################################
+# recorte para ponto 1:               latitude -4.41                      longitude: -46.75                altitude: 192
+
+# recortando dados
+latitude = -4.41
+longitude = -46.75
+dado_sel=dado_bruto.sel(lat=latitude, lon=longitude, time=dado_bruto.time[0:366], method='nearest')
+
+# configurando tempo e pegando precipitacao
+tempo = dado_sel.time.data
+tempo_configurado = pd.to_datetime(tempo)
+dia_juliano = tempo_configurado.dayofyear
+pr=dado_sel['pr']*8640
+
+# plotando
+plt.plot(dia_juliano.astype(str).to_numpy(), pr.to_numpy())#, marker='o',linestyle='None')
+plt.title("Série temporal de precipitação para 2096 para Fazenda Pedreiras, dados do CORDEX - MIROC-MIROC5")
+plt.ylabel('Precipitação')
+
+plt.xticks(np.arange(365, step=31), ['jan', 'fev', 'mar', 'abr', 'maio', 'jun', 'jul', 'agos', 'set', 'out', 'nov', 'dez'], rotation=20)
+plt.show() 
+############################################################################################################################################
+# recorte para ponto 2:               latitude -4.33                      longitude: -46.49                altitude: 67
+
+# recortando dados
+#latitude = -4.41
+#longitude = -46.75
+dado_sel=dado_bruto.sel(time=dado_bruto.time[0:365])
+print (dado_sel)
+
+# configurando tempo e pegando precipitacao
+tempo = dado_sel.time.data
+tempo_configurado = pd.to_datetime(tempo)
+dia_juliano = tempo_configurado.dayofyear
+pr=dado_sel['pr']*8640
+print (pr.groupby(pr.time.dt.month).sum())
+pr=pr.groupby(pr.time.dt.month).sum()
+media_espacial =pr.mean(dim=['lat', 'lon'])
+
+# plotando
+plt.plot(pr.month.to_numpy(), media_espacial.to_numpy())#, marker='o',linestyle='None')
+plt.title("Série temporal de precipitação acumulada para 2001 para toda extensao da EFC, dados do CORDEX - MIROC-MIROC5")
+plt.ylabel('Precipitação')
+
+plt.xticks(np.arange(12, step=1), ['jan', 'fev', 'mar', 'abr', 'maio', 'jun', 'jul', 'agos', 'set', 'out', 'nov', 'dez'], rotation=20)
+
+
+
+plt.show()
+
+
 quit()
 
+#pd.DataFrame
 
 
 
@@ -108,7 +168,18 @@ quit()
 
 
 
+print ('---------------------------------------')
+print ('dado')
+print (dado_sel)
 
+print ('---------------------------------------')
+print ('dias')
+print (dia_juliano)
+
+
+print ('---------------------------------------')
+print ('dados pr')
+print (pr)
 
 
 #data['pr'].isel(time=0).plot(ax=ax, transform=ccrs.PlateCarree(), cbar_kwargs={'label':'precipitação (mm/dia'})
