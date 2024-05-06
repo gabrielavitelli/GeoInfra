@@ -9,15 +9,15 @@ import geopandas as gpd
 import pandas as pd
 import rioxarray
 from shapely.geometry import mapping
-
+import csv
 #####################################################################################################################################
 #/mnt/c/Users/Usuario/gabriela/
 #entrada='/mnt/c/Users/Usuario/gabriela//dados/CORDEX/pr_SAM-20_MIROC-MIROC5_rcp85_r1i1p1_INPE-Eta_v1_day_20960101-20991231.nc'
 entrada='/mnt/c/Users/Usuario/gabriela/dados/CORDEX/historico/dataset-projections-cordex-domains-single-levels-3896b270-7908-453f-8171-ddedafe35bde/pr_SAM-20_MIROC-MIROC5_historical_r1i1p1_INPE-Eta_v1_day_20010101-20051231.nc'
 
 dado_bruto = xr.open_dataset(entrada)
-print (dado_bruto)
 
+#.sel(lat=latitude, lon=longitude, time=dado_bruto.time[0:366], method='nearest')
 # Calculando a resolução para latitude e longitude
 lat_res = abs(dado_bruto['lat'][1] - dado_bruto['lat'][0])
 lon_res = abs(dado_bruto['lon'][1] - dado_bruto['lon'][0])
@@ -27,7 +27,6 @@ print(f"Resolução da Longitude: {lon_res} graus")
 
 
 saida='/mnt/c/Users/Usuario/gabriela'
-
 
 #####################################################################################################################################
 # shapefiles #
@@ -112,29 +111,120 @@ plt.show()
 # recortando dados
 latitude = -4.41
 longitude = -46.75
+
+#print ('pr mm/dia')
+#print ((dado_bruto['pr']*86400).sel(time=dado_bruto.time[0:7]).values)
+
+###############################################################################################################
+dado_sel_bruto=dado_bruto.sel(lat=latitude, lon=longitude, time=dado_bruto.time[0:7], method='nearest')
+pr1 = dado_sel_bruto['pr']
+df1 = pr1.to_dataframe()
+try:
+    df1.to_csv('dadobrutoNaoTransformado.csv', columns=['lat', 'lon', 'pr'], sep=';', decimal = ",")
+except:
+    print ('Ja existe arquivo dado bruto')
+###############################################################################################################
+
+
+dado_sel_2001_2005=dado_bruto.sel(lat=latitude, lon=longitude, method='nearest')
 dado_sel=dado_bruto.sel(lat=latitude, lon=longitude, time=dado_bruto.time[0:366], method='nearest')
+pr = dado_sel['pr']*86400
+pr_2001_2005 = dado_sel_2001_2005['pr']*86400
+df =pr_2001_2005.to_dataframe()
+try:
+    df.to_csv('FazendaPedreiras_2001_2005.csv', columns=['lat', 'lon', 'pr'], sep=';', decimal = ",")
+
+except:
+    print ('ja existe um arquivo FazendaPedreiras_2001.csv')
+quit()
+# configurando tempo e pegando precipitacao
+tempo = dado_sel.time.data
+tempo_configurado = pd.to_datetime(tempo)
+dia_juliano = tempo_configurado.dayofyear
+
+# plotando
+plt.figure()
+plt.plot(dia_juliano.astype(str).to_numpy(), pr.to_numpy())#, marker='o',linestyle='None')
+plt.title("Série temporal de precipitação para 2001 para Fazenda Pedreiras, dados do CORDEX - MIROC-MIROC5")
+plt.ylabel('Precipitação')
+
+plt.xticks(np.arange(365, step=31), ['jan', 'fev', 'mar', 'abr', 'maio', 'jun', 'jul', 'agos', 'set', 'out', 'nov', 'dez'], rotation=20)
+#plt.show() 
+############################################################################################################################################
+# recorte para ponto 2:               latitude -4.33                      longitude: -46.49                altitude: 67
+
+# recortando dados
+p2_latitude = -4.33
+p2_longitude = -46.49
+p2_dado_sel=dado_bruto.sel(lat=p2_latitude, lon=p2_longitude, time=dado_bruto.time[0:366], method='nearest')
+p2_pr=p2_dado_sel['pr']*86400
+p2_df =p2_pr.to_dataframe()
+try:
+    p2_df.to_csv('ponte_BR222.csv', columns=['lat', 'lon', 'pr'], sep=';', decimal = ",")
+except:
+    print ('ja existe um arquivo ponte_BR222_2001.csv')
+# configurando tempo e pegando precipitacao
+tempo = dado_sel.time.data
+tempo_configurado = pd.to_datetime(tempo)
+dia_juliano = tempo_configurado.dayofyear
+
+# plotando
+plt.figure()
+plt.plot(dia_juliano.astype(str).to_numpy(), pr.to_numpy())#, marker='o',linestyle='None')
+plt.title("Série temporal de precipitação para 2001 para Ponte BR-222, dados do CORDEX - MIROC-MIROC5")
+plt.ylabel('Precipitação')
+
+plt.xticks(np.arange(365, step=31), ['jan', 'fev', 'mar', 'abr', 'maio', 'jun', 'jul', 'agos', 'set', 'out', 'nov', 'dez'], rotation=20)
+#plt.show() 
+
+############################################################################################################################################
+# recorte para ponto 3:               latitude                       longitude:                 altitude: 
+#Prefeitura Municipal de Buriticupu
+# recortando dados
+p3_latitude = -4.32
+p3_longitude = -46.46
+p3_dado_sel=dado_bruto.sel(lat=p3_latitude, lon=p3_longitude, time=dado_bruto.time[0:366], method='nearest')
+p3_pr=p3_dado_sel['pr']*86400
+p3_df =p3_pr.to_dataframe()
+try:
+    p3_df.to_csv('PrefeituraMunicipalBuriciupu_2001.csv', columns=['lat', 'lon', 'pr'], sep=';', decimal = ",")
+except:
+    print ('ja existe um arquivo PrefeituraMunicipalBuriciupu_2001.cs')
+#
 
 # configurando tempo e pegando precipitacao
 tempo = dado_sel.time.data
 tempo_configurado = pd.to_datetime(tempo)
 dia_juliano = tempo_configurado.dayofyear
-pr=dado_sel['pr']*8640
 
 # plotando
-plt.plot(dia_juliano.astype(str).to_numpy(), pr.to_numpy())#, marker='o',linestyle='None')
-plt.title("Série temporal de precipitação para 2096 para Fazenda Pedreiras, dados do CORDEX - MIROC-MIROC5")
+plt.figure()
+plt.plot(dia_juliano.astype(str).to_numpy(), p3_pr.to_numpy())#, marker='o',linestyle='None')
+plt.title("Série temporal de precipitação para 2001 para Prefeitura Municipal de Buriticupu, dados do CORDEX - MIROC-MIROC5")
 plt.ylabel('Precipitação')
 
 plt.xticks(np.arange(365, step=31), ['jan', 'fev', 'mar', 'abr', 'maio', 'jun', 'jul', 'agos', 'set', 'out', 'nov', 'dez'], rotation=20)
 plt.show() 
-############################################################################################################################################
-# recorte para ponto 2:               latitude -4.33                      longitude: -46.49                altitude: 67
 
+############################################################################################################################################
+############################################################################################################################################
+# recorte para ponto 14:               latitude                       longitude:                 altitude: 
+# Arotoí Grande
+
+# recortando dados
+p4_latitude = -3.77
+p4_longitude = -45.22   
+    
+'''
 # recortando dados
 #latitude = -4.41
 #longitude = -46.75
 dado_sel=dado_bruto.sel(time=dado_bruto.time[0:365])
 print (dado_sel)
+df =dado_sel.to_dataframe()
+pd.set_option('display.max_colwidth', 25)
+#try:
+   # df.to_csv('retangulo da extensao_efc.csv', sep=';')
 
 # configurando tempo e pegando precipitacao
 tempo = dado_sel.time.data
@@ -147,7 +237,7 @@ media_espacial =pr.mean(dim=['lat', 'lon'])
 
 # plotando
 plt.plot(pr.month.to_numpy(), media_espacial.to_numpy())#, marker='o',linestyle='None')
-plt.title("Série temporal de precipitação acumulada para 2001 para toda extensao da EFC, dados do CORDEX - MIROC-MIROC5")
+plt.title("Série temporal de precipitação acumulada para 2096 para toda extensao da EFC, dados do CORDEX - MIROC-MIROC5")
 plt.ylabel('Precipitação')
 
 plt.xticks(np.arange(12, step=1), ['jan', 'fev', 'mar', 'abr', 'maio', 'jun', 'jul', 'agos', 'set', 'out', 'nov', 'dez'], rotation=20)
@@ -157,7 +247,6 @@ plt.xticks(np.arange(12, step=1), ['jan', 'fev', 'mar', 'abr', 'maio', 'jun', 'j
 plt.show()
 
 
-quit()
 
 #pd.DataFrame
 
@@ -185,3 +274,4 @@ print (pr)
 #data['pr'].isel(time=0).plot(ax=ax, transform=ccrs.PlateCarree(), cbar_kwargs={'label':'precipitação (mm/dia'})
 #colorbar = fig.colorbar(pr, ax=ax, orientation='vertical')
 #colorbar.set_label('Precipitação (mm/dia)') 
+'''
