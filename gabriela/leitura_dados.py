@@ -94,6 +94,7 @@ End year:
 print ("---------------------------- CORDEX ----------------------------")
 entrada_cordex = "C:/Users/Usuario/gabriela/dados/CORDEX/historico/pr_SAM-20_MOHC-HadGEM2-ES_historical_r1i1p1_INPE-Eta_v1_day_19610101-19651230.nc"
 ds_cordex = xr.open_mfdataset(entrada_cordex)
+# transformando de kg/m^2/s por mm/dia
 cordex = ds_cordex['pr']*8640
 cordex_recortado = converte_coordenada(ds_cordex)
 print (cordex_recortado)
@@ -270,7 +271,7 @@ area_dataframe = gpd.GeoDataFrame({'geometry': [area]}, crs=shp_ma.crs)
 
 
 # plotagem
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize = (6, 6))
 shp.plot(ax=ax)
 shp_ma.plot(ax=ax, facecolor='none', linewidth=3)  
 shp_pa.plot(ax=ax, facecolor='none', linewidth=3)  

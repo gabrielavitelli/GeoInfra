@@ -117,6 +117,7 @@ longitude = -46.75
 
 ###############################################################################################################
 dado_sel_bruto=dado_bruto.sel(lat=latitude, lon=longitude, time=dado_bruto.time[0:7], method='nearest')
+
 pr1 = dado_sel_bruto['pr']
 df1 = pr1.to_dataframe()
 try:
@@ -126,29 +127,29 @@ except:
 ###############################################################################################################
 
 
-dado_sel_2001_2005=dado_bruto.sel(lat=latitude, lon=longitude, method='nearest')
-dado_sel=dado_bruto.sel(lat=latitude, lon=longitude, time=dado_bruto.time[0:366], method='nearest')
-pr = dado_sel['pr']*86400
-pr_2001_2005 = dado_sel_2001_2005['pr']*86400
-df =pr_2001_2005.to_dataframe()
-try:
-    df.to_csv('FazendaPedreiras_2001_2005.csv', columns=['lat', 'lon', 'pr'], sep=';', decimal = ",")
+#dado_sel_2001_2005=dado_bruto.sel(lat=latitude, lon=longitude, method='nearest')
+#dado_sel=dado_bruto.sel(lat=latitude, lon=longitude, method='nearest')
+#pr = dado_sel['pr']*86400
+#pr_2001_2005 = dado_sel_2001_2005['pr']*86400
+#df =pr_2001_2005.to_dataframe()
+#try:
+#    df.to_csv('FazendaPedreiras_2001_2005.csv', columns=['lat', 'lon', 'pr'], sep=';', decimal = ",")
 
-except:
-    print ('ja existe um arquivo FazendaPedreiras_2001.csv')
-quit()
+#except:
+#    print ('ja existe um arquivo FazendaPedreiras_2001.csv')
+
 # configurando tempo e pegando precipitacao
-tempo = dado_sel.time.data
-tempo_configurado = pd.to_datetime(tempo)
-dia_juliano = tempo_configurado.dayofyear
+#tempo = dado_sel.time.data
+#tempo_configurado = pd.to_datetime(tempo)
+#dia_juliano = tempo_configurado.dayofyear
 
 # plotando
-plt.figure()
-plt.plot(dia_juliano.astype(str).to_numpy(), pr.to_numpy())#, marker='o',linestyle='None')
-plt.title("Série temporal de precipitação para 2001 para Fazenda Pedreiras, dados do CORDEX - MIROC-MIROC5")
-plt.ylabel('Precipitação')
+#plt.figure()
+#plt.plot(dia_juliano.astype(str).to_numpy(), pr.to_numpy())#, marker='o',linestyle='None')
+#plt.title("Série temporal de precipitação para 2001 para Fazenda Pedreiras, dados do CORDEX - MIROC-MIROC5")
+#plt.ylabel('Precipitação')
 
-plt.xticks(np.arange(365, step=31), ['jan', 'fev', 'mar', 'abr', 'maio', 'jun', 'jul', 'agos', 'set', 'out', 'nov', 'dez'], rotation=20)
+#plt.xticks(np.arange(365, step=31), ['jan', 'fev', 'mar', 'abr', 'maio', 'jun', 'jul', 'agos', 'set', 'out', 'nov', 'dez'], rotation=20)
 #plt.show() 
 ############################################################################################################################################
 # recorte para ponto 2:               latitude -4.33                      longitude: -46.49                altitude: 67
@@ -160,17 +161,17 @@ p2_dado_sel=dado_bruto.sel(lat=p2_latitude, lon=p2_longitude, time=dado_bruto.ti
 p2_pr=p2_dado_sel['pr']*86400
 p2_df =p2_pr.to_dataframe()
 try:
-    p2_df.to_csv('ponte_BR222.csv', columns=['lat', 'lon', 'pr'], sep=';', decimal = ",")
+    p2_df.to_csv('ponte_BR222_2001-5.csv', columns=['lat', 'lon', 'pr'], sep=';', decimal = ",")
 except:
     print ('ja existe um arquivo ponte_BR222_2001.csv')
 # configurando tempo e pegando precipitacao
-tempo = dado_sel.time.data
+tempo = p2_dado_sel.time.data
 tempo_configurado = pd.to_datetime(tempo)
 dia_juliano = tempo_configurado.dayofyear
 
 # plotando
 plt.figure()
-plt.plot(dia_juliano.astype(str).to_numpy(), pr.to_numpy())#, marker='o',linestyle='None')
+plt.plot(dia_juliano.astype(str).to_numpy(), p2_pr.to_numpy())#, marker='o',linestyle='None')
 plt.title("Série temporal de precipitação para 2001 para Ponte BR-222, dados do CORDEX - MIROC-MIROC5")
 plt.ylabel('Precipitação')
 
@@ -183,17 +184,17 @@ plt.xticks(np.arange(365, step=31), ['jan', 'fev', 'mar', 'abr', 'maio', 'jun', 
 # recortando dados
 p3_latitude = -4.32
 p3_longitude = -46.46
-p3_dado_sel=dado_bruto.sel(lat=p3_latitude, lon=p3_longitude, time=dado_bruto.time[0:366], method='nearest')
+p3_dado_sel=dado_bruto.sel(lat=p3_latitude, lon=p3_longitude, method='nearest')
 p3_pr=p3_dado_sel['pr']*86400
 p3_df =p3_pr.to_dataframe()
 try:
-    p3_df.to_csv('PrefeituraMunicipalBuriciupu_2001.csv', columns=['lat', 'lon', 'pr'], sep=';', decimal = ",")
+    p3_df.to_csv('PrefeituraMunicipalBuriciupu_2001-5.csv', columns=['lat', 'lon', 'pr'], sep=';', decimal = ",")
 except:
     print ('ja existe um arquivo PrefeituraMunicipalBuriciupu_2001.cs')
 #
 
 # configurando tempo e pegando precipitacao
-tempo = dado_sel.time.data
+tempo = p3_dado_sel.time.data
 tempo_configurado = pd.to_datetime(tempo)
 dia_juliano = tempo_configurado.dayofyear
 
@@ -208,13 +209,17 @@ plt.show()
 
 ############################################################################################################################################
 ############################################################################################################################################
-# recorte para ponto 14:               latitude                       longitude:                 altitude: 
-# Arotoí Grande
+# recorte para ponto 4:               latitude                       longitude:                 altitude: 
+# Fazenda Varig
 
 # recortando dados
-p4_latitude = -3.77
-p4_longitude = -45.22   
-    
+p4_latitude = -4.22
+p4_longitude = -46.49
+p4_dado_sel=dado_bruto.sel(lat=p4_latitude, lon=p4_longitude, time=dado_bruto.time[0:366], method='nearest')
+p4_pr=p4_dado_sel['pr']*86400
+p4_df =p4_pr.to_dataframe()
+
+ 
 '''
 # recortando dados
 #latitude = -4.41
@@ -274,4 +279,8 @@ print (pr)
 #data['pr'].isel(time=0).plot(ax=ax, transform=ccrs.PlateCarree(), cbar_kwargs={'label':'precipitação (mm/dia'})
 #colorbar = fig.colorbar(pr, ax=ax, orientation='vertical')
 #colorbar.set_label('Precipitação (mm/dia)') 
+
+
+
+time=dado_bruto.time[0:366],
 '''
