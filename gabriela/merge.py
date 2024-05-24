@@ -42,18 +42,20 @@ def gera_csv_merge (pr):
     lon = pr.coords['longitude'].values.flatten()
     prec = pr.values#.flatten()
     
-    index = range(len(ds.coords['latitude'].values.flatten()))
+    index = range(len(time))
     
     pr_mmdia = pd.DataFrame({'time':time, 'latitude': lat, 'longitude': lon, 'prec': prec }, index=index)
-    if not os.path.isfile(f"resultados/novas_estacoes/merge_{nome_estacao}.csv"):
+    if not os.path.isfile(f"resultados/novas_estacoes/teste/merge_{nome_estacao}.csv"):
         pr_mmdia['latitude'] = pr_mmdia['latitude'].map(lambda x: format(x, '.5f'))
-        pr_mmdia.to_csv(f'resultados/novas_estacoes/merge_{nome_estacao}.csv', mode='w', header=True, sep=';', columns=['time', 'latitude', 'longitude', 'prec'], decimal=',')
-        pr_mmdia.to_csv(f'resultados/novas_estacoes/merge_{nome_estacao}.txt', header=True, sep='\t', columns=['time', 'latitude', 'longitude', 'prec'], decimal=',')
+        pr_mmdia['longitude'] = pr_mmdia['longitude'].map(lambda x: format(x, '.5f'))
+        pr_mmdia.to_csv(f'resultados/novas_estacoes/teste/merge_{nome_estacao}.csv', mode='w', header=True, sep=';', columns=['time', 'latitude', 'longitude', 'prec'], decimal=',')
+        pr_mmdia.to_csv(f'resultados/novas_estacoes/teste/merge_{nome_estacao}.txt', header=True, sep='\t', columns=['time', 'latitude', 'longitude', 'prec'], decimal=',')
     
     else:
         pr_mmdia['latitude'] = pr_mmdia['latitude'].map(lambda x: format(x, '.5f'))
-        pr_mmdia.to_csv(f'resultados/novas_estacoes/merge_{nome_estacao}.csv', columns=['time', 'latitude', 'longitude', 'prec'], mode='a', header=False, sep=';', decimal=',')
-        pr_mmdia.to_csv(f'resultados/novas_estacoes/merge_{nome_estacao}.txt', columns=['time', 'latitude', 'longitude', 'prec'], mode='a', header=False, sep='\t', decimal=',')
+        pr_mmdia['longitude'] = pr_mmdia['longitude'].map(lambda x: format(x, '.5f'))
+        pr_mmdia.to_csv(f'resultados/novas_estacoes/teste/merge_{nome_estacao}.csv', columns=['time', 'latitude', 'longitude', 'prec'], mode='a', header=False, sep=';', decimal=',')
+        pr_mmdia.to_csv(f'resultados/novas_estacoes/teste/merge_{nome_estacao}.txt', columns=['time', 'latitude', 'longitude', 'prec'], mode='a', header=False, sep='\t', decimal=',')
 
 
 ######################################################################################################################################################
