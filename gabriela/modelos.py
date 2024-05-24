@@ -21,33 +21,6 @@ import geopandas as gpd
 from sympy.physics import units
 import dask
 
-#import cdsapi
-'''c = cdsapi.Client()
-c.retrieve(
-'projections-cordex-domains-single-levels',
-{
-'format': 'zip',
-'domain': 'south_america",
-'experiment': 'historical',
-'horizontal_resolution': '0_20_degree_x_0_20_degree",
-'temporal_resolution': 'daily_mean',
-'variable': 'mean_precipitation_flux',
-'gcm_model': 'miroc_miroc5",
-'rcm_model': 'inpe_eta',
-'ensemble_member': 'rlilp1',
-'start_year': [
-'1960', '1961', '1966',
-'1971', '1976', '1981',
-'1986', '1991",
-],
-'end_year': [
-'1960', '1965', '1970',
-'1975', '1980', '1985',
-'1990', '1995', '2000'
-],
-},
-'download.zip')
-'''
 #####################################################################################################################################
 # dados de entrada
 
@@ -60,12 +33,35 @@ arquivos_miroc5 = sorted(glob.glob(caminho))
 caminho_regcm4 = '/mnt/c//Users/Usuario/gabriela/dados/1981-2001/regcm4/*'
 arquivos_regcm4 = sorted(glob.glob(caminho_regcm4))
 
+caminho_chirps = '/mnt/c//Users/Usuario/gabriela/dados/CHIRPS/chirps*'
+arquivos_chirps= sorted(glob.glob(caminho_chirps))
+
 saida='/mnt/c/Users/Usuario/gabriela'
 
 
 ################################################################
-def resolucao(dado_bruto):
+def resolucao ():
     
+    # Carregar o arquivo NetCDF
+    ds = xr.open_dataset(caminho_miroc6, chunks={'time': 100})
+    
+    # Definir a nova grade
+    new_lat = np.arange(-49.75, 18.95, 0.25)  # Min, Max, Incremento para latitude
+    new_lon = np.arange(270.0, 329.15, 0.25)  # Min, Max, Incremento para longitude
+    
+    # Criar um novo dataset com a nova grade
+    new_ds = xr.Dataset({
+        'lat': (['lat'], new_lat),
+        'lon': (['lon'], new_lon),
+    })
+    
+    # Interpolar os dados para a nova grade
+    regridded_ds = ds.interp(lat=new_ds.lat, lon=new_ds.lon, method='linear')
+    
+    # Salvar o novo dataset em um arquivo NetCDF
+    regridded_ds.to_netcdf(miroc6_19502014_025)
+    
+    ds = xr.open_dataset(miroc6_19502014_025, chunks={'time': 100})
     # Calculando a resolução para latitude e longitude
     lat_res = abs(dado_bruto['lat'][1] - dado_bruto['lat'][0])
     lon_res = abs(dado_bruto['lon'][1] - dado_bruto['lon'][0])
@@ -88,14 +84,38 @@ def shapefiles():
 
 
 ################################################################
-# criar funcao para ler RegCM4
+def chirps():
+    dados_chirps=[]
+    for entrada in arquivos_chirps:
+        dado_bruto = xr.open_dataset(entrada, chunks={'time': 100})
+        print (dado_bruto)
+        quit()
+        extend = [-90, -30, -49.97, 20] # Min lon, Max lon, Min lat, Max lat
+        dado_sam=dado_bruto.sel(latitude=slice(extend[2], extend[3]), longitude=slice(extend[0], extend[1]))
+        dados_chirps.append(dado_sam)
+        lat_res = abs(dado_bruto['latitude'][1] - dado_bruto['latitude'][0])
+        lon_res = abs(dado_bruto['longitude'][1] - dado_bruto['longitude'][0])
 
-#for entrada in arquivos_regcm4:
-#    ds = xr.open_dataset(entrada)   
-#    print (ds)
+    print(f"Resolução da Latitude: {lat_res} graus")
+    print(f"Resolução da Longitude: {lon_res} graus")
+    #quit()
 
-	
-################################################################################################################################################################################################
+    dados_concatenados = xr.concat(dados_chirps, dim='time')
+    
+    precipitacao_mensal = dados_concatenados['precip'].resample(time='1M').sum()
+    # agora temos precipitacao mensal
+    media_mensal = precipitacao_mensal.groupby('time.month').mean(dim='time')
+    print (media_mensal[1,:,:]) #fevereiro
+    plt.figure(figsize=(10, 6))
+    media_mensal_mensal = media_mensal.mean(dim=['latitude', 'longitude'])
+    for mes in range(1, 13):
+        media_mensal_mes = media_mensal.sel(month=mes)
+        media_mensal_mes = media_mensal_mes.compute()
+        #print(f'Média mensal para o mês {mes}: {media_mensal_mes.values}')
+        media_mensal_mes.to_netcdf(f'/mnt/e/GeoInfra/dados/chirps_media_accum_mensal_1981_2001/chirps_1981_2001_media_accum_mensal_{mes:02d}.nc')
+    quit()
+
+##############################################################################################################################################################################################
 # recortando para SAM
 # mudando de  kg m-2 s-1 para mm/dia
 def miroc5():
@@ -136,7 +156,6 @@ def RegCM4():
 
     
     # agora temos precipitacao mensal
-    
     media_mensal = precipitacao_mensal.groupby('time.month').mean(dim='time')
     #print (media_mensal.values)
 
@@ -168,9 +187,9 @@ def merge ():
 ################################################################
 
 # serie temporal: 1981-2001
-
+chirps()
 #miroc5()
-RegCM4()
+#RegCM4()
 
     
 quit()
