@@ -1,0 +1,22 @@
+{
+  "id": "003",
+  "titulo": "Parábola: vértice, raízes e discriminante",
+  "tema": "álgebra",
+  "subtema": "função quadrática",
+  "formato": "reels_9x16",
+  "duracao_seg": 50,
+  "status": "rascunho",
+  "manim_scene": null,
+  "hook": "Δ = b² − 4ac decide quantas raízes existem.",
+  "roteiro": [
+    {"t": 0, "visual": "Parábola genérica", "fala": "f(x) = ax² + bx + c é uma parábola."},
+    {"t": 8, "visual": "Vértice destacado", "fala": "O vértice fica em x = −b/(2a)."},
+    {"t": 18, "visual": "Δ > 0: duas raízes", "fala": "Se Δ > 0, a parábola corta o eixo x em dois pontos."},
+    {"t": 28, "visual": "Δ = 0: uma raiz", "fala": "Se Δ = 0, toca o eixo x em um ponto."},
+    {"t": 36, "visual": "Δ < 0: nenhuma raiz real", "fala": "Se Δ < 0, não cruza o eixo x (no ℝ)."},
+    {"t": 44, "visual": "Resumo", "fala": "Discriminante = quantas soluções reais."}
+  ],
+  "legenda": "Função quadrática descomplicada: vértice + discriminante em um vídeo.\n\n#algebra #funcaoquadratica #matematica",
+  "hashtags": ["algebra", "funcaoquadratica", "matematica"],
+  "notas_producao": "Próxima cena Manim: parabola_discriminante.py"
+}

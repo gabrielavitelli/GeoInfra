@@ -1,0 +1,22 @@
+{
+  "id": "001",
+  "titulo": "O que a derivada realmente mede?",
+  "tema": "cálculo",
+  "subtema": "derivada",
+  "formato": "reels_9x16",
+  "duracao_seg": 45,
+  "status": "rascunho",
+  "manim_scene": "derivada_tangente",
+  "hook": "A derivada não é só 'derivar'. É a inclinação instantânea da curva.",
+  "roteiro": [
+    {"t": 0, "visual": "Gráfico f(x) aparece", "fala": "Imagine uma função qualquer f(x)."},
+    {"t": 5, "visual": "Ponto P na curva", "fala": "Em um ponto P, a curva tem uma inclinação local."},
+    {"t": 12, "visual": "Secante → tangente", "fala": "Aproximamos dois pontos: a reta secante. Quando os pontos se aproximam, vira tangente."},
+    {"t": 22, "visual": "Fórmula limite", "fala": "f'(x) = lim h→0 [f(x+h) − f(x)] / h"},
+    {"t": 32, "visual": "Exemplo x², tangente em x=1", "fala": "Em f(x)=x², no ponto x=1, a inclinação é 2."},
+    {"t": 40, "visual": "CTA", "fala": "Salve para revisar cálculo visualmente."}
+  ],
+  "legenda": "A derivada é a inclinação da reta tangente no ponto — o quão rápido f(x) muda naquele instante.\n\n#matematica #calculo #derivada #manim #estudomat",
+  "hashtags": ["matematica", "calculo", "derivada", "manim", "estudomat"],
+  "notas_producao": "Usar cena Manim derivada_tangente. Fundo escuro, curva azul, tangente amarela."
+}

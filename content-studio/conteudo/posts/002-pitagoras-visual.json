@@ -1,0 +1,21 @@
+{
+  "id": "002",
+  "titulo": "Teorema de Pitágoras em 30 segundos",
+  "tema": "geometria",
+  "subtema": "pitágoras",
+  "formato": "reels_9x16",
+  "duracao_seg": 35,
+  "status": "rascunho",
+  "manim_scene": "pitagoras_visual",
+  "hook": "a² + b² = c² não é só fórmula — é área.",
+  "roteiro": [
+    {"t": 0, "visual": "Triângulo retângulo", "fala": "Triângulo retângulo: catetos a e b, hipotenusa c."},
+    {"t": 8, "visual": "Quadrados nos catetos", "fala": "Construímos quadrados sobre cada cateto."},
+    {"t": 16, "visual": "Quadrado na hipotenusa", "fala": "O quadrado da hipotenusa... "},
+    {"t": 22, "visual": "Áreas se encaixam", "fala": "...tem a mesma área dos dois catetos juntos."},
+    {"t": 28, "visual": "Fórmula a²+b²=c²", "fala": "Por isso: a² + b² = c²."}
+  ],
+  "legenda": "Pitágoras como soma de áreas — a forma mais visual de entender o teorema.\n\n#geometria #pitagoras #matematica #manim",
+  "hashtags": ["geometria", "pitagoras", "matematica", "manim"],
+  "notas_producao": "Animação de rearranjo de áreas (estilo motion design)."
+}
