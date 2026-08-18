@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Renderiza cenas Manim vinculadas aos posts
 set -euo pipefail
-cd "$(dirname "$0")/.."
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
 
 SCENE="${1:-}"
 QUALITY="${2:-ql}"  # ql = low quality (rápido), qh = high, qk = 4K
@@ -14,21 +15,27 @@ if [[ -z "$SCENE" ]]; then
   exit 1
 fi
 
-FILE="manim/scenes/${SCENE}.py"
-CLASS="$(python3 -c "
-import re, sys
-text = open('${FILE}').read()
-m = re.search(r'class (\w+)\(Scene\)', text)
-print(m.group(1) if m else sys.exit(1))
-")"
-
-mkdir -p output/videos
-VENV="$(dirname "$0")/.venv/bin/manim"
-if [[ ! -x "$VENV" ]]; then
-  echo "Crie o venv: python3 -m venv .venv && .venv/bin/pip install -r manim/requirements.txt"
+FILE="$ROOT/manim/scenes/${SCENE}.py"
+if [[ ! -f "$FILE" ]]; then
+  echo "Cena não encontrada: $FILE"
   exit 1
 fi
-"$VENV" -${QUALITY} "$FILE" "$CLASS" --media_dir output
+
+CLASS="$(python3 -c "
+import re, sys
+text = open(sys.argv[1]).read()
+m = re.search(r'class (\w+)\(Scene\)', text)
+print(m.group(1) if m else sys.exit(1))
+" "$FILE")"
+
+VENV="$ROOT/.venv/bin/manim"
+if [[ ! -x "$VENV" ]]; then
+  echo "Venv não encontrado. Rode primeiro: ./setup.sh"
+  exit 1
+fi
+
+mkdir -p "$ROOT/output/videos"
+"$VENV" -"${QUALITY}" "$FILE" "$CLASS" --media_dir "$ROOT/output"
 
 echo ""
-echo "Vídeo salvo em output/videos/"
+echo "Vídeo salvo em $ROOT/output/videos/"
