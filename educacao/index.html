@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Explorando Ciências — Ensino Fundamental</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">∑</span>
+        <div>
+          <h1>Explorando Ciências</h1>
+          <p>Animações interativas para o Ensino Fundamental</p>
+        </div>
+      </div>
+      <nav class="filter-nav" id="filterNav">
+        <button class="filter-btn active" data-filter="all">Todos</button>
+        <button class="filter-btn" data-filter="fund1">Fundamental I</button>
+        <button class="filter-btn" data-filter="fund2">Fundamental II</button>
+        <button class="filter-btn" data-filter="matematica">Matemática</button>
+        <button class="filter-btn" data-filter="fisica">Física</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="main">
+    <section class="hero">
+      <h2>Aprenda vendo e experimentando</h2>
+      <p>Clique em uma animação abaixo. Cada atividade é interativa — arraste, ajuste os controles e observe o que acontece!</p>
+    </section>
+
+    <section class="cards-grid" id="cardsGrid"></section>
+
+    <section class="demo-panel hidden" id="demoPanel">
+      <div class="demo-header">
+        <button class="back-btn" id="backBtn" aria-label="Voltar">← Voltar</button>
+        <div class="demo-title-wrap">
+          <span class="demo-badge" id="demoBadge"></span>
+          <h2 id="demoTitle"></h2>
+          <p id="demoDescription"></p>
+        </div>
+      </div>
+      <div class="demo-body">
+        <div class="canvas-wrap" id="canvasWrap">
+          <canvas id="demoCanvas"></canvas>
+        </div>
+        <aside class="controls-panel" id="controlsPanel"></aside>
+      </div>
+      <div class="concept-box" id="conceptBox"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>Feito para professores e alunos do Ensino Fundamental I e II · BNCC — Matemática e Ciências da Natureza</p>
+  </footer>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
