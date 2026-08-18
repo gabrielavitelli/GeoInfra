@@ -1,0 +1,21 @@
+{
+  "id": "008",
+  "titulo": "Matriz 2×2 como transformação do plano",
+  "tema": "álgebra linear",
+  "subtema": "transformações lineares",
+  "formato": "reels_9x16",
+  "duracao_seg": 50,
+  "status": "rascunho",
+  "manim_scene": null,
+  "hook": "Multiplicar por uma matriz = esticar, rotacionar, cisalhar o plano.",
+  "roteiro": [
+    {"t": 0, "visual": "Grade do plano", "fala": "Plano com grade — cada ponto é um vetor (x, y)."},
+    {"t": 10, "visual": "Matriz [[2,0],[0,1]]", "fala": "Matriz diagonal: estica no eixo x."},
+    {"t": 22, "visual": "Rotação 90°", "fala": "Matriz de rotação gira tudo."},
+    {"t": 34, "visual": "Cisalhamento", "fala": "Cisalhamento inclina a grade."},
+    {"t": 44, "visual": "Composição", "fala": "Multiplicar matrizes = compor transformações."}
+  ],
+  "legenda": "Álgebra linear visual: matrizes movem o plano. Base para gráficos 3D e ML.\n\n#algebralinear #matrizes #matematica",
+  "hashtags": ["algebralinear", "matrizes", "matematica"],
+  "notas_producao": "Inspirado em 3Blue1Brown — LinearTransformScene."
+}

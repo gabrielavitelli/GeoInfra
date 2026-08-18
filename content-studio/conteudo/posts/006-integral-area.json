@@ -1,0 +1,20 @@
+{
+  "id": "006",
+  "titulo": "Integral: área sob a curva",
+  "tema": "cálculo",
+  "subtema": "integral definida",
+  "formato": "reels_9x16",
+  "duracao_seg": 45,
+  "status": "rascunho",
+  "manim_scene": null,
+  "hook": "∫f(x)dx acumula infinitos retângulos finos.",
+  "roteiro": [
+    {"t": 0, "visual": "Curva f(x)", "fala": "Queremos a área entre f(x) e o eixo x."},
+    {"t": 10, "visual": "Retângulos de Riemann", "fala": "Dividimos em retângulos finos — soma de Riemann."},
+    {"t": 22, "visual": "Retângulos ficam mais finos", "fala": "Quanto mais finos, melhor a aproximação."},
+    {"t": 32, "visual": "Área preenchida", "fala": "No limite: ∫ₐᵇ f(x) dx = área exata (com sinal)."}
+  ],
+  "legenda": "Integral como limite de somas — a ideia por trás do cálculo integral.\n\n#calculo #integral #matematica",
+  "hashtags": ["calculo", "integral", "matematica"],
+  "notas_producao": "Pair com cena 001 (derivada ↔ integral)."
+}

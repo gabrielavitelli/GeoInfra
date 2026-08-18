@@ -1,0 +1,20 @@
+{
+  "id": "005",
+  "titulo": "Soma de vetores: regra do paralelogramo",
+  "tema": "álgebra linear",
+  "subtema": "vetores",
+  "formato": "reels_9x16",
+  "duracao_seg": 40,
+  "status": "rascunho",
+  "manim_scene": null,
+  "hook": "u + v não é somar números — é somar deslocamentos.",
+  "roteiro": [
+    {"t": 0, "visual": "Vetor u no plano", "fala": "Vetor u: um deslocamento no plano."},
+    {"t": 8, "visual": "Vetor v a partir da ponta de u", "fala": "Coloque v na ponta de u: método da ponta-cauda."},
+    {"t": 18, "visual": "Resultante u+v", "fala": "A resultante u+v vai da origem à ponta final."},
+    {"t": 28, "visual": "Paralelogramo", "fala": "Ou use o paralelogramo: mesma resultante."}
+  ],
+  "legenda": "Soma de vetores visualizada — essencial para física e ML.\n\n#vetores #algebralinear #matematica",
+  "hashtags": ["vetores", "algebralinear", "matematica"],
+  "notas_producao": "Cena Manim futura com Arrow e paralelogramo animado."
+}

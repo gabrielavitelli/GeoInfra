@@ -1,0 +1,20 @@
+{
+  "id": "004",
+  "titulo": "Probabilidade: por que 50% não garante equilíbrio?",
+  "tema": "probabilidade",
+  "subtema": "eventos independentes",
+  "formato": "reels_9x16",
+  "duracao_seg": 40,
+  "status": "rascunho",
+  "manim_scene": null,
+  "hook": "10 caras seguidas não torna coroa mais provável.",
+  "roteiro": [
+    {"t": 0, "visual": "Moeda girando", "fala": "Cada lançamento é independente."},
+    {"t": 10, "visual": "Sequência CCCCCCCCCC", "fala": "10 caras seguidas? Improvável, mas possível."},
+    {"t": 20, "visual": "Próximo lançamento 50/50", "fala": "No 11º lançamento, ainda é 50% cara, 50% coroa."},
+    {"t": 30, "visual": "Falácia do jogador", "fala": "Isso se chama falácia do jogador — a moeda não tem memória."}
+  ],
+  "legenda": "Probabilidade ≠ previsão. Cada evento independente recomeça do zero.\n\n#probabilidade #estatistica #matematica",
+  "hashtags": ["probabilidade", "estatistica", "matematica"],
+  "notas_producao": "Animação de moedas caindo + contador de sequência."
+}

@@ -1,0 +1,21 @@
+{
+  "id": "007",
+  "titulo": "sen e cos no círculo unitário",
+  "tema": "trigonometria",
+  "subtema": "círculo unitário",
+  "formato": "reels_9x16",
+  "duracao_seg": 40,
+  "status": "rascunho",
+  "manim_scene": null,
+  "hook": "sen(θ) e cos(θ) são coordenadas — não decoração.",
+  "roteiro": [
+    {"t": 0, "visual": "Círculo unitário", "fala": "Raio 1, centro na origem."},
+    {"t": 8, "visual": "Ângulo θ girando", "fala": "Um ângulo θ define um ponto na circunferência."},
+    {"t": 18, "visual": "Projeção cos na horizontal", "fala": "cos(θ) = coordenada x."},
+    {"t": 26, "visual": "Projeção sen na vertical", "fala": "sen(θ) = coordenada y."},
+    {"t": 34, "visual": "Triângulo retângulo no círculo", "fala": "O triângulo no círculo explica tudo."}
+  ],
+  "legenda": "Trigonometria = geometria no círculo. Visualize sen e cos como projeções.\n\n#trigonometria #matematica #circulounitario",
+  "hashtags": ["trigonometria", "matematica", "circulounitario"],
+  "notas_producao": "Cena clássica Manim — UnitCircle com projeções."
+}

@@ -1,0 +1,16 @@
+{
+  "projeto": "conteudo-matematico-visual",
+  "tema": "Matemática visual — conceitos que viram animação",
+  "formato_padrao": "reels_9x16",
+  "duracao_alvo_seg": 45,
+  "posts": [
+    {"id": "001", "arquivo": "posts/001-derivada-tangente.json", "status": "rascunho", "manim": "derivada_tangente"},
+    {"id": "002", "arquivo": "posts/002-pitagoras-visual.json", "status": "rascunho", "manim": "pitagoras_visual"},
+    {"id": "003", "arquivo": "posts/003-funcao-quadratica.json", "status": "rascunho", "manim": null},
+    {"id": "004", "arquivo": "posts/004-probabilidade-moeda.json", "status": "rascunho", "manim": null},
+    {"id": "005", "arquivo": "posts/005-vetores-soma.json", "status": "rascunho", "manim": null},
+    {"id": "006", "arquivo": "posts/006-integral-area.json", "status": "rascunho", "manim": null},
+    {"id": "007", "arquivo": "posts/007-trigonometria-circulo.json", "status": "rascunho", "manim": null},
+    {"id": "008", "arquivo": "posts/008-matriz-transformacao.json", "status": "rascunho", "manim": null}
+  ]
+}
