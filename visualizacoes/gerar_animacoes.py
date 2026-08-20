@@ -14,7 +14,7 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import LinearSegmentedColormap, Normalize
+from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import Circle, Polygon
 from PIL import Image
 
@@ -23,11 +23,6 @@ BG = "#07080c"
 PLUS = "#e8b84a"
 MINUS = "#4f8bff"
 INK = "#f3efe4"
-
-PEAKS_CMAP = LinearSegmentedColormap.from_list(
-    "peaks_geo",
-    ["#08070c", "#14122a", "#2a1848", "#6a2158", "#c24a3a", "#e6b84c", "#f4e6c4"],
-)
 
 
 def ease(t: float) -> float:
@@ -133,42 +128,48 @@ def save_gif(frames: list[Image.Image], path: Path, duration_ms: int = 70) -> No
 # ---------------------------------------------------------------------------
 
 def svm_points() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Pontos linearmente separáveis com hiperplano ótimo x + y = 0."""
-    sv_plus = np.array([[1.05, 0.15], [0.18, 1.02]])
-    sv_minus = np.array([[-0.60, -0.60]])
-    plus = np.vstack(
+    """Duas classes linearmente separáveis; SVs ficam exatamente nas margens."""
+    plus = np.array(
         [
-            sv_plus,
-            [
-                [1.55, 0.55],
-                [1.95, 1.15],
-                [2.25, 0.45],
-                [1.35, 1.65],
-                [2.15, 1.85],
-                [2.55, 1.05],
-                [1.75, 2.15],
-                [0.85, 1.55],
-                [2.45, 2.05],
-            ],
+            [1.05, 0.15],
+            [0.18, 1.02],
+            [1.55, 0.55],
+            [1.95, 1.15],
+            [2.25, 0.45],
+            [1.35, 1.65],
+            [2.15, 1.85],
+            [2.55, 1.05],
+            [1.75, 2.15],
+            [0.85, 1.55],
+            [2.45, 2.05],
         ]
     )
-    minus = np.vstack(
+    minus = np.array(
         [
-            sv_minus,
-            [
-                [-1.50, -0.55],
-                [-1.90, -1.20],
-                [-2.20, -0.40],
-                [-1.35, -1.70],
-                [-2.10, -1.90],
-                [-2.55, -1.05],
-                [-1.70, -2.20],
-                [-0.85, -1.55],
-                [-2.40, -2.10],
-            ],
+            [-0.60, -0.60],
+            [-1.50, -0.55],
+            [-1.90, -1.20],
+            [-2.20, -0.40],
+            [-1.35, -1.70],
+            [-2.10, -1.90],
+            [-2.55, -1.05],
+            [-1.70, -2.20],
+            [-0.85, -1.55],
+            [-2.40, -2.10],
         ]
     )
-    return plus, minus, sv_plus, sv_minus
+    return plus, minus
+
+
+def support_vectors(
+    plus: np.ndarray, minus: np.ndarray, theta: float, tol: float = 0.025
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float, float]:
+    """SVs = pontos que tocam as margens ±1 (projeções extremas em cada classe)."""
+    gap, u, c_plus, c_minus = oriented_gap(plus, minus, theta)
+    c_mid = 0.5 * (c_plus + c_minus)
+    sv_plus = plus[np.abs(plus @ u - c_plus) <= tol]
+    sv_minus = minus[np.abs(minus @ u - c_minus) <= tol]
+    return sv_plus, sv_minus, u, c_plus, c_minus, c_mid
 
 
 def oriented_gap(plus: np.ndarray, minus: np.ndarray, theta: float) -> tuple[float, np.ndarray, float, float]:
@@ -230,6 +231,7 @@ def render_svm_frame(
     arrow_alpha: float,
     settle: float,
     region_alpha: float = 0.0,
+    dim_non_sv: float = 0.0,
 ) -> Image.Image:
     fig, ax = new_axes()
     lim = 3.15
@@ -335,6 +337,22 @@ def render_svm_frame(
         alpha=point_alpha,
     )
 
+    if dim_non_sv > 0 and sv_alpha > 0:
+        sv_all = np.vstack([sv_plus, sv_minus]) if len(sv_plus) and len(sv_minus) else np.empty((0, 2))
+        for pts, color in ((plus, PLUS), (minus, MINUS)):
+            for p in pts:
+                is_sv = any(np.linalg.norm(p - q) < 0.04 for q in sv_all)
+                if not is_sv:
+                    ax.scatter(
+                        [p[0]],
+                        [p[1]],
+                        s=52,
+                        c=color,
+                        alpha=0.22 * dim_non_sv * point_alpha,
+                        linewidths=0,
+                        zorder=5,
+                    )
+
     if sv_alpha > 0:
         svs = np.vstack([sv_plus, sv_minus])
         pulse = 1.0 + 0.08 * math.sin(settle * math.pi * 2)
@@ -385,9 +403,10 @@ def render_svm_frame(
 
 
 def make_svm_gif(path: Path) -> None:
-    plus, minus, sv_plus, sv_minus = svm_points()
+    plus, minus = svm_points()
     theta_star = best_theta(plus, minus)
-    # Sweep a neighbourhood then settle on the optimum.
+    sv_plus, sv_minus, _, _, _, _ = support_vectors(plus, minus, theta_star)
+    # Varredura de orientações → margem máxima (busca geométrica do hiperplano).
     sweep = np.concatenate(
         [
             np.linspace(theta_star - 0.72, theta_star + 0.72, 36),
@@ -396,48 +415,30 @@ def make_svm_gif(path: Path) -> None:
     )
     frames: list[Image.Image] = []
 
-    # 1. Points appear
     for i in range(14):
         a = ease((i + 1) / 14)
-        frames.append(
-            render_svm_frame(
-                plus, minus, sv_plus, sv_minus, theta_star, a, 0, 0, 0, 0, 0
-            )
-        )
-    # 2. Convex hulls
+        frames.append(render_svm_frame(plus, minus, sv_plus, sv_minus, theta_star, a, 0, 0, 0, 0, 0))
     for i in range(10):
         a = ease((i + 1) / 10)
+        frames.append(render_svm_frame(plus, minus, sv_plus, sv_minus, theta_star, 1, a, 0, 0, 0, 0))
+    for th in sweep:
         frames.append(
-            render_svm_frame(
-                plus, minus, sv_plus, sv_minus, theta_star, 1, a, 0, 0, 0, 0
-            )
+            render_svm_frame(plus, minus, sv_plus, sv_minus, float(th), 1, 0.55, 1, 0, 0, 0)
         )
-    # 3. Orientation sweep of the separating slab
-    for k, th in enumerate(sweep):
-        frames.append(
-            render_svm_frame(
-                plus, minus, sv_plus, sv_minus, float(th), 1, 0.55, 1, 0, 0, 0
-            )
-        )
-    # 4. Return to optimum
     th0 = float(sweep[-1])
     for i in range(16):
         a = ease((i + 1) / 16)
         th = th0 + a * (theta_star - th0)
         frames.append(
-            render_svm_frame(
-                plus, minus, sv_plus, sv_minus, th, 1, 0.35 * (1 - a), 1, 0, 0, 0
-            )
+            render_svm_frame(plus, minus, sv_plus, sv_minus, th, 1, 0.35 * (1 - a), 1, 0, 0, 0)
         )
-    # 5. Support vectors and normal
     for i in range(14):
         a = ease((i + 1) / 14)
         frames.append(
             render_svm_frame(
-                plus, minus, sv_plus, sv_minus, theta_star, 1, 0, 1, a, a, 0
+                plus, minus, sv_plus, sv_minus, theta_star, 1, 0, 1, a, a, 0, dim_non_sv=a
             )
         )
-    # 6. Hold / pulse with half-spaces
     for i in range(22):
         a = ease(min(1.0, (i + 1) / 8))
         frames.append(
@@ -454,6 +455,7 @@ def make_svm_gif(path: Path) -> None:
                 1,
                 i / 22,
                 region_alpha=a,
+                dim_non_sv=1.0,
             )
         )
 
@@ -462,196 +464,255 @@ def make_svm_gif(path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Genetic algorithm on the peaks landscape
+# Algoritmo genético — árvore com raízes (seleção + amplificação)
 # ---------------------------------------------------------------------------
 
-def peaks(x: np.ndarray, y: np.ndarray) -> np.ndarray:
-    return (
-        3.0 * (1 - x) ** 2 * np.exp(-(x**2) - (y + 1) ** 2)
-        - 10.0 * (x / 5.0 - x**3 - y**5) * np.exp(-(x**2) - y**2)
-        - 1.0 / 3.0 * np.exp(-((x + 1) ** 2) - y**2)
+SOIL_CMAP = LinearSegmentedColormap.from_list(
+    "soil_geo",
+    ["#0a0810", "#1a1028", "#3a1848", "#7a2848", "#c24a3a", "#e6b84c", "#f8ecc8"],
+)
+TRUNK = "#6b4a2a"
+CANOPY = "#7ec86a"
+
+
+def water_field(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """Fontes de água/nutrientes no subsolo — fitness do fenótipo (ponta da raiz)."""
+    main = np.exp(-((x) ** 2 + (y + 2.05) ** 2) / 0.42)
+    decoy_l = 0.38 * np.exp(-((x + 1.35) ** 2 + (y + 1.35) ** 2) / 0.28)
+    decoy_r = 0.30 * np.exp(-((x - 1.15) ** 2 + (y + 1.55) ** 2) / 0.32)
+    return main + decoy_l + decoy_r
+
+
+def genes_to_polyline(genes: np.ndarray, base: tuple[float, float] = (0.0, 0.0)) -> np.ndarray:
+    """Genótipo → traçado da raiz (segmentos com ângulo acumulado, crescendo para baixo)."""
+    x, y = base
+    angle = -math.pi / 2
+    pts = [(x, y)]
+    for d_angle, length in genes:
+        angle += float(d_angle)
+        x += float(length) * math.cos(angle)
+        y += float(length) * math.sin(angle)
+        pts.append((x, y))
+    return np.array(pts, dtype=float)
+
+
+def root_fitness(genes: np.ndarray) -> float:
+    tip = genes_to_polyline(genes)[-1]
+    depth = max(0.0, -tip[1])
+    return float(water_field(tip[0], tip[1]) + 0.12 * depth / 3.0)
+
+
+class RootIndividual:
+    __slots__ = ("genes", "fitness", "selected", "generation")
+
+    def __init__(self, genes: np.ndarray, generation: int = 0):
+        self.genes = genes.copy()
+        self.generation = generation
+        self.fitness = root_fitness(genes)
+        self.selected = False
+
+
+def random_genes(rng: np.random.Generator, n_seg: int = 5) -> np.ndarray:
+    return np.column_stack(
+        [
+            rng.normal(0.0, 0.38, n_seg),
+            rng.uniform(0.28, 0.52, n_seg),
+        ]
     )
 
 
-def run_ga(rng: np.random.Generator, n_pop: int = 48, n_gen: int = 18) -> np.ndarray:
-    """Devolve histórico (n_gen+1, n_pop, 2)."""
-    pop = rng.uniform(-3.0, 3.0, size=(n_pop, 2))
-    hist = [pop.copy()]
+def tournament_roots(pop: list[RootIndividual], rng: np.random.Generator, k: int = 3) -> RootIndividual:
+    cand = rng.choice(len(pop), size=k, replace=False)
+    return max((pop[i] for i in cand), key=lambda r: r.fitness)
+
+
+def evolve_roots(rng: np.random.Generator, n_pop: int = 14, n_gen: int = 10) -> list[list[RootIndividual]]:
+    n_seg = 5
+    pop = [RootIndividual(random_genes(rng, n_seg)) for _ in range(n_pop)]
+    history: list[list[RootIndividual]] = [pop]
     for g in range(n_gen):
-        fit = peaks(pop[:, 0], pop[:, 1])
-        elite_n = 4
-        elite_idx = np.argsort(fit)[-elite_n:]
-        elite = pop[elite_idx].copy()
-        new = [elite]
-        sigma = 0.62 * (0.91**g)
-        while sum(len(chunk) for chunk in new) < n_pop:
-            i = tournament(fit, rng)
-            j = tournament(fit, rng)
-            alpha = rng.uniform(0.25, 0.75)
-            child = alpha * pop[i] + (1 - alpha) * pop[j]
-            child = child + rng.normal(0.0, sigma, size=2)
-            if rng.random() < 0.12:
-                child = rng.uniform(-3.0, 3.0, size=2)
-            child = np.clip(child, -3.0, 3.0)
-            new.append(child[None, :])
-        pop = np.vstack(new)[:n_pop]
-        hist.append(pop.copy())
-    return np.stack(hist, axis=0)
+        ranked = sorted(pop, key=lambda r: r.fitness, reverse=True)
+        elite_n = 3
+        keep = [RootIndividual(r.genes, g + 1) for r in ranked[:elite_n]]
+        for r in keep:
+            r.selected = True
+        new_pop: list[RootIndividual] = keep
+        sigma = 0.34 * (0.82**g)
+        while len(new_pop) < n_pop:
+            p1 = tournament_roots(pop, rng)
+            p2 = tournament_roots(pop, rng)
+            alpha = rng.uniform(0.35, 0.65)
+            child_genes = alpha * p1.genes + (1 - alpha) * p2.genes
+            child_genes[:, 0] += rng.normal(0.0, sigma, n_seg)
+            child_genes[:, 1] += rng.normal(0.0, sigma * 0.55, n_seg)
+            child_genes[:, 1] = np.clip(child_genes[:, 1], 0.18, 0.62)
+            if rng.random() < 0.10:
+                child_genes = random_genes(rng, n_seg)
+            new_pop.append(RootIndividual(child_genes, g + 1))
+        pop = new_pop
+        history.append(pop)
+    return history
 
 
-def tournament(fit: np.ndarray, rng: np.random.Generator, k: int = 3) -> int:
-    idx = rng.choice(len(fit), size=k, replace=False)
-    return int(idx[np.argmax(fit[idx])])
+def draw_tree(ax, trunk_alpha: float, canopy_alpha: float) -> None:
+    if trunk_alpha <= 0:
+        return
+    # Tronco
+    ax.plot([0, 0], [0, 2.35], color=TRUNK, lw=5.5, solid_capstyle="round", alpha=0.92 * trunk_alpha, zorder=6)
+    ax.plot([0, 0], [0, 2.35], color=PLUS, lw=1.4, alpha=0.35 * trunk_alpha, zorder=7)
+    if canopy_alpha > 0:
+        for dx, dy, r in [
+            (0.0, 2.55, 0.72),
+            (-0.55, 2.35, 0.52),
+            (0.58, 2.28, 0.48),
+            (-0.28, 2.85, 0.42),
+            (0.32, 2.92, 0.38),
+        ]:
+            ax.add_patch(
+                Circle(
+                    (dx, dy),
+                    r,
+                    facecolor=CANOPY,
+                    edgecolor="#3a5a30",
+                    lw=0.8,
+                    alpha=0.55 * canopy_alpha,
+                    zorder=8,
+                )
+            )
+        ax.add_patch(
+            Circle((0, 2.65), 0.28, facecolor=PLUS, edgecolor="none", alpha=0.25 * canopy_alpha, zorder=9)
+        )
 
 
-def render_ga_frame(
+def draw_soil(ax, xs, ys, zz, alpha: float) -> None:
+    ax.contourf(xs, ys, zz, levels=16, cmap=SOIL_CMAP, alpha=0.97 * alpha, zorder=1, extend="both")
+    ax.contour(xs, ys, zz, levels=16, colors=INK, linewidths=0.35, alpha=0.14 * alpha, zorder=2)
+    ax.axhline(0, color=INK, lw=1.6, alpha=0.55 * alpha, zorder=5)
+    ax.fill_between([-3.05, 3.05], -3.05, 0, color="#120e18", alpha=0.35 * alpha, zorder=0)
+
+
+def render_ga_tree_frame(
     xs,
     ys,
     zz,
-    pop: np.ndarray,
-    trails: list[np.ndarray],
-    gen_alpha: float,
-    landscape_alpha: float,
+    roots: list[RootIndividual],
+    progress: float,
+    trunk_alpha: float,
+    canopy_alpha: float,
+    soil_alpha: float,
+    select_pulse: float = 0.0,
 ) -> Image.Image:
     fig, ax = new_axes()
-    lim = 3.05
-    ax.set_xlim(-lim, lim)
-    ax.set_ylim(-lim, lim)
+    ax.set_xlim(-3.05, 3.05)
+    ax.set_ylim(-3.05, 3.05)
 
-    norm = Normalize(vmin=-6.2, vmax=8.1)
-    ax.contourf(
-        xs,
-        ys,
-        zz,
-        levels=18,
-        cmap=PEAKS_CMAP,
-        norm=norm,
-        alpha=0.96 * landscape_alpha,
-        zorder=1,
-        extend="both",
-    )
-    ax.contour(
-        xs,
-        ys,
-        zz,
-        levels=18,
-        colors="#f3efe4",
-        linewidths=0.45,
-        alpha=0.18 * landscape_alpha,
-        zorder=2,
-    )
-    ax.add_patch(
-        plt.Rectangle(
-            (-lim, -lim),
-            2 * lim,
-            2 * lim,
-            fill=False,
-            ec="#d8c48a",
-            lw=1.15,
-            alpha=0.35,
-            zorder=8,
+    draw_soil(ax, xs, ys, zz, soil_alpha)
+    draw_tree(ax, trunk_alpha, canopy_alpha)
+
+    ranked = sorted(roots, key=lambda r: r.fitness, reverse=True)
+    elite_set = {id(r) for r in ranked[:3]}
+    fit_vals = np.array([r.fitness for r in roots])
+    fmin, fmax = fit_vals.min(), fit_vals.max()
+    span = max(fmax - fmin, 1e-6)
+
+    for r in sorted(roots, key=lambda x: x.fitness):
+        poly = genes_to_polyline(r.genes)
+        n = max(2, int(len(poly) * progress))
+        seg = poly[:n]
+        if len(seg) < 2:
+            continue
+        t = (r.fitness - fmin) / span
+        is_elite = id(r) in elite_set
+        base_lw = 0.7 + 2.8 * t
+        if is_elite and select_pulse > 0:
+            base_lw *= 1.0 + 1.8 * select_pulse
+        alpha = 0.25 + 0.75 * t
+        if not is_elite and select_pulse > 0.25:
+            alpha *= max(0.06, 1.0 - 0.9 * select_pulse)
+        color = SOIL_CMAP(0.55 + 0.45 * t)
+        ax.plot(
+            seg[:, 0],
+            seg[:, 1],
+            color=color,
+            lw=base_lw,
+            solid_capstyle="round",
+            alpha=alpha,
+            zorder=4 if not is_elite else 5,
         )
-    )
+        tip = seg[-1]
+        if tip[1] < -0.05:
+            ax.scatter(
+                [tip[0]],
+                [tip[1]],
+                s=28 + 95 * t,
+                color=SOIL_CMAP(0.78 + 0.22 * t),
+                edgecolors="none",
+                alpha=(0.2 + 0.8 * t) * alpha,
+                zorder=6,
+            )
 
-    zpop = peaks(pop[:, 0], pop[:, 1])
-    t = np.clip((zpop + 6.0) / 14.0, 0, 1)
-    sizes = 42 + 55 * t
-
-    for fade, old in trails:
-        ax.scatter(
-            old[:, 0],
-            old[:, 1],
-            s=26,
-            c="#f4e6c4",
-            alpha=0.22 * fade * gen_alpha,
-            linewidths=0,
-            zorder=4,
-        )
-
-    ax.scatter(
-        pop[:, 0],
-        pop[:, 1],
-        s=sizes * 3.4,
-        c="#f7edd0",
-        linewidths=0,
-        alpha=0.18 * gen_alpha,
-        zorder=5,
-    )
-    ax.scatter(
-        pop[:, 0],
-        pop[:, 1],
-        s=sizes,
-        c="#f7edd0",
-        edgecolors="#161018",
-        linewidths=0.55,
-        alpha=gen_alpha,
-        zorder=6,
-    )
-
-    elite = pop[np.argsort(zpop)[-4:]]
-    ax.scatter(
-        elite[:, 0],
-        elite[:, 1],
-        s=92,
-        c=PLUS,
-        edgecolors="#161018",
-        linewidths=0.55,
-        alpha=gen_alpha,
-        zorder=7,
-    )
-    for p in elite:
+    for r in ranked[:3]:
+        poly = genes_to_polyline(r.genes)
+        n = max(2, int(len(poly) * progress))
+        seg = poly[:n]
+        if len(seg) < 2:
+            continue
+        ax.plot(seg[:, 0], seg[:, 1], color=INK, lw=0.85, alpha=0.4 * select_pulse, zorder=7)
         ax.add_patch(
             Circle(
-                (p[0], p[1]),
-                0.16,
+                (seg[-1, 0], seg[-1, 1]),
+                0.10 + 0.07 * select_pulse,
                 fill=False,
-                ec=INK,
+                ec=PLUS,
                 lw=1.15,
-                alpha=0.92 * gen_alpha,
+                alpha=0.9 * select_pulse,
                 zorder=8,
             )
         )
 
+    ax.add_patch(
+        plt.Rectangle((-3.05, -3.05), 6.1, 6.1, fill=False, ec="#2a3142", lw=1.1, zorder=10)
+    )
     img = fig_to_image(fig)
     plt.close(fig)
     return img
 
 
 def make_ga_gif(path: Path) -> None:
-    rng = np.random.default_rng(11)
-    hist = run_ga(rng)
-    grid = np.linspace(-3.0, 3.0, 240)
+    rng = np.random.default_rng(17)
+    history = evolve_roots(rng)
+    grid = np.linspace(-3.0, 3.0, 220)
     xs, ys = np.meshgrid(grid, grid)
-    zz = peaks(xs, ys)
+    zz = water_field(xs, ys)
 
     frames: list[Image.Image] = []
-    empty = hist[0]
 
+    # Céu + solo + tronco
     for i in range(12):
         a = ease((i + 1) / 12)
-        frames.append(render_ga_frame(xs, ys, zz, empty, [], 0.0, a))
-
+        frames.append(render_ga_tree_frame(xs, ys, zz, history[0], 0.0, a * 0.9, 0.0, a, 0.0))
     for i in range(10):
         a = ease((i + 1) / 10)
-        frames.append(render_ga_frame(xs, ys, zz, empty, [], a, 1.0))
+        frames.append(render_ga_tree_frame(xs, ys, zz, history[0], 0.0, 1.0, a, 1.0, 0.0))
 
-    trails: list[tuple[float, np.ndarray]] = []
-    n_interp = 4
-    for g in range(len(hist) - 1):
-        a0, a1 = hist[g], hist[g + 1]
-        for k in range(n_interp):
-            t = ease((k + 1) / n_interp)
-            pop = (1 - t) * a0 + t * a1
-            fade_trails = [(max(0.0, 1.0 - 0.28 * i), p) for i, (_, p) in enumerate(trails)]
-            frames.append(render_ga_frame(xs, ys, zz, pop, fade_trails, 1.0, 1.0))
-        trails.insert(0, (1.0, a1.copy()))
-        trails = trails[:5]
+    for gen_idx, pop in enumerate(history):
+        grow_steps = 10 if gen_idx == 0 else 8
+        for s in range(grow_steps):
+            prog = ease((s + 1) / grow_steps)
+            frames.append(render_ga_tree_frame(xs, ys, zz, pop, prog, 1.0, 1.0, 1.0, 0.0))
 
-    last = hist[-1]
-    for i in range(18):
-        frames.append(render_ga_frame(xs, ys, zz, last, trails, 1.0, 1.0))
+        if gen_idx < len(history) - 1:
+            # Pulso de seleção: raízes boas engrossam, fracas esmaecem
+            for s in range(8):
+                pulse = ease((s + 1) / 8)
+                frames.append(render_ga_tree_frame(xs, ys, zz, pop, 1.0, 1.0, 1.0, 1.0, pulse))
 
-    save_gif(frames, path, duration_ms=80)
+    final = history[-1]
+    for i in range(20):
+        pulse = 0.6 + 0.4 * math.sin(i / 20 * math.pi * 2)
+        frames.append(render_ga_tree_frame(xs, ys, zz, final, 1.0, 1.0, 1.0, 1.0, pulse))
+
+    save_gif(frames, path, duration_ms=85)
     frames[-1].save(path.with_suffix(".png").with_name("algoritmo_genetico_frame.png"))
 
 
