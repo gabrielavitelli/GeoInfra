@@ -463,311 +463,239 @@ def make_svm_gif(path: Path) -> None:
     frames[-1].save(path.with_suffix(".png").with_name("svm_frame.png"))
 
 
-# ---------------------------------------------------------------------------
-# Algoritmo genético — visualização matemática P&B (bolinhas + operadores)
-# ---------------------------------------------------------------------------
-#
-# Roteiro do GIF (sem texto):
-#   1. Paisagem f(x,y) — curvas de nível em preto e branco
-#   2. População P₀ — bolinhas aleatórias no domínio
-#   3. Avaliação — tamanho/brilho ∝ fitness
-#   4. Seleção — anéis nas escolhidas (torneio)
-#   5. Crossover — segmento entre pais; filho = α·p₁ + (1−α)·p₂
-#   6. Mutação — vetor ε gaussiano a partir do filho
-#   7. Nova geração — elitismo + descendência; repetir até convergência
-#
-# Referências: blend crossover (Holland), torneio, paisagem Rastrigin 2D
-# (padrão em visualizadores educacionais de AG).
 
-GA_BG = "#050505"
-GA_GRID = "#1a1a1a"
-GA_CONTOUR = "#2e2e2e"
-GA_CONTOUR_HI = "#6a6a6a"
-GA_DOT = "#b0b0b0"
-GA_DOT_HI = "#ffffff"
-GA_LINE = "#8a8a8a"
-GA_SELECT = "#ffffff"
+# ---------------------------------------------------------------------------
+# Algoritmo genético — árvore de populações (bolinhas P&B)
+# ---------------------------------------------------------------------------
+
+GA_PAPER = "#f6f6f4"
+GA_INK = "#0e0e0e"
+GA_LINE = "#3a3a3a"
+GA_MUTED = "#9a9a9a"
+GA_FAINT = "#d8d8d6"
 
 
 @dataclass
-class GAIndividual:
-    pos: np.ndarray
-    fitness: float = 0.0
+class PopNode:
+    uid: int
+    x: float
+    y: float
+    gene: float
+    fitness: float
+    gen: int
+    parents: tuple[int, int] | None = None
 
 
 @dataclass
-class GAStep:
-    """Estado de um frame da animação."""
-    population: list[GAIndividual]
-    phase: str  # landscape | init | evaluate | select | crossover | mutate | generation
+class PopTreeFrame:
+    nodes: list[PopNode]
+    edges_done: list[tuple[float, float, float, float]]
+    phase: str
     selected: list[int] = field(default_factory=list)
-    parent_pairs: list[tuple[int, int]] = field(default_factory=list)
-    crossover_alpha: list[float] = field(default_factory=list)
-    blend_points: list[np.ndarray] = field(default_factory=list)
-    children_pre: list[np.ndarray] = field(default_factory=list)
-    children_post: list[np.ndarray] = field(default_factory=list)
-    elites: list[int] = field(default_factory=list)
-    crossover_t: float = 1.0
-    mutate_t: float = 1.0
-    landscape_alpha: float = 1.0
+    anim_edges: list[tuple[float, float, float, float]] = field(default_factory=list)
+    anim_nodes: list[PopNode] = field(default_factory=list)
+    edge_t: float = 1.0
+    node_t: float = 1.0
 
 
-def rastrigin(x: np.ndarray, y: np.ndarray) -> np.ndarray:
-    """Função teste clássica; mínimo global em (0, 0)."""
-    return 20 + x**2 + y**2 - 10 * (np.cos(2 * np.pi * x) + np.cos(2 * np.pi * y))
+def node_fitness(gene: float) -> float:
+    return float(-abs(gene - 0.15))
 
 
-def ga_fitness(pos: np.ndarray) -> float:
-    return float(-rastrigin(pos[0], pos[1]))
+def layout_row(n: int, gen: int, y_top: float, row_h: float) -> list[tuple[float, float]]:
+    y = y_top - gen * row_h
+    spread = 0.18 + gen * 0.42
+    if n == 1:
+        return [(0.0, y)]
+    xs = np.linspace(-spread, spread, n)
+    return [(float(x), y) for x in xs]
 
 
-def tournament_select(rng: np.random.Generator, pop: list[GAIndividual], k: int = 3) -> int:
-    idx = rng.choice(len(pop), size=k, replace=False)
-    best = idx[0]
-    for i in idx[1:]:
-        if pop[i].fitness > pop[best].fitness:
-            best = i
-    return int(best)
+def simulate_population_tree(rng: np.random.Generator) -> tuple[list[list[PopNode]], list[tuple[int, int, int]]]:
+    sizes = [1, 3, 4, 6, 7, 9, 10]
+    y_top, row_h = 2.65, 0.58
+    generations: list[list[PopNode]] = []
+    links: list[tuple[int, int, int]] = []
+    uid = 0
+
+    g0 = PopNode(uid, 0.0, y_top, float(rng.normal(0, 0.2)), node_fitness(0), 0)
+    uid += 1
+    generations.append([g0])
+
+    for g in range(1, len(sizes)):
+        prev = generations[-1]
+        coords = layout_row(sizes[g], g, y_top, row_h)
+        row: list[PopNode] = []
+        for (x, y) in coords:
+            p1 = prev[rng.integers(0, len(prev))]
+            p2 = prev[rng.integers(0, len(prev))]
+            alpha = float(rng.uniform(0.32, 0.68))
+            gene = alpha * p1.gene + (1 - alpha) * p2.gene + float(rng.normal(0, 0.07 + 0.015 * g))
+            child = PopNode(uid, x, y, gene, node_fitness(gene), g, (p1.uid, p2.uid))
+            links.append((p1.uid, p2.uid, child.uid))
+            uid += 1
+            row.append(child)
+        generations.append(row)
+
+    return generations, links
 
 
-def build_ga_timeline(rng: np.random.Generator, n_pop: int = 28, n_gen: int = 7) -> list[GAStep]:
-    lim = 4.08
-    pop = [
-        GAIndividual(rng.uniform(-lim, lim, size=2))
-        for _ in range(n_pop)
-    ]
-    timeline: list[GAStep] = []
+def _edges_from_map(uid_map: dict[int, PopNode], links: list[tuple[int, int, int]]) -> list[tuple[float, float, float, float]]:
+    edges: list[tuple[float, float, float, float]] = []
+    for pa, pb, cu in links:
+        if cu not in uid_map or pa not in uid_map or pb not in uid_map:
+            continue
+        a, b, c = uid_map[pa], uid_map[pb], uid_map[cu]
+        edges.append((a.x, a.y, c.x, c.y))
+        if pa != pb:
+            edges.append((b.x, b.y, c.x, c.y))
+    return edges
 
-    # 1 — paisagem
-    for a in np.linspace(0.15, 1.0, 10):
-        timeline.append(GAStep([], "landscape", landscape_alpha=float(a)))
 
-    # 2 — população inicial
-    for a in np.linspace(0.0, 1.0, 12):
-        timeline.append(GAStep(list(pop), "init", landscape_alpha=1.0))
-        timeline[-1].landscape_alpha = 1.0
-        # fade-in via pop count
-        n_show = max(1, int(a * n_pop))
-        timeline[-1].population = pop[:n_show]
+def build_pop_tree_timeline(rng: np.random.Generator) -> list[PopTreeFrame]:
+    generations, links = simulate_population_tree(rng)
+    uid_map: dict[int, PopNode] = {}
+    timeline: list[PopTreeFrame] = []
 
-    for g in range(n_gen):
-        for ind in pop:
-            ind.fitness = ga_fitness(ind.pos)
+    g0 = generations[0][0]
+    for t in np.linspace(0.0, 1.0, 10):
+        timeline.append(PopTreeFrame([], [], "spawn", anim_nodes=[g0], node_t=float(t)))
+    uid_map[g0.uid] = g0
+    timeline.append(PopTreeFrame(list(uid_map.values()), [], "hold"))
 
-        # 3 — avaliação
-        for _ in range(5):
-            timeline.append(GAStep(list(pop), "evaluate", landscape_alpha=1.0))
+    for g in range(1, len(generations)):
+        prev_row = generations[g - 1]
+        new_row = generations[g]
+        ranked = sorted(prev_row, key=lambda n: n.fitness, reverse=True)
+        n_sel = min(3, len(ranked))
+        selected = [ranked[i].uid for i in range(n_sel)]
 
-        # 4 — seleção (torneio visual: 4 pais = 2 pares)
-        pairs: list[tuple[int, int]] = []
-        selected: list[int] = []
-        for _ in range(2):
-            i = tournament_select(rng, pop)
-            j = tournament_select(rng, pop)
-            while j == i:
-                j = tournament_select(rng, pop)
-            pairs.append((i, j))
-            selected.extend([i, j])
-        selected = list(dict.fromkeys(selected))
         for _ in range(6):
-            timeline.append(GAStep(list(pop), "select", selected=selected, landscape_alpha=1.0))
-
-        # 5 — crossover (blend geométrico)
-        alphas: list[float] = []
-        blends: list[np.ndarray] = []
-        children_pre: list[np.ndarray] = []
-        parent_pairs: list[tuple[int, int]] = []
-        for i, j in pairs:
-            alpha = float(rng.uniform(0.28, 0.72))
-            p1, p2 = pop[i].pos, pop[j].pos
-            blend = alpha * p1 + (1 - alpha) * p2
-            alphas.append(alpha)
-            blends.append(blend)
-            children_pre.append(blend.copy())
-            parent_pairs.append((i, j))
-        for t in np.linspace(0.0, 1.0, 10):
             timeline.append(
-                GAStep(
-                    list(pop),
+                PopTreeFrame(
+                    list(uid_map.values()),
+                    _edges_from_map(uid_map, links),
+                    "select",
+                    selected=selected,
+                )
+            )
+
+        new_uids = {n.uid for n in new_row}
+        new_links = [lk for lk in links if lk[2] in new_uids]
+
+        for t in np.linspace(0.0, 1.0, 9):
+            anim_edges: list[tuple[float, float, float, float]] = []
+            anim_nodes: list[PopNode] = []
+            for child in new_row:
+                p1 = uid_map[child.parents[0]]
+                p2 = uid_map[child.parents[1]]
+                mx, my = (p1.x + p2.x) / 2, (p1.y + p2.y) / 2
+                # crossover no meio → mutação até posição final
+                if t < 0.55:
+                    s = t / 0.55
+                    px = mx + s * (child.x - mx) * 0.75
+                    py = my + s * (child.y - my) * 0.75
+                else:
+                    s = (t - 0.55) / 0.45
+                    bx = mx + 0.75 * (child.x - mx)
+                    by = my + 0.75 * (child.y - my)
+                    px = bx + s * (child.x - bx)
+                    py = by + s * (child.y - by)
+                anim_nodes.append(
+                    PopNode(child.uid, px, py, child.gene, child.fitness, child.gen, child.parents)
+                )
+            for pa, pb, cu in new_links:
+                a, b = uid_map[pa], uid_map[pb]
+                anim_c = next(n for n in anim_nodes if n.uid == cu)
+                anim_edges.append((a.x, a.y, anim_c.x, anim_c.y))
+                if pa != pb:
+                    anim_edges.append((b.x, b.y, anim_c.x, anim_c.y))
+            timeline.append(
+                PopTreeFrame(
+                    list(uid_map.values()),
+                    _edges_from_map(uid_map, [lk for lk in links if lk[2] not in new_uids]),
                     "crossover",
                     selected=selected,
-                    parent_pairs=parent_pairs,
-                    crossover_alpha=alphas,
-                    blend_points=blends,
-                    crossover_t=float(t),
-                    landscape_alpha=1.0,
+                    anim_edges=anim_edges,
+                    anim_nodes=anim_nodes,
+                    edge_t=float(t),
+                    node_t=float(t),
                 )
             )
 
-        # 6 — mutação (vetor ε)
-        children_post: list[np.ndarray] = []
-        sigma = 0.55 * (0.82**g)
-        for blend in children_pre:
-            child = blend + rng.normal(0.0, sigma, size=2)
-            child = np.clip(child, -lim, lim)
-            children_post.append(child)
-        for t in np.linspace(0.0, 1.0, 8):
-            timeline.append(
-                GAStep(
-                    list(pop),
-                    "mutate",
-                    selected=selected,
-                    parent_pairs=parent_pairs,
-                    crossover_alpha=alphas,
-                    blend_points=blends,
-                    children_pre=children_pre,
-                    children_post=children_post,
-                    mutate_t=float(t),
-                    landscape_alpha=1.0,
-                )
-            )
-
-        # 7 — nova geração
-        ranked = sorted(range(len(pop)), key=lambda k: pop[k].fitness, reverse=True)
-        elite_n = 2
-        elites = ranked[:elite_n]
-        new_pop = [GAIndividual(pop[i].pos.copy(), pop[i].fitness) for i in elites]
-        child_idx = 0
-        while len(new_pop) < n_pop:
-            if child_idx < len(children_post):
-                new_pop.append(GAIndividual(children_post[child_idx].copy()))
-                child_idx += 1
-            else:
-                pi = tournament_select(rng, pop)
-                pj = tournament_select(rng, pop)
-                alpha = rng.uniform(0.25, 0.75)
-                c = alpha * pop[pi].pos + (1 - alpha) * pop[pj].pos
-                c = c + rng.normal(0.0, sigma, size=2)
-                new_pop.append(GAIndividual(np.clip(c, -lim, lim)))
-        pop = new_pop[:n_pop]
+        for child in new_row:
+            uid_map[child.uid] = child
+        done = _edges_from_map(uid_map, links)
         for _ in range(4):
-            timeline.append(GAStep(list(pop), "generation", elites=elites, landscape_alpha=1.0))
+            timeline.append(PopTreeFrame(list(uid_map.values()), done, "hold"))
 
-    for ind in pop:
-        ind.fitness = ga_fitness(ind.pos)
-    for _ in range(18):
-        timeline.append(GAStep(list(pop), "evaluate", landscape_alpha=1.0))
+    final = list(uid_map.values())
+    final_edges = _edges_from_map(uid_map, links)
+    for _ in range(16):
+        timeline.append(PopTreeFrame(final, final_edges, "hold"))
 
     return timeline
 
 
-def draw_ga_landscape(ax, xs, ys, zz, alpha: float) -> None:
-    levels = np.linspace(zz.min(), zz.max(), 14)
-    ax.contour(xs, ys, zz, levels=levels, colors=GA_CONTOUR, linewidths=0.55, alpha=0.85 * alpha, zorder=1)
-    ax.contour(xs, ys, zz, levels=levels[::2], colors=GA_CONTOUR_HI, linewidths=0.75, alpha=0.45 * alpha, zorder=2)
-    for v in np.linspace(-4, 4, 9):
-        ax.axhline(v, color=GA_GRID, lw=0.35, alpha=0.55 * alpha, zorder=0)
-        ax.axvline(v, color=GA_GRID, lw=0.35, alpha=0.55 * alpha, zorder=0)
-    ax.add_patch(Circle((0, 0), 0.12, facecolor=GA_DOT_HI, edgecolor="none", alpha=0.55 * alpha, zorder=3))
-    ax.add_patch(
-        Circle((0, 0), 0.22, facecolor="none", edgecolor=GA_DOT_HI, lw=0.8, alpha=0.35 * alpha, zorder=3)
-    )
+def new_ga_fig():
+    fig = plt.figure(figsize=(7.2, 7.2), dpi=100, facecolor=GA_PAPER)
+    ax = fig.add_axes([0.05, 0.05, 0.90, 0.90])
+    ax.set_facecolor(GA_PAPER)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    return fig, ax
 
 
-def fitness_norm(pop: list[GAIndividual]) -> np.ndarray:
-    vals = np.array([p.fitness for p in pop])
-    lo, hi = vals.min(), vals.max()
-    if hi - lo < 1e-9:
-        return np.ones(len(pop))
-    return (vals - lo) / (hi - lo)
+def render_pop_tree_frame(step: PopTreeFrame) -> Image.Image:
+    fig, ax = new_ga_fig()
+    ax.set_xlim(-3.05, 3.05)
+    ax.set_ylim(-3.05, 3.05)
 
+    for gy in np.linspace(2.65, 2.65 - 0.58 * 9, 10):
+        ax.axhline(gy, color=GA_FAINT, lw=0.5, ls=(0, (1, 6)), alpha=0.55, zorder=0)
 
-def render_ga_frame(step: GAStep, xs, ys, zz) -> Image.Image:
-    fig, ax = new_axes()
-    ax.set_facecolor(GA_BG)
-    lim = 4.15
-    ax.set_xlim(-lim, lim)
-    ax.set_ylim(-lim, lim)
-
-    draw_ga_landscape(ax, xs, ys, zz, step.landscape_alpha)
-
-    pop = step.population
-    if not pop and step.phase != "landscape":
-        img = fig_to_image(fig)
-        plt.close(fig)
-        return img
-
-    fn = fitness_norm(pop) if pop else np.array([])
     selected = set(step.selected)
-    elites = set(step.elites)
 
-    # Bolinhas — tamanho e brilho ∝ fitness
-    for k, ind in enumerate(pop):
-        t = fn[k] if len(fn) else 0.5
-        is_sel = k in selected
-        is_elite = k in elites
-        fade = 0.28 if (step.phase == "select" and not is_sel) else 1.0
-        r = 5.5 + 11 * t
-        ax.scatter(
-            [ind.pos[0]],
-            [ind.pos[1]],
-            s=r * r,
-            c=GA_DOT_HI if t > 0.62 else GA_DOT,
-            alpha=(0.35 + 0.65 * t) * fade,
-            edgecolors=GA_DOT_HI if is_sel or is_elite else "none",
-            linewidths=0.9 if is_sel else 0.0,
-            zorder=5,
-        )
-        if is_sel and step.phase in ("select", "crossover", "mutate"):
-            ax.add_patch(
-                Circle(
-                    (ind.pos[0], ind.pos[1]),
-                    0.22 + 0.06 * t,
-                    fill=False,
-                    ec=GA_SELECT,
-                    lw=1.1,
-                    alpha=0.92,
-                    zorder=6,
-                )
-            )
+    for x1, y1, x2, y2 in step.edges_done:
+        ax.plot([x1, x2], [y1, y2], color=GA_LINE, lw=1.05, solid_capstyle="round", alpha=0.5, zorder=1)
 
-    # Crossover — segmento p₁—p₂ e filho deslizando no blend
-    if step.phase in ("crossover", "mutate") and step.parent_pairs:
-        for idx, (i, j) in enumerate(step.parent_pairs):
-            p1, p2 = pop[i].pos, pop[j].pos
-            ax.plot([p1[0], p2[0]], [p1[1], p2[1]], color=GA_LINE, lw=1.0, ls=(0, (4, 3)), alpha=0.75, zorder=4)
-            if idx < len(step.blend_points):
-                blend = step.blend_points[idx]
-                alpha = step.crossover_alpha[idx] if idx < len(step.crossover_alpha) else 0.5
-                # filho percorre o segmento até o ponto de blend
-                cx = p1[0] + (1 - step.crossover_t) * (blend[0] - p1[0])
-                cy = p1[1] + (1 - step.crossover_t) * (blend[1] - p1[1])
-                ax.scatter([cx], [cy], s=70, c=GA_DOT_HI, alpha=0.95, edgecolors="none", zorder=7)
-                if step.crossover_t > 0.85:
-                    ax.scatter([blend[0]], [blend[1]], s=55, facecolors="none", edgecolors=GA_DOT_HI, linewidths=1.0, zorder=7)
+    for x1, y1, x2, y2 in step.anim_edges:
+        ax.plot([x1, x2], [y1, y2], color=GA_INK, lw=1.2, solid_capstyle="round", alpha=0.8, zorder=2)
 
-    # Mutação — vetor ε
-    if step.phase == "mutate" and step.children_pre and step.children_post:
-        for pre, post in zip(step.children_pre, step.children_post):
-            px = pre[0] + step.mutate_t * (post[0] - pre[0])
-            py = pre[1] + step.mutate_t * (post[1] - pre[1])
-            ax.annotate(
-                "",
-                xy=(post[0], post[1]),
-                xytext=(pre[0], pre[1]),
-                arrowprops=dict(arrowstyle="-|>", color=GA_LINE, lw=1.0, mutation_scale=9),
-                alpha=0.55 + 0.45 * step.mutate_t,
+    def draw_node(n: PopNode, scale: float = 1.0) -> None:
+        r = 0.105 + 0.02 * max(0, min(1, (n.fitness + 1) / 1.2))
+        r *= 0.3 + 0.7 * scale
+        sel = n.uid in selected and step.phase in ("select", "crossover")
+        ax.add_patch(
+            Circle(
+                (n.x, n.y),
+                r,
+                facecolor=GA_PAPER if sel else GA_INK,
+                edgecolor=GA_INK,
+                lw=1.3,
                 zorder=4,
             )
-            ax.scatter([px], [py], s=65, c=GA_DOT_HI, alpha=0.9, edgecolors="none", zorder=7)
+        )
+        if sel:
+            ax.add_patch(Circle((n.x, n.y), r + 0.065, fill=False, ec=GA_INK, lw=0.85, zorder=3))
 
-    ax.add_patch(plt.Rectangle((-lim, -lim), 2 * lim, 2 * lim, fill=False, ec="#2a2a2a", lw=1.0, zorder=10))
+    for n in step.nodes:
+        draw_node(n)
+    for n in step.anim_nodes:
+        draw_node(n, scale=step.node_t)
+
+    ax.add_patch(plt.Rectangle((-3.05, -3.05), 6.1, 6.1, fill=False, ec=GA_MUTED, lw=0.9, zorder=10))
     img = fig_to_image(fig)
     plt.close(fig)
     return img
 
 
 def make_ga_gif(path: Path) -> None:
-    rng = np.random.default_rng(42)
-    timeline = build_ga_timeline(rng)
-    grid = np.linspace(-4.1, 4.1, 200)
-    xs, ys = np.meshgrid(grid, grid)
-    zz = rastrigin(xs, ys)
-
-    frames = [render_ga_frame(step, xs, ys, zz) for step in timeline]
-    save_gif(frames, path, duration_ms=90)
-    frames[-1].save(path.with_suffix(".png").with_name("algoritmo_genetico_frame.png"))
-
+    rng = np.random.default_rng(7)
+    timeline = build_pop_tree_timeline(rng)
+    frames = [render_pop_tree_frame(s) for s in timeline]
+    save_gif(frames, Path(path), duration_ms=95)
+    frames[-1].save(Path(path).with_suffix(".png").with_name("algoritmo_genetico_frame.png"))
 
 def main() -> None:
     svm_path = ROOT / "svm.gif"
