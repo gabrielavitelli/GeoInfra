@@ -163,13 +163,31 @@ def svm_points() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
 
 def support_vectors(
     plus: np.ndarray, minus: np.ndarray, theta: float, tol: float = 0.025
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float, float]:
-    """SVs = pontos que tocam as margens ±1 (projeções extremas em cada classe)."""
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float, float, float, int, int]:
+    """SVs = argmin/argmax da projeção w·x; retorna também índices extremos."""
     gap, u, c_plus, c_minus = oriented_gap(plus, minus, theta)
     c_mid = 0.5 * (c_plus + c_minus)
-    sv_plus = plus[np.abs(plus @ u - c_plus) <= tol]
-    sv_minus = minus[np.abs(minus @ u - c_minus) <= tol]
-    return sv_plus, sv_minus, u, c_plus, c_minus, c_mid
+    proj_p = plus @ u
+    proj_m = minus @ u
+    i_plus = int(np.argmin(proj_p))
+    i_minus = int(np.argmax(proj_m))
+    sv_plus = plus[np.abs(proj_p - c_plus) <= tol]
+    sv_minus = minus[np.abs(proj_m - c_minus) <= tol]
+    if len(sv_plus) == 0:
+        sv_plus = plus[i_plus : i_plus + 1]
+    if len(sv_minus) == 0:
+        sv_minus = minus[i_minus : i_minus + 1]
+    return sv_plus, sv_minus, u, c_plus, c_minus, c_mid, gap, i_plus, i_minus
+
+
+def margin_violators(
+    plus: np.ndarray, minus: np.ndarray, u: np.ndarray, c_mid: float, gap: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """Pontos do lado errado do hiperplano (só possível quando γ ≤ 0)."""
+    if gap > 1e-9:
+        return np.zeros(len(plus), dtype=bool), np.zeros(len(minus), dtype=bool)
+    pp, pm = plus @ u, minus @ u
+    return pp < c_mid, pm > c_mid
 
 
 def oriented_gap(plus: np.ndarray, minus: np.ndarray, theta: float) -> tuple[float, np.ndarray, float, float]:
@@ -221,8 +239,6 @@ def slab_polygon(u: np.ndarray, c_lo: float, c_hi: float, span: float = 4.2) -> 
 def render_svm_frame(
     plus,
     minus,
-    sv_plus,
-    sv_minus,
     theta: float,
     point_alpha: float,
     hull_alpha: float,
@@ -232,6 +248,9 @@ def render_svm_frame(
     settle: float,
     region_alpha: float = 0.0,
     dim_non_sv: float = 0.0,
+    gap_max: float = 1.0,
+    sweep_mode: bool = False,
+    margin_bracket: float = 0.0,
 ) -> Image.Image:
     fig, ax = new_axes()
     lim = 3.15
@@ -239,11 +258,15 @@ def render_svm_frame(
     ax.set_ylim(-lim, lim)
     draw_grid(ax, lim)
 
-    gap, u, c_plus, c_minus = oriented_gap(plus, minus, theta)
-    c_mid = 0.5 * (c_plus + c_minus)
+    sv_plus, sv_minus, u, c_plus, c_minus, c_mid, gap, i_plus, i_minus = support_vectors(
+        plus, minus, theta
+    )
     tvec = np.array([-u[1], u[0]])
+    gap_ratio = max(0.0, min(1.0, gap / gap_max)) if gap_max > 1e-9 else 0.0
+    valid = gap > 1e-9
+    viol_plus, viol_minus = margin_violators(plus, minus, u, c_mid, gap)
 
-    if region_alpha > 0 and gap > 0:
+    if region_alpha > 0 and valid:
         ax.add_patch(
             Polygon(
                 slab_polygon(u, c_mid, 8.0),
@@ -265,33 +288,84 @@ def render_svm_frame(
             )
         )
 
-    if gap > 0 and slab_alpha > 0:
-        poly = slab_polygon(u, c_minus, c_plus)
-        ax.add_patch(
-            Polygon(
-                poly,
-                closed=True,
-                facecolor="#e8b84a",
-                edgecolor="none",
-                alpha=0.10 * slab_alpha,
-                zorder=2,
+    if slab_alpha > 0:
+        if valid:
+            poly = slab_polygon(u, c_minus, c_plus)
+            ax.add_patch(
+                Polygon(
+                    poly,
+                    closed=True,
+                    facecolor="#e8b84a",
+                    edgecolor="none",
+                    alpha=(0.06 + 0.14 * gap_ratio) * slab_alpha,
+                    zorder=2,
+                )
             )
-        )
+        else:
+            poly = slab_polygon(u, c_minus, c_plus)
+            ax.add_patch(
+                Polygon(
+                    poly,
+                    closed=True,
+                    facecolor="#c04040",
+                    edgecolor="none",
+                    alpha=0.12 * slab_alpha,
+                    zorder=2,
+                )
+            )
         for c, is_mid in ((c_minus, False), (c_plus, False), (c_mid, True)):
             p0 = c * u - 4.0 * tvec
             p1 = c * u + 4.0 * tvec
+            if not valid:
+                lc, lw, la = "#a05050", 1.0, 0.55 * slab_alpha
+                ls = (0, (2.5, 2.5))
+            elif is_mid:
+                lc, lw, la, ls = INK, 2.15, 0.95 * slab_alpha, "-"
+            else:
+                lc, lw, la, ls = PLUS, 1.15, (0.45 + 0.40 * gap_ratio) * slab_alpha, (0, (3.2, 2.8))
             ax.plot(
                 [p0[0], p1[0]],
                 [p0[1], p1[1]],
-                color=INK if is_mid else PLUS,
-                lw=2.15 if is_mid else 1.15,
-                linestyle="-" if is_mid else (0, (3.2, 2.8)),
-                alpha=0.95 * slab_alpha if is_mid else 0.75 * slab_alpha,
+                color=lc,
+                lw=lw,
+                linestyle=ls,
+                alpha=la,
                 solid_capstyle="round",
                 zorder=4,
             )
 
-    if hull_alpha > 0:
+    # Segmento γ: entre os SVs que fixam as margens (comprimento = gap = 2γ em ||w||=1)
+    if margin_bracket > 0 and valid:
+        p_sv = plus[i_plus]
+        m_sv = minus[i_minus]
+        ax.plot(
+            [m_sv[0], p_sv[0]],
+            [m_sv[1], p_sv[1]],
+            color=INK,
+            lw=2.0,
+            solid_capstyle="round",
+            alpha=0.88 * margin_bracket,
+            zorder=5,
+        )
+        mid_br = 0.5 * (m_sv + p_sv)
+        half = 0.5 * gap
+        a0 = c_mid * u - half * u
+        a1 = c_mid * u + half * u
+        ax.plot(
+            [a0[0], a1[0]],
+            [a0[1], a1[1]],
+            color=INK,
+            lw=1.0,
+            ls=(0, (1.2, 2.8)),
+            alpha=0.55 * margin_bracket,
+            zorder=4,
+        )
+        for pt in (a0, a1):
+            ax.add_patch(
+                Circle((pt[0], pt[1]), 0.055, facecolor=INK, edgecolor="none", alpha=0.7 * margin_bracket, zorder=6)
+            )
+
+    if hull_alpha > 0 and not sweep_mode:
         for pts, color in ((plus, PLUS), (minus, MINUS)):
             hull = convex_hull(pts)
             ax.add_patch(
@@ -337,7 +411,45 @@ def render_svm_frame(
         alpha=point_alpha,
     )
 
-    if dim_non_sv > 0 and sv_alpha > 0:
+    if sweep_mode and valid:
+        for idx in (i_plus,):
+            ax.scatter(
+                [plus[idx, 0]],
+                [plus[idx, 1]],
+                s=130,
+                facecolors="none",
+                edgecolors=PLUS,
+                linewidths=1.4,
+                alpha=0.95,
+                zorder=7,
+            )
+        for idx in (i_minus,):
+            ax.scatter(
+                [minus[idx, 0]],
+                [minus[idx, 1]],
+                s=130,
+                facecolors="none",
+                edgecolors=MINUS,
+                linewidths=1.4,
+                alpha=0.95,
+                zorder=7,
+            )
+
+    if not valid and slab_alpha > 0:
+        for pts, mask, col in ((plus, viol_plus, "#ff7070"), (minus, viol_minus, "#ff7070")):
+            if mask.any():
+                ax.scatter(
+                    pts[mask, 0],
+                    pts[mask, 1],
+                    s=95,
+                    facecolors="none",
+                    edgecolors=col,
+                    linewidths=1.2,
+                    alpha=0.85 * slab_alpha,
+                    zorder=7,
+                )
+
+    if dim_non_sv > 0 and sv_alpha > 0 and not sweep_mode:
         sv_all = np.vstack([sv_plus, sv_minus]) if len(sv_plus) and len(sv_minus) else np.empty((0, 2))
         for pts, color in ((plus, PLUS), (minus, MINUS)):
             for p in pts:
@@ -353,7 +465,7 @@ def render_svm_frame(
                         zorder=5,
                     )
 
-    if sv_alpha > 0:
+    if sv_alpha > 0 and not sweep_mode:
         svs = np.vstack([sv_plus, sv_minus])
         pulse = 1.0 + 0.08 * math.sin(settle * math.pi * 2)
         for p in svs:
@@ -380,7 +492,7 @@ def render_svm_frame(
                 )
             )
 
-    if arrow_alpha > 0 and gap > 0:
+    if arrow_alpha > 0 and valid:
         origin = c_mid * u
         tip = origin + 0.95 * u
         ax.annotate(
@@ -405,38 +517,86 @@ def render_svm_frame(
 def make_svm_gif(path: Path) -> None:
     plus, minus = svm_points()
     theta_star = best_theta(plus, minus)
-    sv_plus, sv_minus, _, _, _, _ = support_vectors(plus, minus, theta_star)
-    # Varredura de orientações → margem máxima (busca geométrica do hiperplano).
+    _, _, _, _, _, _, gap_max, _, _ = support_vectors(plus, minus, theta_star)
+    gap_max = max(gap_max, 1e-9)
+
     sweep = np.concatenate(
         [
-            np.linspace(theta_star - 0.72, theta_star + 0.72, 36),
-            np.full(8, theta_star + 0.72),
+            np.linspace(theta_star - 0.72, theta_star + 0.72, 40),
+            np.full(6, theta_star + 0.72),
         ]
     )
     frames: list[Image.Image] = []
 
     for i in range(14):
         a = ease((i + 1) / 14)
-        frames.append(render_svm_frame(plus, minus, sv_plus, sv_minus, theta_star, a, 0, 0, 0, 0, 0))
+        frames.append(
+            render_svm_frame(plus, minus, theta_star, a, 0, 0, 0, 0, 0, gap_max=gap_max)
+        )
     for i in range(10):
         a = ease((i + 1) / 10)
-        frames.append(render_svm_frame(plus, minus, sv_plus, sv_minus, theta_star, 1, a, 0, 0, 0, 0))
-    for th in sweep:
         frames.append(
-            render_svm_frame(plus, minus, sv_plus, sv_minus, float(th), 1, 0.55, 1, 0, 0, 0)
+            render_svm_frame(plus, minus, theta_star, 1, a, 0, 0, 0, 0, gap_max=gap_max)
         )
+
+    # Varredura: SVs dinâmicos, faixa γ proporcional a gap, segmento entre SVs
+    for th in sweep:
+        _, _, _, _, _, _, gap, _, _ = support_vectors(plus, minus, float(th))
+        frames.append(
+            render_svm_frame(
+                plus,
+                minus,
+                float(th),
+                1,
+                0,
+                1,
+                0,
+                0,
+                0,
+                gap_max=gap_max,
+                sweep_mode=True,
+                margin_bracket=1.0,
+            )
+        )
+
     th0 = float(sweep[-1])
     for i in range(16):
         a = ease((i + 1) / 16)
         th = th0 + a * (theta_star - th0)
+        _, _, _, _, _, _, gap, _, _ = support_vectors(plus, minus, th)
         frames.append(
-            render_svm_frame(plus, minus, sv_plus, sv_minus, th, 1, 0.35 * (1 - a), 1, 0, 0, 0)
+            render_svm_frame(
+                plus,
+                minus,
+                th,
+                1,
+                0,
+                1,
+                0,
+                0,
+                0,
+                gap_max=gap_max,
+                sweep_mode=True,
+                margin_bracket=0.4 + 0.6 * a,
+            )
         )
+
     for i in range(14):
         a = ease((i + 1) / 14)
         frames.append(
             render_svm_frame(
-                plus, minus, sv_plus, sv_minus, theta_star, 1, 0, 1, a, a, 0, dim_non_sv=a
+                plus,
+                minus,
+                theta_star,
+                1,
+                0,
+                1,
+                a,
+                a,
+                0,
+                dim_non_sv=a,
+                gap_max=gap_max,
+                margin_bracket=1.0,
             )
         )
     for i in range(22):
@@ -445,8 +605,6 @@ def make_svm_gif(path: Path) -> None:
             render_svm_frame(
                 plus,
                 minus,
-                sv_plus,
-                sv_minus,
                 theta_star,
                 1,
                 0,
@@ -456,6 +614,8 @@ def make_svm_gif(path: Path) -> None:
                 i / 22,
                 region_alpha=a,
                 dim_non_sv=1.0,
+                gap_max=gap_max,
+                margin_bracket=1.0,
             )
         )
 
