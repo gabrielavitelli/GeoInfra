@@ -347,7 +347,6 @@ def render_svm_frame(
             alpha=0.88 * margin_bracket,
             zorder=5,
         )
-        mid_br = 0.5 * (m_sv + p_sv)
         half = 0.5 * gap
         a0 = c_mid * u - half * u
         a1 = c_mid * u + half * u
