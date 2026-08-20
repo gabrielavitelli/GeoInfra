@@ -11,8 +11,8 @@ GIFs gerados a partir do acervo CPTEC/INPE
 
 - Satélite: GOES-16 (série GOES-R)
 - Setor: América do Sul, projeção retangular (`ams_ret_*_baixa`)
-- Intervalo: 30 minutos (00:00–23:30 UTC), 46 quadros
-- Resolução do GIF: 800 px de largura, 5 fps, loop contínuo
+- Intervalo: 1 hora (00:00–23:00 UTC), 22 quadros (faltam 11:00 e 17:00 no acervo)
+- Resolução do GIF: 720 px de largura, 4 fps, loop contínuo
 - Fonte das imagens: `https://satelite.cptec.inpe.br/repositoriogoes/goes16/`
 
 Produtos do CPTEC/INPE: uso não comercial sem autorização escrita.
