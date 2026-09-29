@@ -1,31 +1,41 @@
-BLOQUEADO — ZIP efc_recorte1 NÃO está neste ambiente cloud.
+BLOQUEADO — EFC_recorte1 NÃO encontrado neste ambiente cloud (2026-09-29 ~17:47 UTC).
 
-Busca feita (nenhum .zip/.shp encontrado):
-- /home/gabriela/          → pasta vazia neste VM (NÃO é a home local da Gabriela)
-- /home/gabriela/efc_recorte1.zip
-- /home/ubuntu/, ~/gabriela/
-- /workspace/gabriela/     → só scripts .py + esta pasta de saída
-- /tmp, /tmp/uploads
-- GitHub GeoInfra → sem efc_recorte1.zip
-- GCS paths públicos → 404
+Busca exaustiva (nenhum EFC_recorte1.zip / EFC_recorte1.shp / efc_recorte1*):
+- /workspace, /workspace/gabriela
+- /home/gabriela          → pasta VAZIA neste VM (não é a home local da Gabriela)
+- /home/ubuntu, /home/ubuntu/gabriela → vazia
+- /tmp, /tmp/uploads, /tmp/cursor
+- find / -iname 'EFC_recorte1*' / '*recorte1*.zip' / '*recorte1*.shp' → só pastas de trabalho/saída
+- branches git (main, efc-recorte1-mapa-2b86, efc-recorte1-home-gabriela-ef0b) → sem zip/shp de entrada
+- GitHub GeoInfra → sem blob EFC_recorte1
+- GCS/BigQuery → sem credencial gcloud neste pod
 
 IMPORTANTE:
-- /home/gabriela na máquina LOCAL NÃO é montado neste pod cloud.
-- NÃO usar /workspace/EFC_recorte_saida (buffer 20km do outro agente).
+- /home/gabriela na máquina LOCAL NÃO é montado neste pod.
+- NÃO usar /workspace/EFC_recorte_saida (EFC_recorte.shp = buffer de outro agente).
 
-Para desbloquear:
-1) Anexe efc_recorte1.zip neste chat OU copie para:
-   /workspace/gabriela/efc_recorte1.zip
-   (ou /home/gabriela/efc_recorte1.zip neste VM)
-2) (opcional p/ Uniplu + séries precip_mm) auth GCP — cole o código 4/... :
-   ver gcloud_oauth_url.txt nesta pasta
+Conteúdo de /workspace/gabriela (além de python_gabriela/):
+  buffer.py, cdd_plotagens.py, cdo_testes.py, chirps.py, chirps_dados.py,
+  copernicus.py, dados_modelos.py, excel_miroc5.py, lat_lon_efc.py,
+  leitura_dados.csv, leitura_dados.py, media_accum_mensal.py, merge.py,
+  modelos.py, operacao.py, operacoes_cdo.py, plotagem.py, resolucao.py,
+  serie_temporal.py, efc_recorte1_saida/{processar_efc_recorte1.py, STATUS.txt, gcloud_oauth_url.txt}
 
-Watcher ativo; ao aparecer o ZIP:
+Único .shp recente sob /workspace (mtime hoje):
+  /workspace/EFC_recorte_saida/EFC_recorte.shp  (NÃO é EFC_recorte1)
+
+Espelho em /tmp:
+  /tmp/efc-recorte-estacoes/EFC_recorte.shp
+
+Para desbloquear — anexe EFC_recorte1.zip neste chat OU copie para:
+  /workspace/gabriela/EFC_recorte1.zip
+  (ou /home/gabriela/EFC_recorte1.zip neste VM)
+depois:
   python3 /workspace/gabriela/efc_recorte1_saida/processar_efc_recorte1.py
 
-Saídas esperadas (parte em parte):
+Saídas esperadas (nessa ordem):
   1) /workspace/gabriela/efc_recorte1_saida/mapa_estacoes_efc_recorte1.html
-  2) /workspace/gabriela/efc_recorte1_saida/tabela_estacoes_efc_recorte1.csv (+ .html)
+  2) /workspace/gabriela/efc_recorte1_saida/tabela_estacoes_efc_recorte1.csv
   3) /workspace/gabriela/efc_recorte1_saida/dados_precip_efc_recorte1.xlsx
 
-Contagens por fonte: ainda N/A (sem polígono).
+Contagens por fonte: N/A (sem polígono).
