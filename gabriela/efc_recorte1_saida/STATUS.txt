@@ -1,4 +1,31 @@
-BLOQUEADO: efc_recorte1.zip não encontrado.
-Procurado em /home/gabriela, /home/ubuntu, ~/gabriela, /workspace/gabriela, /tmp.
-Anexe o ZIP ou copie para /workspace/gabriela/efc_recorte1.zip (ou /home/gabriela/efc_recorte1.zip) e rode este script.
-NÃO usar /workspace/EFC_recorte_saida (buffer errado).
+BLOQUEADO — ZIP efc_recorte1 NÃO está neste ambiente cloud.
+
+Busca feita (nenhum .zip/.shp encontrado):
+- /home/gabriela/          → pasta vazia neste VM (NÃO é a home local da Gabriela)
+- /home/gabriela/efc_recorte1.zip
+- /home/ubuntu/, ~/gabriela/
+- /workspace/gabriela/     → só scripts .py + esta pasta de saída
+- /tmp, /tmp/uploads
+- GitHub GeoInfra → sem efc_recorte1.zip
+- GCS paths públicos → 404
+
+IMPORTANTE:
+- /home/gabriela na máquina LOCAL NÃO é montado neste pod cloud.
+- NÃO usar /workspace/EFC_recorte_saida (buffer 20km do outro agente).
+
+Para desbloquear:
+1) Anexe efc_recorte1.zip neste chat OU copie para:
+   /workspace/gabriela/efc_recorte1.zip
+   (ou /home/gabriela/efc_recorte1.zip neste VM)
+2) (opcional p/ Uniplu + séries precip_mm) auth GCP — cole o código 4/... :
+   ver gcloud_oauth_url.txt nesta pasta
+
+Watcher ativo; ao aparecer o ZIP:
+  python3 /workspace/gabriela/efc_recorte1_saida/processar_efc_recorte1.py
+
+Saídas esperadas (parte em parte):
+  1) /workspace/gabriela/efc_recorte1_saida/mapa_estacoes_efc_recorte1.html
+  2) /workspace/gabriela/efc_recorte1_saida/tabela_estacoes_efc_recorte1.csv (+ .html)
+  3) /workspace/gabriela/efc_recorte1_saida/dados_precip_efc_recorte1.xlsx
+
+Contagens por fonte: ainda N/A (sem polígono).
