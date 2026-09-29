@@ -17,6 +17,15 @@ WORK = Path("/tmp/efc_recorte1_work")
 WORK.mkdir(parents=True, exist_ok=True)
 
 CANDIDATES = [
+    Path("/home/gabriela/efc_recorte1.zip"),
+    Path("/home/gabriela/efc_recorte1"),
+    Path("/home/gabriela/gabriela/efc_recorte1.zip"),
+    Path("/home/gabriela/dados/efc_recorte1.zip"),
+    Path("/home/gabriela/dados/shp/EFC/efc_recorte1.zip"),
+    Path("/home/ubuntu/gabriela/efc_recorte1.zip"),
+    Path("/home/ubuntu/efc_recorte1.zip"),
+    Path.home() / "gabriela" / "efc_recorte1.zip",
+    Path.home() / "efc_recorte1.zip",
     Path("/workspace/gabriela/efc_recorte1.zip"),
     Path("/workspace/gabriela/efc_recorte1"),
     Path("/workspace/gabriela/EFC_recorte1.zip"),
@@ -24,40 +33,69 @@ CANDIDATES = [
     Path("/tmp/uploads/efc_recorte1.zip"),
 ]
 
+SEARCH_ROOTS = [
+    Path("/home/gabriela"),
+    Path("/home/ubuntu/gabriela"),
+    Path("/home/ubuntu"),
+    Path("/workspace/gabriela"),
+    Path("/tmp"),
+    Path("/tmp/uploads"),
+    Path("/tmp/cursor"),
+]
+
+
+def _is_zip_or_shp(f: Path) -> bool:
+    if not f.is_file():
+        return False
+    suf = f.suffix.lower()
+    if suf == ".shp":
+        return True
+    if suf == ".zip":
+        return zipfile.is_zipfile(f)
+    try:
+        return zipfile.is_zipfile(f)
+    except Exception:
+        return False
+
+
 def find_zip() -> Path | None:
     for p in CANDIDATES:
-        if p.is_file() and zipfile.is_zipfile(p):
+        if p.is_file() and _is_zip_or_shp(p):
             return p
-        if p.is_file() and p.suffix.lower() != ".zip":
-            # maybe raw zip without extension
-            try:
-                if zipfile.is_zipfile(p):
-                    return p
-            except Exception:
-                pass
         if p.is_dir():
             for f in p.rglob("*"):
+                name = f.name.lower()
+                if "recorte1" not in name and "efc_recorte" not in name:
+                    continue
+                if "saida" in f.as_posix().lower():
+                    continue
+                # never use the wrong buffer output
+                if "efc_recorte_saida" in f.as_posix().lower():
+                    continue
                 if f.suffix.lower() == ".zip" and zipfile.is_zipfile(f):
                     return f
                 if f.suffix.lower() == ".shp":
-                    return f  # already extracted shapefile
-    # fuzzy under gabriela
-    gab = Path("/workspace/gabriela")
-    for f in gab.rglob("*"):
-        if "saida" in f.as_posix().lower():
-            continue
-        name = f.name.lower()
-        if not f.is_file():
-            continue
-        if "recorte1" in name and (f.suffix.lower() in {".zip", ".shp"} or (f.suffix.lower()=="" and zipfile.is_zipfile(f))):
-            return f
-    # also /tmp uploads
-    for root in [Path("/tmp"), Path("/tmp/uploads"), Path("/tmp/cursor")]:
+                    return f
+    # recursive fuzzy search (prefer /home/gabriela)
+    for root in SEARCH_ROOTS:
         if not root.exists():
             continue
-        for f in root.rglob("*recorte1*"):
-            if f.is_file() and (f.suffix.lower() in {".zip", ".shp"} or zipfile.is_zipfile(f)):
-                return f
+        try:
+            for f in root.rglob("*"):
+                if not f.is_file():
+                    continue
+                posix = f.as_posix().lower()
+                if "saida" in posix or "efc_recorte_saida" in posix:
+                    continue
+                if "python_gabriela" in posix or "site-packages" in posix:
+                    continue
+                name = f.name.lower()
+                if "recorte1" not in name:
+                    continue
+                if _is_zip_or_shp(f):
+                    return f
+        except PermissionError:
+            continue
     return None
 
 
@@ -320,8 +358,11 @@ def main():
     src = find_zip()
     if not src:
         (OUT / "STATUS.txt").write_text(
-            "BLOQUEADO: efc_recorte1.zip não encontrado em /workspace/gabriela/.\n"
-            "Anexe o ZIP ou copie para /workspace/gabriela/efc_recorte1.zip e rode este script.\n",
+            "BLOQUEADO: efc_recorte1.zip não encontrado.\n"
+            "Procurado em /home/gabriela, /home/ubuntu, ~/gabriela, /workspace/gabriela, /tmp.\n"
+            "Anexe o ZIP ou copie para /workspace/gabriela/efc_recorte1.zip "
+            "(ou /home/gabriela/efc_recorte1.zip) e rode este script.\n"
+            "NÃO usar /workspace/EFC_recorte_saida (buffer errado).\n",
             encoding="utf-8",
         )
         print("ZIP ausente")
