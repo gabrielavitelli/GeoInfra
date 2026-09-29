@@ -1,0 +1,15 @@
+{
+  "aviso": "Shapefile original \"EFC_recorte\" nao encontrado em /workspace, /tmp, home nem anexos. Geometria = eixo EFC do monitor-efc-prod + buffer 20km (padrao catalogo Uniplu r20km).",
+  "gcloud_auth": "indisponivel neste pod; Uniplu/BQ completo nao consultado. Estacoes BNDMET do CSV EFC; ANA = ids climaticsystem com coords do inventario ANA.",
+  "counts_buffer_20km": {
+    "ana": 6,
+    "bndmet": 15
+  },
+  "total_20km": 21,
+  "counts_buffer_50km": {
+    "ana": 7,
+    "bndmet": 24
+  },
+  "total_50km": 31,
+  "oauth_url": "https://accounts.google.com/o/oauth2/auth?response_type=code&client_id=32555940559.apps.googleusercontent.com&redirect_uri=https%3A%2F%2Fsdk.cloud.google.com%2Fauthcode.html&scope=openid+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fappengine.admin+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fsqlservice.login+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcompute+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Faccounts.reauth&state=QJLh7veNynj9dG0OBALINLoMvmtKEc&prompt=consent&token_usage=remote&access_type=offline&code_challenge=z9hXPADe43uxOes9sUwKDTDiUML69FzdCuNb7XYPbiA&code_challenge_method=S256"
+}
