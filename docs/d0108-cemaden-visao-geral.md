@@ -32,3 +32,7 @@ BNDMET `tipo=todas` e API CEMADEN `311_24.json` **não** usam o código `D0108`.
 
 - **Agora:** série `estacoes` em `estacao_D0108` (alias operacional de D6182).
 - **Para série CEMADEN “de verdade”:** ingest a partir de `resources.cemaden.gov.br` / código `150553602A` (pipeline ainda não no monitor).
+
+## Verificação ao vivo
+
+Map-embed (`monitor-efc-prod-00164-bnv`): popup **PARAUAPEBAS - NOVA VIDA (CEMADEN)** / D0108; D0107–D0111 também no mapa. USER2–USER6 e linha amarela Previsão (`#eab308`) preservados.
