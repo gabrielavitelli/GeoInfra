@@ -1,0 +1,193 @@
+--- /tmp/build-src-976/lib_efc.py	2026-09-15 18:53:01.473518100 +0000
++++ /tmp/cb-src/lib_efc.py	2026-10-06 18:00:01.516629674 +0000
+@@ -1108,23 +1108,29 @@
+             WHERE l.source = 'estacao'
+               AND l.lat IS NOT NULL
+               AND l.lon IS NOT NULL
+-              AND EXISTS (
+-                SELECT 1
+-                FROM `{pfx}.clima_series` cs
+-                WHERE cs.location_id = l.location_id
+-                  AND cs.source = @series_source
+-                  AND cs.variable = 'precip_mm'
+-                  -- Alinhado ao hide do mapa: só catálogo com dado recente.
+-                  AND DATE(cs.date) >= DATE_SUB(CURRENT_DATE(), INTERVAL @recent_days DAY)
+-                LIMIT 1
++              -- Prefer stations that ever had precip for this series_source, but do NOT
++              -- require recent rows: markers should still render (stale/gray) when coords exist.
++              AND (
++                EXISTS (
++                  SELECT 1
++                  FROM `{pfx}.clima_series` cs
++                  WHERE cs.location_id = l.location_id
++                    AND cs.source = @series_source
++                    AND cs.variable = 'precip_mm'
++                  LIMIT 1
++                )
++                OR NOT EXISTS (
++                  SELECT 1
++                  FROM `{pfx}.clima_series` cs2
++                  WHERE cs2.location_id = l.location_id
++                    AND cs2.variable = 'precip_mm'
++                  LIMIT 1
++                )
+               )
+         """
+         cfg = bigquery.QueryJobConfig(
+             query_parameters=[
+                 bigquery.ScalarQueryParameter("series_source", "STRING", series_source),
+-                bigquery.ScalarQueryParameter(
+-                    "recent_days", "INT64", int(_STATION_HIDE_AFTER_DAYS)
+-                ),
+             ]
+         )
+         df = client.query(sql, job_config=cfg).to_dataframe()
+@@ -1137,6 +1143,29 @@
+         df = df[df["codEstacao"] != ""]
+         if df.empty:
+             return None
++        # Overlay display names from local CSV catalogs when present (BQ extra is INT).
++        try:
++            name_map: dict[str, str] = {}
++            for csv_path in (BNDMET_ESTACOES_CSV, ANA_ESTACOES_CSV):
++                if not csv_path.exists():
++                    continue
++                cdf = pd.read_csv(csv_path, encoding="utf-8")
++                cod_c = next((c for c in ["codEstacao", "codigo", "id"] if c in cdf.columns), None)
++                nome_c = next((c for c in cdf.columns if c.lower() in ("nome", "name", "dc_nome")), None)
++                if not cod_c or not nome_c:
++                    continue
++                for _, row in cdf.iterrows():
++                    cod = str(row[cod_c]).strip()
++                    nome = str(row[nome_c]).strip()
++                    if cod and nome and nome.lower() not in ("nan", "none"):
++                        name_map[cod] = nome
++            if name_map:
++                df["nome"] = df.apply(
++                    lambda r: name_map.get(str(r["codEstacao"]), r["nome"]),
++                    axis=1,
++                )
++        except Exception:
++            pass
+         return df.reset_index(drop=True)
+     except Exception:
+         return None
+@@ -3042,6 +3071,17 @@
+     return (" · " + " · ".join(parts)) if parts else ""
+ 
+ 
++# Aliases INMET/CEMADEN (mapa INMET D####) → código BNDMET/canônico no catálogo EFC.
++# D0108 Nova Vida (CEMADEN 150553602A) é o mesmo sítio físico que BNDMET D6182.
++_STATION_CODE_ALIASES: dict[str, str] = {
++    "D0108": "D6182",
++}
++# Quando ambos existem no catálogo, preferir o código INMET/CEMADEN no marcador.
++_STATION_DISPLAY_PREFERRED: dict[str, str] = {
++    "D6182": "D0108",
++}
++
++
+ def _bndmet_cod_norm(cod: str | None) -> str:
+     return _re.sub(r"\.0$", "", str(cod or "").strip())
+ 
+@@ -3052,7 +3092,15 @@
+         return 0.0
+     cod_s = str(cod).strip()
+     cod_norm = _bndmet_cod_norm(cod_s)
+-    for k in (cod_s, cod_norm):
++    alias = _STATION_CODE_ALIASES.get(cod_norm) or _STATION_CODE_ALIASES.get(cod_s)
++    keys = [cod_s, cod_norm]
++    if alias:
++        keys.extend([alias, _bndmet_cod_norm(alias)])
++    # Also accept reverse: canonical asked, alias has data
++    for src, dst in _STATION_CODE_ALIASES.items():
++        if _bndmet_cod_norm(dst) == cod_norm:
++            keys.append(src)
++    for k in keys:
+         if k in metric_map:
+             try:
+                 return float(metric_map[k])
+@@ -3146,7 +3194,7 @@
+ ) -> pd.DataFrame:
+     """
+     Mesmo nome/coordenadas podem ter vários ``codEstacao`` (ex.: ZE DOCA 82376 vs A255).
+-    Mantém uma linha por posição, preferindo a estação com maior acumulado 120 h / dados recentes.
++    Mantém uma linha por lat/lon, preferindo maior acumulado / obs recente e código INMET/CEMADEN (ex.: D0108 sobre D6182).
+     """
+     if estacoes_df is None or estacoes_df.empty:
+         return estacoes_df
+@@ -3158,25 +3206,25 @@
+         return estacoes_df
+ 
+     def _group_key(row) -> tuple:
+-        nome = ""
+-        if nome_c:
+-            try:
+-                nome = str(row.get(nome_c, "")).strip().upper()
+-            except Exception:
+-                nome = ""
++        # Agrupa por posição (não por nome): D6182 e D0108 colocalizados viram 1 marcador.
+         try:
+             lat_k = round(float(row[lat_c]), 4)
+             lon_k = round(float(row[lon_c]), 4)
+         except (TypeError, ValueError):
+             lat_k = lon_k = None
+-        return (nome, lat_k, lon_k)
++        return (lat_k, lon_k)
+ 
+     def _score(row) -> tuple:
+         cod = str(row.get(cod_c, "")).strip()
++        cod_n = _bndmet_cod_norm(cod)
+         acc = _bndmet_metric_lookup(station_accum_120h, cod)
+         lo = _bndmet_last_obs_lookup(station_last_obs, cod)
+         has_obs = 1 if lo else 0
+-        return (acc, has_obs)
++        # Preferir código INMET/CEMADEN (D0108) sobre espelho BNDMET (D6182) no mesmo ponto.
++        prefer = 1 if cod_n in _STATION_CODE_ALIASES or cod_n in _STATION_DISPLAY_PREFERRED.values() else 0
++        if _STATION_DISPLAY_PREFERRED.get(cod_n):
++            prefer = 0
++        return (acc, has_obs, prefer)
+ 
+     picked_idx: list = []
+     for _, grp in estacoes_df.groupby(estacoes_df.apply(_group_key, axis=1), sort=False):
+@@ -3280,8 +3328,8 @@
+                 last_obs_txt = _bndmet_last_obs_lookup(last_obs, cod)
+                 obs_ts = _station_last_obs_timestamp(last_obs_txt)
+                 hide_cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=_STATION_HIDE_AFTER_DAYS)
+-                if obs_ts is not None and obs_ts < hide_cutoff:
+-                    continue
++                # Keep marker visible even when last obs is older than hide window (gray/stale).
++                force_stale_age = bool(obs_ts is not None and obs_ts < hide_cutoff)
+                 mm_color = _bndmet_metric_lookup(station_accum_120h, cod)
+                 mm24 = (
+                     _bndmet_metric_lookup(station_accum_24h, cod)
+@@ -3294,7 +3342,8 @@
+                     else (mm_color if int(accum_hours) == 120 else None)
+                 )
+                 is_stale = (
+-                    (cod in stale_codes or cod_norm in stale_codes)
++                    force_stale_age
++                    or (cod in stale_codes or cod_norm in stale_codes)
+                     or not last_obs_txt
+                     or obs_ts is None
+                 )
+@@ -3504,8 +3553,8 @@
+             last_obs_txt = last_obs.get(cod, "")
+             obs_ts = _station_last_obs_timestamp(last_obs_txt)
+             hide_cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=_STATION_HIDE_AFTER_DAYS)
+-            if obs_ts is not None and obs_ts < hide_cutoff:
+-                continue
++            # Keep marker visible even when last obs is older than hide window (gray/stale).
++            force_stale_age = bool(obs_ts is not None and obs_ts < hide_cutoff)
+             mm_color = float(station_accum_120h.get(cod, 0.0))
+             mm24 = (
+                 float(station_accum_24h.get(cod, 0.0))
+@@ -3517,7 +3566,7 @@
+                 if station_accum_120h_popup is not None
+                 else (mm_color if int(accum_hours) == 120 else None)
+             )
+-            is_stale = (cod in stale_codes) or (cod not in last_obs) or obs_ts is None
++            is_stale = force_stale_age or (cod in stale_codes) or (cod not in last_obs) or obs_ts is None
+             lo = last_obs.get(cod, "")
+             if mm_color >= 0.05:
+                 hx = colormap(mm_color) if colormap is not None else "#2563eb"
