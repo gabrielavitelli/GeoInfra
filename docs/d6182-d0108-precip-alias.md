@@ -49,6 +49,8 @@ O agente `bc-f43980c2` adicionou D0108 ao catálogo/locations. Este fix **não c
 
 ## Status deploy
 
+- Live: **`monitor-efc-prod-00168-nnp`** (`MONITOR_MAP_CACHE_VER=d6182_d0108_alias_marker_v3`).
+- Mapa 120 h: **1** popup `D0108` / PARAUAPEBAS - NOVA VIDA (CEMADEN), **36,0 mm**; sem popup `D6182`.
 - Patch `lib_efc_d6182_d0108_alias_precip.patch` aplicado em `lib_efc.py` do source de deploy.
 - Rebuild `monitor-efc-prod` com `MONITOR_MAP_CACHE_VER=d6182_d0108_alias_marker_v3`.
 - Resultado esperado: **1 marcador** Parauapebas (**D0108** Nova Vida) com precip CEMADEN ~30+ mm.
