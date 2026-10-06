@@ -33,7 +33,8 @@ São o **mesmo sítio físico**. O código `D0108` não existe na API BNDMET `ti
 1. **Alias canônico:** precip CEMADEN Nova Vida gravada em `estacao_D6182` (e espelho operacional `estacao_D0108`).
 2. Script: `scripts/ingest_cemaden_d0108_to_d6182.py` (API `mapservices.cemaden.gov.br/.../horario/{id}/{horas}`).
 3. `lib_efc.py`: `_STATION_CODE_ALIASES` D0108→D6182; dedupe do mapa por **lat/lon** preferindo marcador **D0108**.
-4. Cache bust: `MONITOR_MAP_CACHE_VER=d6182_d0108_cemaden_precip_v1`.
+4. Cache bust: `MONITOR_MAP_CACHE_VER=d6182_d0108_alias_marker_v2` (marcador único D0108).
+5. Imagem rebuild com patch de alias/dedupe (preferir **D0108** sobre D6182 no mesmo lat/lon).
 
 ## Onde ver no mapa (Visão Geral)
 
@@ -45,3 +46,9 @@ São o **mesmo sítio físico**. O código `D0108` não existe na API BNDMET `ti
 ## Coordenação com agente D0108
 
 O agente `bc-f43980c2` adicionou D0108 ao catálogo/locations. Este fix **não cria série inventada**: substitui a cópia rasa de D6182 (9 mm) pela série CEMADEN e mantém `estacao_D6182` como destino canônico do remap.
+
+## Status deploy
+
+- Patch `lib_efc_d6182_d0108_alias_precip.patch` aplicado em `lib_efc.py` do source de deploy.
+- Rebuild `monitor-efc-prod` com `MONITOR_MAP_CACHE_VER=d6182_d0108_alias_marker_v2`.
+- Resultado esperado: **1 marcador** Parauapebas (**D0108** Nova Vida) com precip CEMADEN ~30+ mm.
