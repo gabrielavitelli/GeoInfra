@@ -1,0 +1,85 @@
+--- /tmp/build-src-976/lib_efc.py	2026-09-15 18:53:01.473518100 +0000
++++ /tmp/cb-src/lib_efc.py	2026-10-06 17:23:11.236522722 +0000
+@@ -1108,23 +1108,29 @@
+             WHERE l.source = 'estacao'
+               AND l.lat IS NOT NULL
+               AND l.lon IS NOT NULL
+-              AND EXISTS (
+-                SELECT 1
+-                FROM `{pfx}.clima_series` cs
+-                WHERE cs.location_id = l.location_id
+-                  AND cs.source = @series_source
+-                  AND cs.variable = 'precip_mm'
+-                  -- Alinhado ao hide do mapa: só catálogo com dado recente.
+-                  AND DATE(cs.date) >= DATE_SUB(CURRENT_DATE(), INTERVAL @recent_days DAY)
+-                LIMIT 1
++              -- Prefer stations that ever had precip for this series_source, but do NOT
++              -- require recent rows: markers should still render (stale/gray) when coords exist.
++              AND (
++                EXISTS (
++                  SELECT 1
++                  FROM `{pfx}.clima_series` cs
++                  WHERE cs.location_id = l.location_id
++                    AND cs.source = @series_source
++                    AND cs.variable = 'precip_mm'
++                  LIMIT 1
++                )
++                OR NOT EXISTS (
++                  SELECT 1
++                  FROM `{pfx}.clima_series` cs2
++                  WHERE cs2.location_id = l.location_id
++                    AND cs2.variable = 'precip_mm'
++                  LIMIT 1
++                )
+               )
+         """
+         cfg = bigquery.QueryJobConfig(
+             query_parameters=[
+                 bigquery.ScalarQueryParameter("series_source", "STRING", series_source),
+-                bigquery.ScalarQueryParameter(
+-                    "recent_days", "INT64", int(_STATION_HIDE_AFTER_DAYS)
+-                ),
+             ]
+         )
+         df = client.query(sql, job_config=cfg).to_dataframe()
+@@ -3280,8 +3286,8 @@
+                 last_obs_txt = _bndmet_last_obs_lookup(last_obs, cod)
+                 obs_ts = _station_last_obs_timestamp(last_obs_txt)
+                 hide_cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=_STATION_HIDE_AFTER_DAYS)
+-                if obs_ts is not None and obs_ts < hide_cutoff:
+-                    continue
++                # Keep marker visible even when last obs is older than hide window (gray/stale).
++                force_stale_age = bool(obs_ts is not None and obs_ts < hide_cutoff)
+                 mm_color = _bndmet_metric_lookup(station_accum_120h, cod)
+                 mm24 = (
+                     _bndmet_metric_lookup(station_accum_24h, cod)
+@@ -3294,7 +3300,8 @@
+                     else (mm_color if int(accum_hours) == 120 else None)
+                 )
+                 is_stale = (
+-                    (cod in stale_codes or cod_norm in stale_codes)
++                    force_stale_age
++                    or (cod in stale_codes or cod_norm in stale_codes)
+                     or not last_obs_txt
+                     or obs_ts is None
+                 )
+@@ -3504,8 +3511,8 @@
+             last_obs_txt = last_obs.get(cod, "")
+             obs_ts = _station_last_obs_timestamp(last_obs_txt)
+             hide_cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=_STATION_HIDE_AFTER_DAYS)
+-            if obs_ts is not None and obs_ts < hide_cutoff:
+-                continue
++            # Keep marker visible even when last obs is older than hide window (gray/stale).
++            force_stale_age = bool(obs_ts is not None and obs_ts < hide_cutoff)
+             mm_color = float(station_accum_120h.get(cod, 0.0))
+             mm24 = (
+                 float(station_accum_24h.get(cod, 0.0))
+@@ -3517,7 +3524,7 @@
+                 if station_accum_120h_popup is not None
+                 else (mm_color if int(accum_hours) == 120 else None)
+             )
+-            is_stale = (cod in stale_codes) or (cod not in last_obs) or obs_ts is None
++            is_stale = force_stale_age or (cod in stale_codes) or (cod not in last_obs) or obs_ts is None
+             lo = last_obs.get(cod, "")
+             if mm_color >= 0.05:
+                 hx = colormap(mm_color) if colormap is not None else "#2563eb"
