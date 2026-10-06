@@ -22,18 +22,18 @@ São o **mesmo sítio físico** (D6182 ↔ D0108 ↔ 150553602A). `D0108` **não
 
 | Fonte | Acumulado ~30 d | Notas |
 |-------|-----------------|-------|
-| INMET (relato usuário) | **~30 mm** | Provável janela curta / evento recente (ver 120 h) |
+| Relato «INMET» do usuário | **~30 mm** | Não há série INMET no ponto; ver seção acima |
 | Open-Meteo no ponto | ~28 mm | Grade, não ponto medido |
 | BNDMET API I175 `D6182` | **9 mm** | Só 2 horas ≠0 (2 mm em 25/09, 7 mm em 05/10) |
 | BQ antigo `estacao_D6182` (mapa MAX/slot) | **9 mm** | Fidelidade ao BNDMET; SUM bruto ~30 mm era **duplicata** |
 | CEMADEN horário Nova Vida | **75,8 mm** | 25/09=27,2; 26/09=9,4; **05/10=35,6** |
-| Após fix (mapa 120 h) | **36,0 mm** | Alinhado ao ~30 mm do INMET se a UI/mapa for janela curta |
+| Após fix (mapa 120 h) | **36,0 mm** | Quase só o evento de 05/10 (35,6) + traços |
 | Após fix (mapa 30 d / 720 h) | **75,8 mm** | Verdade CEMADEN no ponto |
 
 ### Causa raiz
 
 1. Catálogo/mapa buscavam `D0108` como código BNDMET → “não existe”.
-2. Espelho BNDMET `D6182` tem série **esparsa** (subconta vs CEMADEN/INMET).
+2. Espelho BNDMET `D6182` tem série **esparsa** (subconta vs CEMADEN horário).
 3. `clima_series` tinha milhares de linhas duplicadas no mesmo `date` (zeros + poucos valores); o mapa usa `MAX` por slot → mostrava **baixo**; um `SUM` ingênuo batia ~30 mm por coincidência.
 
 ## Correção aplicada
@@ -59,4 +59,5 @@ O agente `bc-f43980c2` adicionou D0108 ao catálogo/locations. Este fix **não c
 
 - Patch `lib_efc_d6182_d0108_alias_precip.patch` aplicado em `lib_efc.py` do source de deploy.
 - Rebuild `monitor-efc-prod` com `MONITOR_MAP_CACHE_VER=d6182_d0108_alias_marker_v2`.
-- Resultado esperado: **1 marcador** Parauapebas (**D0108** Nova Vida) com precip CEMADEN ~30+ mm.
+- Resultado esperado: **1 marcador** Parauapebas (**D0108** Nova Vida **(CEMADEN)**) com precip CEMADEN (ex.: ~35,6 mm no dia 05/10).
+- **Fonte canônica neste ponto: CEMADEN** (não BDMEP/A230). Manter o sufixo `(CEMADEN)` no nome do catálogo para evitar comparar com INMET próprio.
