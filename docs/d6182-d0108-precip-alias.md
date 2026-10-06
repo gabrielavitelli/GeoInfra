@@ -5,10 +5,18 @@
 | Rede | Código | Nome | Lat / Lon |
 |------|--------|------|-----------|
 | BNDMET / ANA espelho | **D6182** | PARAUAPEBAS | -6.0914, -49.9044 |
-| INMET mapas (entidade CEMADEN) | **D0108** | PARAUAPEBAS - NOVA VIDA | -6.0914, -49.9045 |
+| Código no mapa INMET (rede parceira) | **D0108** | PARAUAPEBAS - NOVA VIDA **(CEMADEN)** | -6.0914, -49.9045 |
 | CEMADEN nativo | **150553602A** (idestacao 6798) | Nova Vida | mesmas coords |
+| INMET automática próxima | **A230** | SERRA DOS CARAJÁS | -6.0775, -50.1422 (~25 km O, 707 m) |
 
-São o **mesmo sítio físico**. O código `D0108` não existe na API BNDMET `tipo=todas`; é o alias do **mapa INMET** para a PCD CEMADEN.
+São o **mesmo sítio físico** (D6182 ↔ D0108 ↔ 150553602A). `D0108` **não é estação INMET própria**: o gráfico oficial do ponto vem rotulado **«CEMADEN - D0108»**; a API CEMADEN lista `idRede=CEMADEN`. O mapa INMET só **exibe** a PCD parceira. A AWS INMET mais próxima (**A230**) está em **Pane**, sem precipitação no pacote histórico 2026 (campos vazios até 30/09) e sem dado recente na API Tempo.
+
+## Por que ~30 mm (relato INMET) ≠ ~35,6 mm (CEMADEN dia 5)
+
+- **Mesmo sensor CEMADEN** no gráfico do usuário: dia **05/10/2026 = 35,6 mm** (horas locais ~8–17 h: 20,4 + 14,0 + 0,6 + …); dia 6 ≈ 0,4 mm. Alinha ao nosso ingest.
+- O «~30 mm» no INMET quase certamente **não é outro pluviômetro consolidado** no mesmo ponto: não há série INMET operante em Nova Vida; A230 não entrega chuva.
+- Hipóteses plausíveis para o ~30: **leitura aproximada** do gráfico, **janela ≠ dia civil** (ex. acumulado 120 h / parcial do evento), ou confusão com **soma BQ/BNDMET antiga** (~9 mm real esparso; SUM com duplicatas ~30 mm por coincidência).
+- Open-Meteo (grade) no ponto ≠ medição de PCD.
 
 ## Comparativo 30 dias (2026-09-07 → 2026-10-06)
 
