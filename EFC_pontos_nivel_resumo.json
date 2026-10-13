@@ -1,0 +1,101 @@
+{
+  "gerado_em": "2026-10-13T19:16:20",
+  "xlsx_incorporados": false,
+  "nota": "/home/gabriela e gs://efc-clima-data sem os 3 xlsx; mapa com coordenadas fornecidas.",
+  "pontos_efc": [
+    {
+      "id": "km85",
+      "label": "Km 85",
+      "codigo": "km85",
+      "lat": -3.298651,
+      "lon": -44.465063,
+      "nearest_ana": {
+        "codigo": "23800495",
+        "nome": "RIO TOCANTINS - SÃO SEBASTIÃO DO TO",
+        "dist_km": 467.6,
+        "lat": -5.2544,
+        "lon": -48.1983
+      }
+    },
+    {
+      "id": "km374",
+      "label": "Sensor Rio Pindaré",
+      "codigo": "BC07541S",
+      "lat": -4.253738,
+      "lon": -46.531145,
+      "nearest_ana": {
+        "codigo": "23800495",
+        "nome": "RIO TOCANTINS - SÃO SEBASTIÃO DO TO",
+        "dist_km": 215.7,
+        "lat": -5.2544,
+        "lon": -48.1983
+      }
+    },
+    {
+      "id": "km763",
+      "label": "Ponte 763+800",
+      "codigo": "BC07533S",
+      "lat": -5.571403,
+      "lon": -49.241924,
+      "nearest_ana": {
+        "codigo": "29050000",
+        "nome": "MARABÁ",
+        "dist_km": 29.0,
+        "lat": -5.3386,
+        "lon": -49.1244
+      }
+    },
+    {
+      "id": "km661",
+      "label": "Km 661 · Ponte Sumaúma",
+      "codigo": "railway_km_661",
+      "lat": -5.149214340420318,
+      "lon": -48.37704830878583,
+      "nearest_ana": {
+        "codigo": "23800495",
+        "nome": "RIO TOCANTINS - SÃO SEBASTIÃO DO TO",
+        "dist_km": 23.0,
+        "lat": -5.2544,
+        "lon": -48.1983
+      }
+    }
+  ],
+  "ana": {
+    "23800495": {
+      "nome": "RIO TOCANTINS - SÃO SEBASTIÃO DO TO",
+      "rio": "RIO TOCANTINS",
+      "lat": -5.2544,
+      "lon": -48.1983,
+      "municipio": "SÃO SEBASTIÃO DO TOCANTINS-TO",
+      "dist_km_661": 23.0,
+      "dist_km": 23.0
+    },
+    "29040000": {
+      "nome": "UHE TUCURUÍ MONTANTE 1",
+      "rio": "RIO TOCANTINS",
+      "lat": -5.3497,
+      "lon": -48.8806,
+      "municipio": "SÃO JOÃO DO ARAGUAIA-PA",
+      "dist_km_661": 60.0,
+      "dist_km": 60.0
+    },
+    "28850000": {
+      "nome": "ARAGUATINS",
+      "rio": "RIO ARAGUAIA",
+      "lat": -5.6514,
+      "lon": -48.1325,
+      "municipio": "ARAGUATINS-TO",
+      "dist_km_661": 62.1,
+      "dist_km": 62.1
+    },
+    "29050000": {
+      "nome": "MARABÁ",
+      "rio": "RIO TOCANTINS",
+      "lat": -5.3386,
+      "lon": -49.1244,
+      "municipio": "MARABÁ-PA",
+      "dist_km_661": 85.4,
+      "dist_km": 85.4
+    }
+  }
+}
