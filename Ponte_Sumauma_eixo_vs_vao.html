@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_eb86fd2d045ef7402b6ecf7072825251 {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+
+            <style>html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            </style>
+
+            <style>#map {
+                position:absolute;
+                top:0;
+                bottom:0;
+                right:0;
+                left:0;
+                }
+            </style>
+
+            <script>
+                L_NO_TOUCH = false;
+                L_DISABLE_3D = false;
+            </script>
+
+        
+</head>
+<body>
+    
+    <div style="position:fixed;bottom:18px;left:14px;z-index:9999;background:rgba(255,253,249,.95);
+border:1px solid #d9d2c5;border-radius:10px;padding:10px 12px;max-width:340px;font:12px Arial;color:#1c2430">
+<b>Ponte Sumaúma — eixo vs vão</b><br>
+• <span style="color:#7c3aed">●</span> Km 661 (eixo) = BQ railway_km_661 (aterro)<br>
+• <span style="color:#dc2626">●</span> Ponte Sumaúma (vão) = ponte OSM EFC ~km 660,8<br>
+• Distância eixo→vão ≈ <b>170 m</b><br>
+• Curso d'água: corredor ripário local (não Tocantins)<br>
+• <span style="color:#0284c7">●</span> Único stream OSM no trecho ≈ km 665
+</div>
+    
+            <div class="folium-map" id="map_eb86fd2d045ef7402b6ecf7072825251" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_eb86fd2d045ef7402b6ecf7072825251 = L.map(
+                "map_eb86fd2d045ef7402b6ecf7072825251",
+                {
+                    center: [-5.149214340420318, -48.37628839189291],
+                    crs: L.CRS.EPSG3857,
+                    ...{
+  "zoom": 15,
+  "zoomControl": true,
+  "preferCanvas": false,
+}
+
+                }
+            );
+            L.control.scale().addTo(map_eb86fd2d045ef7402b6ecf7072825251);
+
+            
+
+        
+    
+            var tile_layer_c099acb9a0c4160cd5f8387c5e9ec10d = L.tileLayer(
+                "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                {
+  "minZoom": 0,
+  "maxZoom": 18,
+  "maxNativeZoom": 18,
+  "noWrap": false,
+  "attribution": "Esri World Imagery",
+  "subdomains": "abc",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+        
+    
+            tile_layer_c099acb9a0c4160cd5f8387c5e9ec10d.addTo(map_eb86fd2d045ef7402b6ecf7072825251);
+        
+    
+            var tile_layer_4363d2b529fdd110d8086485eaa5736b = L.tileLayer(
+                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {
+  "minZoom": 0,
+  "maxZoom": 19,
+  "maxNativeZoom": 19,
+  "noWrap": false,
+  "attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors",
+  "subdomains": "abc",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+        
+    
+            var poly_line_6de398bdd1754cd43a8589e535089ccd = L.polyline(
+                [[-5.1490082396826535, -48.323202614107274], [-5.150049546913805, -48.33217154047437], [-5.151066258154148, -48.34114331096636], [-5.152049831183715, -48.350118801771096], [-5.151203517520023, -48.359099845711604], [-5.150206283880076, -48.368073822117736], [-5.149214340420318, -48.37704830878583], [-5.148605731623581, -48.38603163893861], [-5.15031283990659, -48.39489413456752], [-5.15128290845665, -48.403857535421956], [-5.151729067660017, -48.4128761013902], [-5.152210995063554, -48.42189280114352], [-5.153623451245128, -48.430792642141476], [-5.1555234076846155, -48.439618434061586], [-5.1573382100783025, -48.44846242835988], [-5.158805026732251, -48.45735305560044]],
+                {"bubblingMouseEvents": true, "color": "#f8fafc", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#f8fafc", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.9, "smoothFactor": 1.0, "stroke": true, "weight": 3}
+            ).addTo(map_eb86fd2d045ef7402b6ecf7072825251);
+        
+    
+            poly_line_6de398bdd1754cd43a8589e535089ccd.bindTooltip(
+                `<div>
+                     EFC
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var poly_line_12eedfc72091bac04a2f83bb4ad393b0 = L.polyline(
+                [[-5.149214340420318, -48.37704830878583], [-5.149460125, -48.375528475]],
+                {"bubblingMouseEvents": true, "color": "#fbbf24", "dashArray": "6 8", "dashOffset": null, "fill": false, "fillColor": "#fbbf24", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 1.0, "smoothFactor": 1.0, "stroke": true, "weight": 3}
+            ).addTo(map_eb86fd2d045ef7402b6ecf7072825251);
+        
+    
+            poly_line_12eedfc72091bac04a2f83bb4ad393b0.bindTooltip(
+                `<div>
+                     ~170 m aterro → vão
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_b262cff012b331ebbb76535d1048d1c5 = L.circleMarker(
+                [-5.149214340420318, -48.37704830878583],
+                {"bubblingMouseEvents": true, "color": "#fff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#7c3aed", "fillOpacity": 0.95, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 10, "stroke": true, "weight": 2}
+            ).addTo(map_eb86fd2d045ef7402b6ecf7072825251);
+        
+    
+        var popup_e94587dabafe815146efc82c6dda1fdf = L.popup({
+  "maxWidth": 280,
+});
+
+        
+            
+                var html_ccc8567931207264027ddb65cca86946 = $(`<div id="html_ccc8567931207264027ddb65cca86946" style="width: 100.0%; height: 100.0%;"><b>Km 661 (eixo)</b><br>km≈661.0<br>-5.149214, -48.377048</div>`)[0];
+                popup_e94587dabafe815146efc82c6dda1fdf.setContent(html_ccc8567931207264027ddb65cca86946);
+            
+        
+
+        circle_marker_b262cff012b331ebbb76535d1048d1c5.bindPopup(popup_e94587dabafe815146efc82c6dda1fdf)
+        ;
+
+        
+    
+    
+            circle_marker_b262cff012b331ebbb76535d1048d1c5.bindTooltip(
+                `<div>
+                     Km 661 (eixo)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_78c9c1b17364be2bb5b14bbf37559519 = L.circleMarker(
+                [-5.149460125, -48.375528475],
+                {"bubblingMouseEvents": true, "color": "#fff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#dc2626", "fillOpacity": 0.95, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 10, "stroke": true, "weight": 2}
+            ).addTo(map_eb86fd2d045ef7402b6ecf7072825251);
+        
+    
+        var popup_44a4d438ecac5d59d6aa1a1384c1cd75 = L.popup({
+  "maxWidth": 280,
+});
+
+        
+            
+                var html_be34d65a1b576e8f544de5f8055c7501 = $(`<div id="html_be34d65a1b576e8f544de5f8055c7501" style="width: 100.0%; height: 100.0%;"><b>Ponte Sumaúma (vão)</b><br>km≈660.83<br>-5.149460, -48.375528</div>`)[0];
+                popup_44a4d438ecac5d59d6aa1a1384c1cd75.setContent(html_be34d65a1b576e8f544de5f8055c7501);
+            
+        
+
+        circle_marker_78c9c1b17364be2bb5b14bbf37559519.bindPopup(popup_44a4d438ecac5d59d6aa1a1384c1cd75)
+        ;
+
+        
+    
+    
+            circle_marker_78c9c1b17364be2bb5b14bbf37559519.bindTooltip(
+                `<div>
+                     Ponte Sumaúma (vão)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_5a5fc528e6870a72ff954848d9681a16 = L.circleMarker(
+                [-5.1517148, -48.4125483],
+                {"bubblingMouseEvents": true, "color": "#fff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#ea580c", "fillOpacity": 0.95, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 10, "stroke": true, "weight": 2}
+            ).addTo(map_eb86fd2d045ef7402b6ecf7072825251);
+        
+    
+        var popup_bb7becc470c938534580233adff6da59 = L.popup({
+  "maxWidth": 280,
+});
+
+        
+            
+                var html_c2e7f6f2e0f8b8068320a7185265e75b = $(`<div id="html_c2e7f6f2e0f8b8068320a7185265e75b" style="width: 100.0%; height: 100.0%;"><b>Ponte EFC OSM (~km 665)</b><br>km≈664.96<br>-5.151715, -48.412548</div>`)[0];
+                popup_bb7becc470c938534580233adff6da59.setContent(html_c2e7f6f2e0f8b8068320a7185265e75b);
+            
+        
+
+        circle_marker_5a5fc528e6870a72ff954848d9681a16.bindPopup(popup_bb7becc470c938534580233adff6da59)
+        ;
+
+        
+    
+    
+            circle_marker_5a5fc528e6870a72ff954848d9681a16.bindTooltip(
+                `<div>
+                     Ponte EFC OSM (~km 665)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var circle_marker_fcee990e700247340421d1a38f275b02 = L.circleMarker(
+                [-5.1524, -48.41279],
+                {"bubblingMouseEvents": true, "color": "#fff", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#0284c7", "fillOpacity": 0.95, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 10, "stroke": true, "weight": 2}
+            ).addTo(map_eb86fd2d045ef7402b6ecf7072825251);
+        
+    
+        var popup_ac6444baf070f2d57af006e4ca3338b9 = L.popup({
+  "maxWidth": 280,
+});
+
+        
+            
+                var html_89f6edfb2b3a918d2a3182f7d95f9643 = $(`<div id="html_89f6edfb2b3a918d2a3182f7d95f9643" style="width: 100.0%; height: 100.0%;"><b>Stream OSM (~km 665)</b><br>km≈664.96<br>-5.152400, -48.412790</div>`)[0];
+                popup_ac6444baf070f2d57af006e4ca3338b9.setContent(html_89f6edfb2b3a918d2a3182f7d95f9643);
+            
+        
+
+        circle_marker_fcee990e700247340421d1a38f275b02.bindPopup(popup_ac6444baf070f2d57af006e4ca3338b9)
+        ;
+
+        
+    
+    
+            circle_marker_fcee990e700247340421d1a38f275b02.bindTooltip(
+                `<div>
+                     Stream OSM (~km 665)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+</script>
+</html>

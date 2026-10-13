@@ -67,13 +67,26 @@ OPS = [
         "xlsx": "EWS6970 - Abrigo km 761.xlsx (EWS mais próximo)",
     },
     {
-        "id": "sumauma",
-        "nome": "Ponte Sumaúma (Km 661)",
+        "id": "km661_eixo",
+        "nome": "Km 661 (eixo)",
         "lat": -5.149214340420318,
         "lon": -48.37704830878583,
-        "fonte": "EFC (railway_km_661)",
+        "fonte": "BQ railway_km_661 (quilometragem no eixo)",
         "ews": "EWS6971",
         "km_efc": 661,
+        "xlsx": "EWS6971 - Abrigo km 663.xlsx (EWS mais próximo)",
+    },
+    {
+        # Vão OSM da EFC (~km 660,8), ~170 m a leste do eixo km 661.
+        # Satélite: corredor ripário (igarapé sob dossel); OSM não nomeia o curso d'água.
+        # Rio mapeado mais próximo na ferrovia: stream OSM em ~km 665 (~3,9 km a oeste).
+        "id": "sumauma_vao",
+        "nome": "Ponte Sumaúma (vão)",
+        "lat": -5.149460125,
+        "lon": -48.375528475,
+        "fonte": "OSM bridge EFC ways 309747856+1069345405 (mid dual-track)",
+        "ews": "EWS6971",
+        "km_efc": 660.83,
         "xlsx": "EWS6971 - Abrigo km 663.xlsx (EWS mais próximo)",
     },
 ]
@@ -447,7 +460,8 @@ def build_html(corridor: dict, path: Path) -> None:
       <div class="row"><span class="swatch-cat"></span><span><b>ANA catálogo</b> — sem nível BQ</span></div>
       <div class="row"><span class="swatch-line"></span><span>Eixo da EFC</span></div>
       <div class="foot">ANA no corredor (≤{corridor['buffer_km']} km): <b>{n_ana}</b>
-        · antes: {n_prev} · com nível BQ: {n_bq}</div>
+        · antes: {n_prev} · com nível BQ: {n_bq}<br>
+        Km 661 (eixo) ≠ vão: ponte OSM ~170&nbsp;m a leste (~km&nbsp;660,8) sobre corredor ripário.</div>
     </div>
     """
     m.get_root().html.add_child(folium.Element(legend))

@@ -1,0 +1,32 @@
+{
+  "veredito": "O marcador railway_km_661 NÃO está sobre o vão da ponte — fica no aterro ~170 m a oeste. Não há rio amplo (ex.: Tocantins) nesse ponto.",
+  "km661_eixo": {
+    "lat": -5.149214340420318,
+    "lon": -48.37704830878583,
+    "km_efc": 661.0,
+    "fonte": "climaticsystem.efc_clima.locations / railway_km_661"
+  },
+  "ponte_sumauma_vao": {
+    "lat": -5.149460125,
+    "lon": -48.375528475,
+    "km_efc_approx": 660.83,
+    "fonte": "OSM railway bridge ways 309747856 + 1069345405 (média dual-track)",
+    "distancia_m_do_eixo": 170.5,
+    "observacao": "Satélite mostra corredor ripário (igarapé sob dossel). OSM não nomeia o curso d'água sob este vão."
+  },
+  "hidrografia_proxima": {
+    "stream_osm_km665": {
+      "way_id": 442126498,
+      "approx_km_efc": 664.96,
+      "dist_km661_m": 3941,
+      "nota": "Único waterway OSM a ≤2 km do eixo no trecho km 655–670"
+    },
+    "ana_tocantins_23800495": {
+      "lat": -5.2544,
+      "lon": -48.1983,
+      "dist_km661_km": 23.0,
+      "nota": "Estação ANA de nível usada no relatório — NÃO é o local da ponte"
+    }
+  },
+  "atualizado_em": "2026-10-13"
+}

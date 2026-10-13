@@ -1,5 +1,5 @@
 {
-  "gerado_em": "2026-10-13T19:16:20",
+  "gerado_em": "2026-10-13T19:49:02Z",
   "xlsx_incorporados": false,
   "nota": "/home/gabriela e gs://efc-clima-data sem os 3 xlsx; mapa com coordenadas fornecidas.",
   "pontos_efc": [
@@ -46,8 +46,8 @@
       }
     },
     {
-      "id": "km661",
-      "label": "Km 661 · Ponte Sumaúma",
+      "id": "km661_eixo",
+      "label": "Km 661 (eixo)",
       "codigo": "railway_km_661",
       "lat": -5.149214340420318,
       "lon": -48.37704830878583,
@@ -58,6 +58,23 @@
         "lat": -5.2544,
         "lon": -48.1983
       }
+    },
+    {
+      "id": "sumauma_vao",
+      "label": "Ponte Sumaúma (vão)",
+      "codigo": "osm_efc_bridge_km660_8",
+      "lat": -5.149460125,
+      "lon": -48.375528475,
+      "km_efc_approx": 660.83,
+      "dist_m_do_eixo": 170.5,
+      "nearest_ana": {
+        "codigo": "23800495",
+        "nome": "RIO TOCANTINS - SÃO SEBASTIÃO DO TO",
+        "dist_km": 23.0,
+        "lat": -5.2544,
+        "lon": -48.1983
+      },
+      "nota": "Vão OSM ~170m a leste do eixo; corredor ripário (não Tocantins)"
     }
   ],
   "ana": {
@@ -97,5 +114,6 @@
       "dist_km_661": 85.4,
       "dist_km": 85.4
     }
-  }
+  },
+  "nota_sumauma": "Km 661 (eixo BQ) deslocado ~170m do vão OSM da Ponte Sumaúma; mapa mostra ambos."
 }
