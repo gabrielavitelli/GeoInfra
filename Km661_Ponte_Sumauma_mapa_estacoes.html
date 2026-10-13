@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_177e018d621c37c984f7bc70482b177b {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+
+            <style>html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            </style>
+
+            <style>#map {
+                position:absolute;
+                top:0;
+                bottom:0;
+                right:0;
+                left:0;
+                }
+            </style>
+
+            <script>
+                L_NO_TOUCH = false;
+                L_DISABLE_3D = false;
+            </script>
+
+        
+    <script src="https://cdn.jsdelivr.net/npm/leaflet.fullscreen@3.0.0/Control.FullScreen.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.fullscreen@3.0.0/Control.FullScreen.css"/>
+</head>
+<body>
+    
+    
+    <div style="position:fixed;bottom:24px;left:24px;z-index:9999;
+                background:rgba(255,255,255,0.95);padding:12px 14px;border-radius:8px;
+                border:1px solid #cbd5e1;font-family:Arial,sans-serif;font-size:12px;
+                box-shadow:0 2px 8px rgba(0,0,0,.12);max-width:320px;">
+      <div style="font-weight:700;margin-bottom:6px;color:#0f172a;">
+        Km 661 · Ponte Sumaúma — estações ANA (nível)
+      </div>
+      <div><span style="color:#c2410c;font-size:14px;">★</span> Km 661 EFC (BQ railway_km_661)</div>
+      <div style="margin-top:2px;">━ EFC km 640–690</div>
+      <div style="margin-top:6px;color:#64748b;">● 23800495 São Sebastião do TO</div>
+      <div style="color:#0c4a6e;">● 29040000 UHE Tucuruí Montante 1</div>
+      <div style="color:#0f766e;">● 28850000 Araguatins</div>
+      <div style="color:#b45309;">● 29050000 Marabá</div>
+      <div style="margin-top:8px;color:#64748b;font-size:11px;">
+        Distâncias em linha reta · ANA telemétrica
+      </div>
+    </div>
+    
+    
+            <div class="folium-map" id="map_177e018d621c37c984f7bc70482b177b" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_177e018d621c37c984f7bc70482b177b = L.map(
+                "map_177e018d621c37c984f7bc70482b177b",
+                {
+                    center: [-5.149214340420318, -48.37704830878583],
+                    crs: L.CRS.EPSG3857,
+                    ...{
+  "zoom": 9,
+  "zoomControl": true,
+  "preferCanvas": false,
+}
+
+                }
+            );
+            L.control.scale().addTo(map_177e018d621c37c984f7bc70482b177b);
+
+            
+
+        
+    
+            var tile_layer_bc086c1792a8be1e5135723f756fc903 = L.tileLayer(
+                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {
+  "minZoom": 0,
+  "maxZoom": 19,
+  "maxNativeZoom": 19,
+  "noWrap": false,
+  "attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors",
+  "subdomains": "abc",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+        
+    
+            tile_layer_bc086c1792a8be1e5135723f756fc903.addTo(map_177e018d621c37c984f7bc70482b177b);
+        
+    
+            var poly_line_16ed86c80c9c61850f03d5fb1e5a75ec = L.polyline(
+                [[-5.1652892071373655, -48.18989604217391], [-5.164816831184728, -48.1989028226715], [-5.16325916883136, -48.207796070434824], [-5.161707683521341, -48.216690517792664], [-5.160134956985002, -48.225581169961146], [-5.159539084436865, -48.23456982073228], [-5.1594759037705655, -48.24359935796795], [-5.159420270347123, -48.25262895784544], [-5.159344587195393, -48.26165843366738], [-5.159302851319766, -48.27068809165827], [-5.159289111905146, -48.279717495795076], [-5.1572605576479065, -48.288463683209834], [-5.154484840503862, -48.29705257198399], [-5.15171595761511, -48.30564364984332], [-5.148967195028991, -48.314239993988124], [-5.1490082396826535, -48.323202614107274], [-5.150049546913805, -48.33217154047437], [-5.151066258154148, -48.34114331096636], [-5.152049831183715, -48.350118801771096], [-5.151203517520023, -48.359099845711604], [-5.150206283880076, -48.368073822117736], [-5.149214340420318, -48.37704830878583], [-5.148605731623581, -48.38603163893861], [-5.15031283990659, -48.39489413456752], [-5.15128290845665, -48.403857535421956], [-5.151729067660017, -48.4128761013902], [-5.152210995063554, -48.42189280114352], [-5.153623451245128, -48.430792642141476], [-5.1555234076846155, -48.439618434061586], [-5.1573382100783025, -48.44846242835988], [-5.158805026732251, -48.45735305560044], [-5.158482022418671, -48.46637351318599], [-5.158507302647002, -48.47536266409789], [-5.161121452867188, -48.484001113074726], [-5.164505941058048, -48.49229930575697], [-5.169453728736003, -48.49982930040569], [-5.172968698523948, -48.50814087499177], [-5.178809945185573, -48.514799198696956], [-5.184666420400124, -48.521350755771245], [-5.188454784625131, -48.52954061339591], [-5.193075448256363, -48.53722942075777], [-5.198553540122615, -48.544391036247326], [-5.204135373843549, -48.55146526613738], [-5.21031198198795, -48.55802891898322], [-5.216486010832455, -48.56459505002784], [-5.220934740170444, -48.57224351526889], [-5.223300884402556, -48.58095595753443], [-5.225760471969562, -48.58964225251561], [-5.228171374868334, -48.59834221219955], [-5.231764674414538, -48.6066133050852], [-5.235559246828727, -48.614800824838916]],
+                {"bubblingMouseEvents": true, "color": "#1e3a5f", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "#1e3a5f", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.85, "smoothFactor": 1.0, "stroke": true, "weight": 4}
+            ).addTo(map_177e018d621c37c984f7bc70482b177b);
+        
+    
+            poly_line_16ed86c80c9c61850f03d5fb1e5a75ec.bindTooltip(
+                `<div>
+                     EFC (km 640–690)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var marker_88fda99e3aae78fb8e6d4853eb91fc83 = L.marker(
+                [-5.149214340420318, -48.37704830878583],
+                {
+}
+            ).addTo(map_177e018d621c37c984f7bc70482b177b);
+        
+    
+            var icon_778f0088116db7a98485314bc3421934 = L.AwesomeMarkers.icon(
+                {
+  "markerColor": "red",
+  "iconColor": "white",
+  "icon": "star",
+  "prefix": "fa",
+  "extraClasses": "fa-rotate-0",
+}
+            );
+        
+    
+        var popup_0e571ad5469ca483a809745d02ea441c = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_40abe5fe86e01b5c5a0817499cd805a6 = $(`<div id="html_40abe5fe86e01b5c5a0817499cd805a6" style="width: 100.0%; height: 100.0%;"><b>Km 661 — Ponte Sumaúma (EFC)</b><br>railway_km_661<br>Lat/Lon: -5.149214, -48.377048<br>Fonte: BigQuery climaticsystem.efc_clima.locations</div>`)[0];
+                popup_0e571ad5469ca483a809745d02ea441c.setContent(html_40abe5fe86e01b5c5a0817499cd805a6);
+            
+        
+
+        marker_88fda99e3aae78fb8e6d4853eb91fc83.bindPopup(popup_0e571ad5469ca483a809745d02ea441c)
+        ;
+
+        
+    
+    
+            marker_88fda99e3aae78fb8e6d4853eb91fc83.bindTooltip(
+                `<div>
+                     ★ Km 661 · Ponte Sumaúma
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_88fda99e3aae78fb8e6d4853eb91fc83.setIcon(icon_778f0088116db7a98485314bc3421934);
+            
+    
+            var circle_marker_685033810e8b51ce136cfa3a9cb3e882 = L.circleMarker(
+                [-5.149214340420318, -48.37704830878583],
+                {"bubblingMouseEvents": true, "color": "#c2410c", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#ea580c", "fillOpacity": 0.9, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 10, "stroke": true, "weight": 2}
+            ).addTo(map_177e018d621c37c984f7bc70482b177b);
+        
+    
+            var circle_marker_00ab7af5db8bb8a0f0e8c5031196d1ff = L.circleMarker(
+                [-5.2544, -48.1983],
+                {"bubblingMouseEvents": true, "color": "#64748b", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#64748b", "fillOpacity": 0.9, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 2}
+            ).addTo(map_177e018d621c37c984f7bc70482b177b);
+        
+    
+        var popup_fb278c9d4ed04cf2aeba43a8a749b353 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_06321a61afb769902fa01a276b5162d9 = $(`<div id="html_06321a61afb769902fa01a276b5162d9" style="width: 100.0%; height: 100.0%;"><b>RIO TOCANTINS - SÃO SEBASTIÃO DO TO</b><br>Código ANA: <b>23800495</b><br>Rio: RIO TOCANTINS<br>SÃO SEBASTIÃO DO TOCANTINS-TO<br>Lat/Lon: -5.25440, -48.19830<br>Distância ao Km 661: <b>23.0 km</b></div>`)[0];
+                popup_fb278c9d4ed04cf2aeba43a8a749b353.setContent(html_06321a61afb769902fa01a276b5162d9);
+            
+        
+
+        circle_marker_00ab7af5db8bb8a0f0e8c5031196d1ff.bindPopup(popup_fb278c9d4ed04cf2aeba43a8a749b353)
+        ;
+
+        
+    
+    
+            circle_marker_00ab7af5db8bb8a0f0e8c5031196d1ff.bindTooltip(
+                `<div>
+                     23800495 · RIO TOCANTINS - SÃO SEBASTIÃO DO TO (23.0 km)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var marker_59b2b7e051dc6708f973c536115bc0ef = L.marker(
+                [-5.2544, -48.1983],
+                {
+}
+            ).addTo(map_177e018d621c37c984f7bc70482b177b);
+        
+    
+            var div_icon_e5f459c3eaffb818e1116f03ea4fe315 = L.divIcon({
+  "html": "\u003cdiv style=\"font-size:11px;font-weight:700;color:#64748b;white-space:nowrap;text-shadow:0 0 3px #fff,0 0 3px #fff;\"\u003e23800495\u003cbr\u003e23 km\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+                marker_59b2b7e051dc6708f973c536115bc0ef.setIcon(div_icon_e5f459c3eaffb818e1116f03ea4fe315);
+            
+    
+            var poly_line_bfe0e08fc3b86a0dd9f65efcdb4481e3 = L.polyline(
+                [[-5.149214340420318, -48.37704830878583], [-5.2544, -48.1983]],
+                {"bubblingMouseEvents": true, "color": "#64748b", "dashArray": "6 8", "dashOffset": null, "fill": false, "fillColor": "#64748b", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.45, "smoothFactor": 1.0, "stroke": true, "weight": 1.5}
+            ).addTo(map_177e018d621c37c984f7bc70482b177b);
+        
+    
+            var circle_marker_8a56e1ce23a4ac1508d1055e96c0c716 = L.circleMarker(
+                [-5.3497, -48.8806],
+                {"bubblingMouseEvents": true, "color": "#0c4a6e", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#0c4a6e", "fillOpacity": 0.9, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 2}
+            ).addTo(map_177e018d621c37c984f7bc70482b177b);
+        
+    
+        var popup_43f491c9ac628518bee0bc398c072e9c = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_3f14517904b20a50d3a0387d7aee56c4 = $(`<div id="html_3f14517904b20a50d3a0387d7aee56c4" style="width: 100.0%; height: 100.0%;"><b>UHE TUCURUÍ MONTANTE 1</b><br>Código ANA: <b>29040000</b><br>Rio: RIO TOCANTINS<br>SÃO JOÃO DO ARAGUAIA-PA<br>Lat/Lon: -5.34970, -48.88060<br>Distância ao Km 661: <b>60.0 km</b></div>`)[0];
+                popup_43f491c9ac628518bee0bc398c072e9c.setContent(html_3f14517904b20a50d3a0387d7aee56c4);
+            
+        
+
+        circle_marker_8a56e1ce23a4ac1508d1055e96c0c716.bindPopup(popup_43f491c9ac628518bee0bc398c072e9c)
+        ;
+
+        
+    
+    
+            circle_marker_8a56e1ce23a4ac1508d1055e96c0c716.bindTooltip(
+                `<div>
+                     29040000 · UHE TUCURUÍ MONTANTE 1 (60.0 km)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var marker_510d2cb1cabf06625f0eb816c9460e47 = L.marker(
+                [-5.3497, -48.8806],
+                {
+}
+            ).addTo(map_177e018d621c37c984f7bc70482b177b);
+        
+    
+            var div_icon_2d4340eff22a80a5c4324af25459d7a4 = L.divIcon({
+  "html": "\u003cdiv style=\"font-size:11px;font-weight:700;color:#0c4a6e;white-space:nowrap;text-shadow:0 0 3px #fff,0 0 3px #fff;\"\u003e29040000\u003cbr\u003e60 km\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+                marker_510d2cb1cabf06625f0eb816c9460e47.setIcon(div_icon_2d4340eff22a80a5c4324af25459d7a4);
+            
+    
+            var poly_line_28a46753ea84bc298c470e30b5d84b55 = L.polyline(
+                [[-5.149214340420318, -48.37704830878583], [-5.3497, -48.8806]],
+                {"bubblingMouseEvents": true, "color": "#0c4a6e", "dashArray": "6 8", "dashOffset": null, "fill": false, "fillColor": "#0c4a6e", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.45, "smoothFactor": 1.0, "stroke": true, "weight": 1.5}
+            ).addTo(map_177e018d621c37c984f7bc70482b177b);
+        
+    
+            var circle_marker_40b0eae76200dd8b10f3280cab7c16b5 = L.circleMarker(
+                [-5.6514, -48.1325],
+                {"bubblingMouseEvents": true, "color": "#0f766e", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#0f766e", "fillOpacity": 0.9, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 2}
+            ).addTo(map_177e018d621c37c984f7bc70482b177b);
+        
+    
+        var popup_da5b9e5911a5776e95a1638c2c175258 = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_18e49b024445b0daa556ebe0ce3eea6b = $(`<div id="html_18e49b024445b0daa556ebe0ce3eea6b" style="width: 100.0%; height: 100.0%;"><b>ARAGUATINS</b><br>Código ANA: <b>28850000</b><br>Rio: RIO ARAGUAIA<br>ARAGUATINS-TO<br>Lat/Lon: -5.65140, -48.13250<br>Distância ao Km 661: <b>62.1 km</b></div>`)[0];
+                popup_da5b9e5911a5776e95a1638c2c175258.setContent(html_18e49b024445b0daa556ebe0ce3eea6b);
+            
+        
+
+        circle_marker_40b0eae76200dd8b10f3280cab7c16b5.bindPopup(popup_da5b9e5911a5776e95a1638c2c175258)
+        ;
+
+        
+    
+    
+            circle_marker_40b0eae76200dd8b10f3280cab7c16b5.bindTooltip(
+                `<div>
+                     28850000 · ARAGUATINS (62.1 km)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var marker_447b2ef9ed3dba23b42804c4f7c50afb = L.marker(
+                [-5.6514, -48.1325],
+                {
+}
+            ).addTo(map_177e018d621c37c984f7bc70482b177b);
+        
+    
+            var div_icon_2cedf44e41b9df0c132f4a0cbe710532 = L.divIcon({
+  "html": "\u003cdiv style=\"font-size:11px;font-weight:700;color:#0f766e;white-space:nowrap;text-shadow:0 0 3px #fff,0 0 3px #fff;\"\u003e28850000\u003cbr\u003e62 km\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+                marker_447b2ef9ed3dba23b42804c4f7c50afb.setIcon(div_icon_2cedf44e41b9df0c132f4a0cbe710532);
+            
+    
+            var poly_line_345d7365255c2d39b433e319e0c76e0c = L.polyline(
+                [[-5.149214340420318, -48.37704830878583], [-5.6514, -48.1325]],
+                {"bubblingMouseEvents": true, "color": "#0f766e", "dashArray": "6 8", "dashOffset": null, "fill": false, "fillColor": "#0f766e", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.45, "smoothFactor": 1.0, "stroke": true, "weight": 1.5}
+            ).addTo(map_177e018d621c37c984f7bc70482b177b);
+        
+    
+            var circle_marker_c3683411c63edd68ac4a970809304a89 = L.circleMarker(
+                [-5.3386, -49.1244],
+                {"bubblingMouseEvents": true, "color": "#b45309", "dashArray": null, "dashOffset": null, "fill": true, "fillColor": "#b45309", "fillOpacity": 0.9, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "opacity": 1.0, "radius": 9, "stroke": true, "weight": 2}
+            ).addTo(map_177e018d621c37c984f7bc70482b177b);
+        
+    
+        var popup_ff6ee763fc15234bf4f0c60423b2f64d = L.popup({
+  "maxWidth": 320,
+});
+
+        
+            
+                var html_2b69a4638bd648e09d3dc1e2850e3c12 = $(`<div id="html_2b69a4638bd648e09d3dc1e2850e3c12" style="width: 100.0%; height: 100.0%;"><b>MARABÁ</b><br>Código ANA: <b>29050000</b><br>Rio: RIO TOCANTINS<br>MARABÁ-PA<br>Lat/Lon: -5.33860, -49.12440<br>Distância ao Km 661: <b>85.4 km</b></div>`)[0];
+                popup_ff6ee763fc15234bf4f0c60423b2f64d.setContent(html_2b69a4638bd648e09d3dc1e2850e3c12);
+            
+        
+
+        circle_marker_c3683411c63edd68ac4a970809304a89.bindPopup(popup_ff6ee763fc15234bf4f0c60423b2f64d)
+        ;
+
+        
+    
+    
+            circle_marker_c3683411c63edd68ac4a970809304a89.bindTooltip(
+                `<div>
+                     29050000 · MARABÁ (85.4 km)
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var marker_1530d69c996aa568cb19c66e09e9557d = L.marker(
+                [-5.3386, -49.1244],
+                {
+}
+            ).addTo(map_177e018d621c37c984f7bc70482b177b);
+        
+    
+            var div_icon_b1dba6dfeff5ba8dac0df3044b6cebd4 = L.divIcon({
+  "html": "\u003cdiv style=\"font-size:11px;font-weight:700;color:#b45309;white-space:nowrap;text-shadow:0 0 3px #fff,0 0 3px #fff;\"\u003e29050000\u003cbr\u003e85 km\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+                marker_1530d69c996aa568cb19c66e09e9557d.setIcon(div_icon_b1dba6dfeff5ba8dac0df3044b6cebd4);
+            
+    
+            var poly_line_24c11eeb9bdb27122e5e54bfbacd18f8 = L.polyline(
+                [[-5.149214340420318, -48.37704830878583], [-5.3386, -49.1244]],
+                {"bubblingMouseEvents": true, "color": "#b45309", "dashArray": "6 8", "dashOffset": null, "fill": false, "fillColor": "#b45309", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 0.45, "smoothFactor": 1.0, "stroke": true, "weight": 1.5}
+            ).addTo(map_177e018d621c37c984f7bc70482b177b);
+        
+    
+            map_177e018d621c37c984f7bc70482b177b.fitBounds(
+                [[-5.6514, -49.1244], [-5.149214340420318, -48.1325]],
+                {"padding": [40, 40]}
+            );
+        
+    
+            L.control.fullscreen(
+                {
+  "position": "topleft",
+  "title": "Full Screen",
+  "titleCancel": "Exit Full Screen",
+  "forceSeparateButton": false,
+}
+            ).addTo(map_177e018d621c37c984f7bc70482b177b);
+        
+</script>
+</html>
