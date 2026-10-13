@@ -238,7 +238,7 @@ CUSTOM_CSS = f"""
   }}
 
   .efc-legend {{
-    position: fixed; bottom: 22px; left: 18px; z-index: 9999;
+    position: fixed; bottom: 22px; left: 18px; z-index: 900;
     background: rgba(247,244,239,.96);
     border: 1px solid {CARD_BORDER};
     border-radius: 12px;
@@ -284,20 +284,74 @@ CUSTOM_CSS = f"""
     font-size: 11px; color: {MUTED};
   }}
 
-  .efc-compare {{
-    position: fixed; top: 78px; right: 14px; z-index: 9999;
+  /* Keep Folium layer/zoom controls above custom chrome */
+  .leaflet-control-container {{ z-index: 1100 !important; }}
+  .leaflet-top.leaflet-right {{
+    margin-top: 8px !important;
+    margin-right: 8px !important;
+  }}
+  .leaflet-control-layers {{
+    max-height: min(52vh, 420px);
+    overflow: auto;
+  }}
+
+  /* Comparison dock: bottom-right, clear of layer control / zoom / header */
+  .efc-compare-dock {{
+    position: fixed;
+    bottom: 28px;
+    right: 14px;
+    z-index: 900;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    max-width: min(400px, calc(100vw - 28px));
+    pointer-events: none;
+  }}
+  .efc-compare-dock > * {{ pointer-events: auto; }}
+  .efc-compare-toggle {{
+    font-family: "Source Sans 3", "Segoe UI", sans-serif;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: {INK};
     background: rgba(247,244,239,.96);
+    border: 1px solid {CARD_BORDER};
+    border-radius: 10px;
+    padding: 8px 12px;
+    box-shadow: 0 4px 16px rgba(28,36,48,.12);
+    cursor: pointer;
+    letter-spacing: 0.01em;
+  }}
+  .efc-compare-toggle:hover {{ background: #fffdf9; }}
+  .efc-compare-toggle[aria-expanded="true"] {{
+    background: #fffdf9;
+    border-color: #cbbfaa;
+  }}
+  .efc-compare {{
+    display: none;
+    background: rgba(247,244,239,.97);
     border: 1px solid {CARD_BORDER};
     border-radius: 12px;
     padding: 11px 12px;
     box-shadow: 0 6px 20px rgba(28,36,48,.12);
-    max-width: 390px; max-height: 42vh; overflow: auto;
-    font-size: 11.5px; color: {INK};
+    width: min(390px, calc(100vw - 28px));
+    max-height: min(38vh, 280px);
+    overflow: auto;
+    font-size: 11.5px;
+    color: {INK};
   }}
+  .efc-compare.is-open {{ display: block; }}
   .efc-compare .ttl {{
     font-family: Fraunces, Georgia, serif;
     font-weight: 700; font-size: 12.5px;
     margin-bottom: 7px;
+  }}
+  .efc-compare .ttl-sub {{
+    font-family: "Source Sans 3", "Segoe UI", sans-serif;
+    font-weight: 500;
+    font-size: 10.5px;
+    color: {MUTED};
+    margin: -3px 0 8px;
   }}
   .efc-compare table {{
     width: 100%; border-collapse: collapse;
@@ -312,6 +366,17 @@ CUSTOM_CSS = f"""
     border-bottom: 1px solid #f0ebe3;
   }}
   .efc-compare tr:last-child td {{ border-bottom: none; }}
+  @media (max-width: 720px) {{
+    .efc-compare-dock {{
+      bottom: 16px;
+      right: 10px;
+      left: 10px;
+      max-width: none;
+      align-items: stretch;
+    }}
+    .efc-compare {{ width: 100%; max-height: 32vh; }}
+    .efc-legend {{ max-width: min(280px, calc(100vw - 24px)); }}
+  }}
 </style>
 """
 
@@ -475,13 +540,32 @@ def build_html(corridor: dict, path: Path) -> None:
         for r in cmp
     )
     panel = f"""
-    <div class="efc-compare">
-      <div class="ttl">EWS → ANA mais próxima</div>
-      <table>
-        <tr><th>Ponto</th><th>ANA</th><th>Dist.</th><th>Data nível</th></tr>
-        {rows_html}
-      </table>
+    <div class="efc-compare-dock">
+      <div id="efc-compare-panel" class="efc-compare" role="region" aria-label="Comparação EWS e ANA">
+        <div class="ttl">EWS → ANA mais próxima</div>
+        <div class="ttl-sub">Km 661 eixo ≠ Ponte Sumaúma (vão) · mesmos dados, posições distintas</div>
+        <table>
+          <tr><th>Ponto</th><th>ANA</th><th>Dist.</th><th>Data nível</th></tr>
+          {rows_html}
+        </table>
+      </div>
+      <button type="button" id="efc-compare-toggle" class="efc-compare-toggle"
+              aria-expanded="false" aria-controls="efc-compare-panel">
+        Comparação EWS↔ANA
+      </button>
     </div>
+    <script>
+    (function () {{
+      var btn = document.getElementById("efc-compare-toggle");
+      var panel = document.getElementById("efc-compare-panel");
+      if (!btn || !panel) return;
+      btn.addEventListener("click", function () {{
+        var open = panel.classList.toggle("is-open");
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+        btn.textContent = open ? "Fechar comparação" : "Comparação EWS↔ANA";
+      }});
+    }})();
+    </script>
     """
     m.get_root().html.add_child(folium.Element(panel))
 
