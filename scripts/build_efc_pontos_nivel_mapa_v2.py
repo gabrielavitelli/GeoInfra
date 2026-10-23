@@ -237,40 +237,54 @@ CUSTOM_CSS = f"""
     font-weight: 500;
   }}
 
+  /* Keep map vector canvas under fixed chrome (legend/header/compare) */
+  .folium-map, .leaflet-container {{ z-index: 1; }}
+
+  /* Legend/header/compare live on document.body (see hoist script) so map
+     SVG/markers (incl. purple EWS diamonds / axis strokes) cannot paint through. */
   .efc-legend {{
-    position: fixed; bottom: 22px; left: 18px; z-index: 900;
-    background: rgba(247,244,239,.96);
+    position: fixed; bottom: 22px; left: 18px; z-index: 20000 !important;
+    background: #fffdf9;
     border: 1px solid {CARD_BORDER};
     border-radius: 12px;
     padding: 12px 14px;
-    box-shadow: 0 6px 20px rgba(28,36,48,.12);
+    box-shadow: 0 6px 20px rgba(28,36,48,.14);
     max-width: 300px;
     font-size: 12px;
     color: {INK};
+    isolation: isolate;
+    overflow: hidden;
+    pointer-events: auto;
   }}
   .efc-legend .ttl {{
     font-family: Fraunces, Georgia, serif;
     font-weight: 700;
     font-size: 13px;
     margin-bottom: 8px;
+    position: relative;
+    z-index: 1;
+    background: #fffdf9;
   }}
   .efc-legend .row {{
     display: flex; align-items: center; gap: 9px;
     margin: 5px 0; color: {MUTED};
+    position: relative;
+    z-index: 1;
+    background: #fffdf9;
   }}
   .efc-legend .row b {{ color: {INK}; font-weight: 600; }}
   .swatch-ews {{
-    width: 13px; height: 13px; background: {EWS_FILL};
+    width: 12px; height: 12px; background: {EWS_FILL};
     transform: rotate(45deg); border: 2px solid #fff;
-    box-shadow: 0 1px 3px rgba(0,0,0,.25); flex-shrink: 0;
+    box-shadow: none; flex-shrink: 0;
   }}
   .swatch-ana {{
-    width: 13px; height: 13px; background: {ANA_FILL};
+    width: 12px; height: 12px; background: {ANA_FILL};
     border-radius: 50%; border: 2px solid {ANA_EDGE};
-    box-shadow: 0 1px 3px rgba(0,0,0,.2); flex-shrink: 0;
+    box-shadow: none; flex-shrink: 0;
   }}
   .swatch-cat {{
-    width: 12px; height: 12px; background: {ANA_CAT};
+    width: 11px; height: 11px; background: {ANA_CAT};
     border-radius: 50%; border: 2px solid #5c6570;
     flex-shrink: 0;
   }}
@@ -282,10 +296,22 @@ CUSTOM_CSS = f"""
     margin-top: 8px; padding-top: 8px;
     border-top: 1px solid #ece7dd;
     font-size: 11px; color: {MUTED};
+    position: relative;
+    z-index: 1;
+    background: #fffdf9;
+  }}
+  .efc-header {{
+    z-index: 20000 !important;
+    background: #fffdf9 !important;
+  }}
+  .efc-compare-dock {{ z-index: 20000 !important; }}
+  .efc-elev-readout {{
+    z-index: 20000 !important;
+    background: #fffdf9 !important;
   }}
 
-  /* Keep Folium layer/zoom controls above custom chrome */
-  .leaflet-control-container {{ z-index: 1100 !important; }}
+  /* Layer/zoom controls above legend/compare chrome; both above map vectors */
+  .leaflet-control-container {{ z-index: 10100 !important; }}
   .leaflet-top.leaflet-right {{
     margin-top: 8px !important;
     margin-right: 8px !important;
@@ -300,7 +326,7 @@ CUSTOM_CSS = f"""
     position: fixed;
     bottom: 28px;
     right: 14px;
-    z-index: 900;
+    z-index: 10000;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
@@ -368,8 +394,8 @@ CUSTOM_CSS = f"""
   .efc-compare tr:last-child td {{ border-bottom: none; }}
   .efc-elev-readout {{
     position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
-    z-index: 900;
-    background: rgba(247,244,239,.97);
+    z-index: 10000;
+    background: {CARD};
     border: 1px solid {CARD_BORDER};
     border-radius: 10px;
     padding: 8px 14px;
@@ -406,6 +432,8 @@ def build_html(corridor: dict, path: Path) -> None:
         tiles=None,
         control_scale=True,
         prefer_canvas=True,
+        # Avoid CSS 3D transforms so the EFC axis canvas cannot paint over fixed chrome
+        disable_3d=True,
     )
 
     # Soft light basemap (Esri) + OSM fallback
@@ -565,11 +593,29 @@ def build_html(corridor: dict, path: Path) -> None:
       <div class="foot">ANA no corredor (≤{corridor['buffer_km']} km): <b>{n_ana}</b>
         · com nível: {n_bq} · {dem_note}<br>
         Camada <b>ALOS/Cota · relevo</b>: hillshade Esri (visual). Cotas nos pontos:
-        DEM ~30&nbsp;m (Open-Meteo) — ALOS&nbsp;2&nbsp;m DSM não encontrado no bucket público.<br>
+        DEM ~30&nbsp;m (Open-Meteo) — ALOS&nbsp;2&nbsp;m DSM <b>não encontrado</b> em
+        gs://efc-clima-data nem climaticdata (busca autenticada).<br>
         Clique no mapa para ler cota (tiles Terrarium).<br>
         Km 661 (eixo) ≠ vão: ponte OSM ~170&nbsp;m a leste (~km&nbsp;660,8).</div>
     </div>
     <div id="efc-elev-readout" class="efc-elev-readout" hidden>Cota: —</div>
+    <script>
+    /* Hoist fixed chrome to <body> so Leaflet SVG/markers cannot draw through. */
+    (function () {{
+      function hoist() {{
+        var sel = [".efc-legend", ".efc-header", ".efc-compare-dock", ".efc-elev-readout"];
+        sel.forEach(function (s) {{
+          document.querySelectorAll(s).forEach(function (el) {{
+            if (el.parentElement !== document.body) document.body.appendChild(el);
+          }});
+        }});
+      }}
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", hoist);
+      else hoist();
+      setTimeout(hoist, 0);
+      setTimeout(hoist, 400);
+    }})();
+    </script>
     """
     m.get_root().html.add_child(folium.Element(legend))
 
