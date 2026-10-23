@@ -366,6 +366,20 @@ CUSTOM_CSS = f"""
     border-bottom: 1px solid #f0ebe3;
   }}
   .efc-compare tr:last-child td {{ border-bottom: none; }}
+  .efc-elev-readout {{
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    z-index: 900;
+    background: rgba(247,244,239,.97);
+    border: 1px solid {CARD_BORDER};
+    border-radius: 10px;
+    padding: 8px 14px;
+    box-shadow: 0 4px 16px rgba(28,36,48,.12);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: {INK};
+    pointer-events: none;
+  }}
+  .efc-elev-readout[hidden] {{ display: none !important; }}
   @media (max-width: 720px) {{
     .efc-compare-dock {{
       bottom: 16px;
@@ -402,11 +416,23 @@ def build_html(corridor: dict, path: Path) -> None:
         max_zoom=16,
     ).add_to(m)
     folium.TileLayer("OpenStreetMap", name="OpenStreetMap", show=False).add_to(m)
+    # Relevo / cota visual (hillshade). True ALOS 2m DSM not available as free XYZ;
+    # point cotas sampled via Open-Meteo DEM (~30 m) — see popups / click readout.
+    folium.TileLayer(
+        tiles="https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}",
+        attr="Esri · World Hillshade",
+        name="ALOS/Cota · relevo (hillshade)",
+        overlay=True,
+        control=True,
+        show=True,
+        opacity=0.55,
+        max_zoom=16,
+    ).add_to(m)
 
     fg_efc = FeatureGroup(name="Eixo EFC", show=True)
     fg_ews = FeatureGroup(name="Pontos EWS / EFC", show=True)
-    fg_ana_nivel = FeatureGroup(name="ANA com nível (BQ)", show=True)
-    fg_ana_catalog = FeatureGroup(name="ANA catálogo (s/ nível BQ)", show=True)
+    fg_ana_nivel = FeatureGroup(name="ANA com nível (atual)", show=True)
+    fg_ana_catalog = FeatureGroup(name="ANA catálogo (s/ nível)", show=True)
 
     folium.PolyLine(
         [[p["lat"], p["lon"]] for p in efc],
@@ -417,6 +443,8 @@ def build_html(corridor: dict, path: Path) -> None:
     ).add_to(fg_efc)
 
     for p in OPS:
+        cota = p.get("cota_m")
+        cota_txt = f"{cota:.0f} m" if cota is not None else "—"
         popup = _popup_html(
             p["nome"],
             "EWS / EFC",
@@ -426,6 +454,7 @@ def build_html(corridor: dict, path: Path) -> None:
                 ("Código EWS", p.get("ews") or "—"),
                 ("Km EFC", str(p["km_efc"])),
                 ("Lat / Lon", f"{p['lat']:.6f}, {p['lon']:.6f}"),
+                ("Cota altimétrica", f"{cota_txt} · {p.get('cota_fonte') or 'DEM'}"),
                 ("Arquivo", p["xlsx"]),
                 ("Variável", "precipitação (pluviômetro)"),
             ],
@@ -461,13 +490,18 @@ def build_html(corridor: dict, path: Path) -> None:
         has = s.get("has_nivel_bq")
         fresh = s.get("fresh")
         if has and fresh:
-            fill, border, avail = ANA_FILL, ANA_EDGE, "nível recente no BQ"
+            fill, border, avail = ANA_FILL, ANA_EDGE, "nível recente (ANA telemetria)"
         elif has:
-            fill, border, avail = ANA_STALE, ANA_EDGE, "nível no BQ (pode estar defasado)"
+            fill, border, avail = ANA_STALE, ANA_EDGE, "nível disponível (pode estar defasado)"
         else:
-            fill, border, avail = ANA_CAT, "#5c6570", "catálogo ANA (sem série nível no BQ)"
+            fill, border, avail = ANA_CAT, "#5c6570", "catálogo ANA (sem série nível)"
 
         nivel_txt = f"{s['last_nivel_m']:.3f} m" if s.get("last_nivel_m") is not None else "—"
+        when = s.get("max_datetime") or s.get("max_date") or "—"
+        cota = s.get("cota_m")
+        cota_txt = f"{cota:.0f} m" if cota is not None else "—"
+        km_efc = s.get("nearest_efc_km") if s.get("nearest_efc_km") is not None else s.get("km_efc")
+        dist_efc = s.get("dist_efc_km") if s.get("dist_efc_km") is not None else s.get("dist_km")
         popup = _popup_html(
             label,
             "ANA hidrológica",
@@ -477,10 +511,11 @@ def build_html(corridor: dict, path: Path) -> None:
                 ("Rio", s.get("rio") or "—"),
                 ("Município", s.get("municipio") or "—"),
                 ("Lat / Lon", f"{s['lat']:.5f}, {s['lon']:.5f}"),
-                ("Km EFC", f"{s.get('nearest_efc_km')} ({s.get('dist_efc_km')} km)"),
-                ("Variável", "nivel_m (cota)"),
+                ("Km EFC", f"{km_efc} ({dist_efc} km)"),
+                ("Cota altimétrica", f"{cota_txt} · {s.get('cota_fonte') or 'DEM'}"),
+                ("Variável", "nivel_m (régua)"),
                 ("Último nível", nivel_txt),
-                ("Última data", s.get("max_date") or "—"),
+                ("Última data", when),
                 ("Disponibilidade", avail),
             ],
         )
@@ -506,10 +541,13 @@ def build_html(corridor: dict, path: Path) -> None:
 
     m.get_root().header.add_child(folium.Element(CUSTOM_CSS))
 
-    header = """
+    updated = corridor.get("updated_at") or ""
+    updated_short = updated[:16].replace("T", " ") if updated else "—"
+    dem_note = corridor.get("dem_label") or "Cota DEM (~30 m)"
+    header = f"""
     <div class="efc-header">
       <h1>EFC · Nível — EWS vs ANA</h1>
-      <p>Pontos operacionais EWS e estações hidrológicas ANA ao longo da ferrovia</p>
+      <p>Pontos EWS e ANA · cota altimétrica nos popups · atualizado em {updated_short} UTC</p>
     </div>
     """
     m.get_root().html.add_child(folium.Element(header))
@@ -521,13 +559,17 @@ def build_html(corridor: dict, path: Path) -> None:
     <div class="efc-legend">
       <div class="ttl">Legenda</div>
       <div class="row"><span class="swatch-ews"></span><span><b>EWS / EFC</b> — abrigos e pontos</span></div>
-      <div class="row"><span class="swatch-ana"></span><span><b>ANA</b> — nível no BigQuery</span></div>
-      <div class="row"><span class="swatch-cat"></span><span><b>ANA catálogo</b> — sem nível BQ</span></div>
+      <div class="row"><span class="swatch-ana"></span><span><b>ANA</b> — nível atual (telemetria)</span></div>
+      <div class="row"><span class="swatch-cat"></span><span><b>ANA catálogo</b> — sem nível</span></div>
       <div class="row"><span class="swatch-line"></span><span>Eixo da EFC</span></div>
       <div class="foot">ANA no corredor (≤{corridor['buffer_km']} km): <b>{n_ana}</b>
-        · antes: {n_prev} · com nível BQ: {n_bq}<br>
-        Km 661 (eixo) ≠ vão: ponte OSM ~170&nbsp;m a leste (~km&nbsp;660,8) sobre corredor ripário.</div>
+        · com nível: {n_bq} · {dem_note}<br>
+        Camada <b>ALOS/Cota · relevo</b>: hillshade Esri (visual). Cotas nos pontos:
+        DEM ~30&nbsp;m (Open-Meteo) — ALOS&nbsp;2&nbsp;m DSM não encontrado no bucket público.<br>
+        Clique no mapa para ler cota (tiles Terrarium).<br>
+        Km 661 (eixo) ≠ vão: ponte OSM ~170&nbsp;m a leste (~km&nbsp;660,8).</div>
     </div>
+    <div id="efc-elev-readout" class="efc-elev-readout" hidden>Cota: —</div>
     """
     m.get_root().html.add_child(folium.Element(legend))
 
@@ -564,6 +606,58 @@ def build_html(corridor: dict, path: Path) -> None:
         btn.setAttribute("aria-expanded", open ? "true" : "false");
         btn.textContent = open ? "Fechar comparação" : "Comparação EWS↔ANA";
       }});
+    }})();
+    </script>
+    <script>
+    /* Click-to-read elevation from AWS Terrarium tiles (Mapzen DEM blend, ~30 m). */
+    (function () {{
+      function attach(map) {{
+        if (!map || map._efcElevBound) return;
+        map._efcElevBound = true;
+        var box = document.getElementById("efc-elev-readout");
+        map.on("click", function (e) {{
+          var lat = e.latlng.lat, lon = e.latlng.lng, z = 12;
+          var n = Math.pow(2, z);
+          var x = Math.floor((lon + 180) / 360 * n);
+          var y = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) +
+                    1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n);
+          var url = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/" + z + "/" + x + "/" + y + ".png";
+          var img = new Image();
+          img.crossOrigin = "Anonymous";
+          img.onload = function () {{
+            var c = document.createElement("canvas");
+            c.width = c.height = 256;
+            var ctx = c.getContext("2d");
+            ctx.drawImage(img, 0, 0);
+            var tileLon0 = x / n * 360 - 180;
+            var tileLat0 = Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI;
+            var tileLon1 = (x + 1) / n * 360 - 180;
+            var tileLat1 = Math.atan(Math.sinh(Math.PI * (1 - 2 * (y + 1) / n))) * 180 / Math.PI;
+            var px = Math.min(255, Math.max(0, Math.floor((lon - tileLon0) / (tileLon1 - tileLon0) * 256)));
+            var py = Math.min(255, Math.max(0, Math.floor((tileLat0 - lat) / (tileLat0 - tileLat1) * 256)));
+            var d = ctx.getImageData(px, py, 1, 1).data;
+            var elev = (d[0] * 256 + d[1] + d[2] / 256) - 32768;
+            if (box) {{
+              box.hidden = false;
+              box.textContent = "Cota ≈ " + elev.toFixed(0) + " m  ·  " + lat.toFixed(5) + ", " + lon.toFixed(5) + "  (Terrarium DEM)";
+            }}
+          }};
+          img.onerror = function () {{
+            if (box) {{ box.hidden = false; box.textContent = "Cota indisponível neste ponto"; }}
+          }};
+          img.src = url;
+        }});
+      }}
+      function boot() {{
+        if (window[Object.keys(window).find(function (k) {{ return k.indexOf("map_") === 0; }})]) {{
+          var key = Object.keys(window).find(function (k) {{ return k.indexOf("map_") === 0; }});
+          attach(window[key]);
+          return;
+        }}
+        setTimeout(boot, 200);
+      }}
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+      else boot();
     }})();
     </script>
     """
@@ -711,6 +805,15 @@ def build_xlsx(corridor: dict, path: Path) -> None:
 
 def main() -> None:
     corridor = json.loads(CORRIDOR.read_text())
+    # Merge precomputed DEM cotas into OPS (from /tmp/ops_with_cota.json when present)
+    ops_cota_path = Path("/tmp/ops_with_cota.json")
+    if ops_cota_path.exists():
+        by_id = {o["id"]: o for o in json.loads(ops_cota_path.read_text())}
+        for p in OPS:
+            extra = by_id.get(p["id"]) or {}
+            if extra.get("cota_m") is not None:
+                p["cota_m"] = extra["cota_m"]
+                p["cota_fonte"] = extra.get("cota_fonte") or corridor.get("dem_source")
     build_html(corridor, OUT_HTML)
     build_png(corridor, OUT_PNG)
     build_xlsx(corridor, OUT_XLSX)
