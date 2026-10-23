@@ -149,6 +149,35 @@ CUSTOM_CSS = f"""
     font-family: "Source Sans 3", "Segoe UI", sans-serif;
     background: #e8e4dc;
   }}
+
+  /* Isolate ALL map painting (tiles+SVG+markers) under fixed chrome */
+  .folium-map, .leaflet-container {{
+    z-index: 0 !important;
+    isolation: isolate;
+  }}
+  .leaflet-map-pane {{ z-index: 1 !important; }}
+  .leaflet-control-container {{ z-index: 2 !important; }}
+
+  .efc-header {{
+    z-index: 100000 !important;
+    background: #fffdf9 !important;
+    transform: translate(-50%, 0) translateZ(0);
+  }}
+  .efc-legend {{
+    position: fixed !important;
+    bottom: 22px !important;
+    left: 18px !important;
+    z-index: 100000 !important;
+    background: #fffdf9 !important;
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+    isolation: isolate;
+    overflow: hidden;
+  }}
+  .efc-compare-dock {{ z-index: 100000 !important; transform: translateZ(0); }}
+  .efc-elev-readout {{ z-index: 100000 !important; transform: translateZ(0); background: #fffdf9 !important; }}
+
   .leaflet-control-layers {{
     border: 1px solid {CARD_BORDER} !important;
     border-radius: 10px !important;
@@ -240,6 +269,16 @@ CUSTOM_CSS = f"""
   /* Keep map vector canvas under fixed chrome (legend/header/compare) */
   .folium-map, .leaflet-container {{ z-index: 1; }}
 
+  /* Map vector panes MUST stay below Leaflet controls (Legenda / layers) */
+  .leaflet-map-pane {{ z-index: 1 !important; }}
+  .leaflet-tile-pane {{ z-index: 200 !important; }}
+  .leaflet-overlay-pane {{ z-index: 400 !important; }}
+  .leaflet-shadow-pane {{ z-index: 500 !important; }}
+  .leaflet-marker-pane {{ z-index: 600 !important; }}
+  .leaflet-tooltip-pane {{ z-index: 650 !important; }}
+  .leaflet-popup-pane {{ z-index: 700 !important; }}
+
+
   /* Legend/header/compare live on document.body (see hoist script) so map
      SVG/markers (incl. purple EWS diamonds / axis strokes) cannot paint through. */
   .efc-legend {{
@@ -292,6 +331,19 @@ CUSTOM_CSS = f"""
     width: 18px; height: 3px; background: {EFC_LINE};
     border-radius: 2px; flex-shrink: 0;
   }}
+
+  .swatch-ews, .swatch-ana, .swatch-cat, .swatch-line {{
+    display: inline-block;
+    flex: 0 0 auto;
+    vertical-align: middle;
+  }}
+  .swatch-line {{
+    width: 18px !important;
+    max-width: 18px !important;
+    min-width: 18px !important;
+    height: 3px !important;
+  }}
+
   .efc-legend .foot {{
     margin-top: 8px; padding-top: 8px;
     border-top: 1px solid #ece7dd;
@@ -431,8 +483,7 @@ def build_html(corridor: dict, path: Path) -> None:
         zoom_start=6,
         tiles=None,
         control_scale=True,
-        prefer_canvas=True,
-        # Avoid CSS 3D transforms so the EFC axis canvas cannot paint over fixed chrome
+        prefer_canvas=False,
         disable_3d=True,
     )
 
@@ -600,20 +651,134 @@ def build_html(corridor: dict, path: Path) -> None:
     </div>
     <div id="efc-elev-readout" class="efc-elev-readout" hidden>Cota: —</div>
     <script>
-    /* Hoist fixed chrome to <body> so Leaflet SVG/markers cannot draw through. */
+    /* Keep Legenda on document.body (outside .leaflet-container) so map SVG
+       cannot composite over it. Undo any accidental control remount. */
     (function () {{
-      function hoist() {{
-        var sel = [".efc-legend", ".efc-header", ".efc-compare-dock", ".efc-elev-readout"];
-        sel.forEach(function (s) {{
-          document.querySelectorAll(s).forEach(function (el) {{
+      function placeChrome() {{
+        [".efc-legend", ".efc-header", ".efc-compare-dock", ".efc-elev-readout"].forEach(function (sel) {{
+          document.querySelectorAll(sel).forEach(function (el) {{
             if (el.parentElement !== document.body) document.body.appendChild(el);
+            el.removeAttribute("data-efc-control");
+            if (sel === ".efc-legend") {{
+              el.classList.remove("leaflet-control");
+              el.style.position = "fixed";
+              el.style.bottom = "22px";
+              el.style.left = "18px";
+              el.style.top = "auto";
+              el.style.right = "auto";
+              el.style.zIndex = "100000";
+              el.style.margin = "0";
+              el.style.transform = "translateZ(0)";
+              el.style.background = "#fffdf9";
+            }}
           }});
         }});
+        document.querySelectorAll(".folium-map, .leaflet-container").forEach(function (el) {{
+          el.style.zIndex = "0";
+          el.style.isolation = "isolate";
+        }});
+        document.querySelectorAll(".leaflet-map-pane, .leaflet-overlay-pane, .leaflet-marker-pane, .leaflet-shadow-pane, .leaflet-tooltip-pane").forEach(function (el) {{
+          el.style.clipPath = "none";
+          el.style.webkitClipPath = "none";
+        }});
       }}
-      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", hoist);
-      else hoist();
-      setTimeout(hoist, 0);
-      setTimeout(hoist, 400);
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", placeChrome);
+      else placeChrome();
+      setTimeout(placeChrome, 0);
+      setTimeout(placeChrome, 300);
+      setTimeout(placeChrome, 1200);
+    }})();
+    </script>
+<script>
+    /* Punch vector panes around Leaflet controls so Eixo/markers cannot paint over them. */
+    (function () {{
+      function findMap() {{
+        if (!window.L) return null;
+        for (var k in window) {{
+          try {{
+            if (k.indexOf("map_") === 0 && window[k] instanceof L.Map) return window[k];
+          }} catch (e) {{}}
+        }}
+        return null;
+      }}
+      function pinStacking(map) {{
+        var root = map.getContainer();
+        var mp = root.querySelector(".leaflet-map-pane");
+        var cc = root.querySelector(".leaflet-control-container");
+        if (mp) mp.style.zIndex = "1";
+        if (cc) cc.style.zIndex = "5000";
+      }}
+      function clipVectors(map) {{
+        var root = map.getContainer();
+        var mr = root.getBoundingClientRect();
+        if (mr.width < 2 || mr.height < 2) return;
+        var pad = 4;
+        var parts = ["0% 0%", "100% 0%", "100% 100%", "0% 100%", "0% 0%"];
+        root.querySelectorAll(".leaflet-control").forEach(function (ctrl) {{
+          if (ctrl.classList.contains("leaflet-control-attribution")) return;
+          if (ctrl.classList.contains("leaflet-control-scale")) return;
+          var r = ctrl.getBoundingClientRect();
+          if (r.width < 4 || r.height < 4) return;
+          var L = Math.max(0, r.left - mr.left - pad);
+          var T = Math.max(0, r.top - mr.top - pad);
+          var R = Math.min(mr.width, r.right - mr.left + pad);
+          var B = Math.min(mr.height, r.bottom - mr.top + pad);
+          parts.push(
+            L + "px " + T + "px",
+            L + "px " + B + "px",
+            R + "px " + B + "px",
+            R + "px " + T + "px",
+            L + "px " + T + "px"
+          );
+        }});
+        var path = "polygon(evenodd, " + parts.join(", ") + ")";
+        root.querySelectorAll(
+          ".leaflet-overlay-pane, .leaflet-marker-pane, .leaflet-shadow-pane, .leaflet-tooltip-pane"
+        ).forEach(function (pane) {{
+          pane.style.clipPath = path;
+          pane.style.webkitClipPath = path;
+        }});
+      }}
+      function mountLegend(map) {{
+        var legend = document.querySelector(".efc-legend");
+        if (!legend || legend.getAttribute("data-efc-control") === "1") return;
+        var Ctrl = L.Control.extend({{
+          options: {{ position: "bottomleft" }},
+          onAdd: function () {{
+            legend.style.position = "relative";
+            legend.style.bottom = "auto";
+            legend.style.left = "auto";
+            legend.style.right = "auto";
+            legend.style.top = "auto";
+            legend.style.zIndex = "auto";
+            legend.style.margin = "0 0 10px 8px";
+            legend.style.maxWidth = "300px";
+            legend.setAttribute("data-efc-control", "1");
+            return legend;
+          }}
+        }});
+        try {{ new Ctrl().addTo(map); }} catch (err) {{ console.warn(err); }}
+      }}
+      function refresh(map) {{
+        pinStacking(map);
+        mountLegend(map);
+        clipVectors(map);
+      }}
+      var n = 0;
+      var t = setInterval(function () {{
+        var map = findMap();
+        if (!map) {{ if (++n > 100) clearInterval(t); return; }}
+        refresh(map);
+        map.on("viewreset move end zoomend moveend resize", function () {{ refresh(map); }});
+        // layers UI toggle can change control size
+        setTimeout(function () {{ refresh(map); }}, 300);
+        setTimeout(function () {{ refresh(map); }}, 1000);
+        clearInterval(t);
+      }}, 100);
+      window.addEventListener("resize", function () {{
+        var map = findMap();
+        if (map) refresh(map);
+      }});
     }})();
     </script>
     """

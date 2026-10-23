@@ -12,6 +12,47 @@
     font-family: "Source Sans 3", "Segoe UI", sans-serif;
     background: #e8e4dc;
   }
+
+  /* Isolate ALL map painting (tiles+SVG+markers) under fixed chrome */
+  .folium-map, .leaflet-container {
+    z-index: 0 !important;
+    isolation: isolate;
+  }
+  .leaflet-map-pane { z-index: 1 !important; }
+  .leaflet-control-container { z-index: 2 !important; }
+
+  .efc-header {
+    position: fixed; top: 14px; left: 50%;
+    transform: translate(-50%, 0) translateZ(0);
+    z-index: 100000 !important;
+    background: #fffdf9 !important;
+  }
+  .efc-legend {
+    position: fixed !important;
+    bottom: 22px !important;
+    left: 18px !important;
+    top: auto !important;
+    right: auto !important;
+    z-index: 100000 !important;
+    background: #fffdf9 !important;
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+    isolation: isolate;
+    overflow: hidden;
+    pointer-events: auto;
+    margin: 0 !important;
+  }
+  .efc-compare-dock {
+    z-index: 100000 !important;
+    transform: translateZ(0);
+  }
+  .efc-elev-readout {
+    z-index: 100000 !important;
+    transform: translateZ(0);
+    background: #fffdf9 !important;
+  }
+
   .leaflet-control-layers {
     border: 1px solid #d9d2c5 !important;
     border-radius: 10px !important;
@@ -100,25 +141,15 @@
     font-weight: 500;
   }
 
-  /* Keep map vector canvas under fixed chrome (legend/header/compare) */
-  .folium-map, .leaflet-container { z-index: 1; }
-
-  /* Legend/header/compare live on document.body (see hoist script) so map
-     SVG/markers (incl. purple EWS diamonds / axis strokes) cannot paint through. */
-  .efc-legend {
-    position: fixed; bottom: 22px; left: 18px; z-index: 20000 !important;
-    background: #fffdf9;
-    border: 1px solid #d9d2c5;
-    border-radius: 12px;
-    padding: 12px 14px;
-    box-shadow: 0 6px 20px rgba(28,36,48,.14);
-    max-width: 300px;
-    font-size: 12px;
-    color: #1c2430;
-    isolation: isolate;
-    overflow: hidden;
-    pointer-events: auto;
+  .leaflet-overlay-pane svg,
+  .leaflet-overlay-pane canvas,
+  .leaflet-marker-pane,
+  .leaflet-map-pane svg,
+  .leaflet-map-pane canvas {
+    z-index: auto !important;
   }
+
+
   .efc-legend .ttl {
     font-family: Fraunces, Georgia, serif;
     font-weight: 700;
@@ -155,6 +186,19 @@
     width: 18px; height: 3px; background: #243447;
     border-radius: 2px; flex-shrink: 0;
   }
+
+  .swatch-ews, .swatch-ana, .swatch-cat, .swatch-line {
+    display: inline-block;
+    flex: 0 0 auto;
+    vertical-align: middle;
+  }
+  .swatch-line {
+    width: 18px !important;
+    max-width: 18px !important;
+    min-width: 18px !important;
+    height: 3px !important;
+  }
+
   .efc-legend .foot {
     margin-top: 8px; padding-top: 8px;
     border-top: 1px solid #ece7dd;
@@ -175,6 +219,8 @@
 
   /* Layer/zoom controls above legend/compare chrome; both above map vectors */
   .leaflet-control-container { z-index: 10100 !important; }
+
+
   .leaflet-top.leaflet-right {
     margin-top: 8px !important;
     margin-right: 8px !important;
@@ -355,23 +401,6 @@
         Km 661 (eixo) ≠ vão: ponte OSM ~170&nbsp;m a leste (~km&nbsp;660,8).</div>
     </div>
     <div id="efc-elev-readout" class="efc-elev-readout" hidden>Cota: —</div>
-    <script>
-    /* Hoist fixed chrome to <body> so Leaflet SVG/markers cannot draw through. */
-    (function () {
-      function hoist() {
-        var sel = [".efc-legend", ".efc-header", ".efc-compare-dock", ".efc-elev-readout"];
-        sel.forEach(function (s) {
-          document.querySelectorAll(s).forEach(function (el) {
-            if (el.parentElement !== document.body) document.body.appendChild(el);
-          });
-        });
-      }
-      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", hoist);
-      else hoist();
-      setTimeout(hoist, 0);
-      setTimeout(hoist, 400);
-    })();
-    </script>
     
     
     <div class="efc-compare-dock">
@@ -456,6 +485,58 @@
     
             <div class="folium-map" id="map_ca75380cea05b00164ad2113f179d132" ></div>
         
+
+
+
+
+    <script>
+    /* Keep Legenda on document.body (outside .leaflet-container) so map SVG
+       cannot composite over it. Undo any accidental control remount. */
+    (function () {
+      function placeChrome() {
+        [".efc-legend", ".efc-header", ".efc-compare-dock", ".efc-elev-readout"].forEach(function (sel) {
+          document.querySelectorAll(sel).forEach(function (el) {
+            if (el.parentElement !== document.body) document.body.appendChild(el);
+            el.removeAttribute("data-efc-control");
+            if (sel === ".efc-legend") {
+              el.classList.remove("leaflet-control");
+              el.style.position = "fixed";
+              el.style.bottom = "22px";
+              el.style.left = "18px";
+              el.style.top = "auto";
+              el.style.right = "auto";
+              el.style.zIndex = "100000";
+              el.style.margin = "0";
+              el.style.transform = "translateZ(0)";
+              el.style.background = "#fffdf9";
+            }
+          });
+        });
+        // Ensure map container stays an isolated lower stack
+        document.querySelectorAll(".folium-map, .leaflet-container").forEach(function (el) {
+          el.style.zIndex = "0";
+          el.style.isolation = "isolate";
+        });
+        document.querySelectorAll(".leaflet-map-pane").forEach(function (el) {
+          el.style.clipPath = "none";
+          el.style.webkitClipPath = "none";
+          el.style.zIndex = "1";
+        });
+        document.querySelectorAll(
+          ".leaflet-overlay-pane, .leaflet-marker-pane, .leaflet-shadow-pane, .leaflet-tooltip-pane"
+        ).forEach(function (el) {
+          el.style.clipPath = "none";
+          el.style.webkitClipPath = "none";
+        });
+      }
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", placeChrome);
+      else placeChrome();
+      setTimeout(placeChrome, 0);
+      setTimeout(placeChrome, 300);
+      setTimeout(placeChrome, 1200);
+    })();
+    </script>
+
 </body>
 <script>
     
@@ -468,7 +549,7 @@
                     ...{
   "zoom": 6,
   "zoomControl": true,
-  "preferCanvas": true,
+  "preferCanvas": false,
 }
 
                 }
