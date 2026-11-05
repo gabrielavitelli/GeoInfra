@@ -63,8 +63,10 @@ class OrionClient:
     base_url: str = DEFAULT_BASE_URL
     version: str = DEFAULT_VERSION
     timeout_s: float = 60.0
-    max_retries: int = 4
+    max_retries: int = 8
+    min_request_interval_s: float = 0.35
     _token: Optional[str] = None
+    _last_request_at: float = 0.0
 
     @classmethod
     def from_env(cls, **kwargs: Any) -> "OrionClient":
@@ -108,9 +110,14 @@ class OrionClient:
 
         last_err: Optional[Exception] = None
         for attempt in range(self.max_retries + 1):
+            # Gentle pacing to reduce Orion rate-limit 429s.
+            gap = time.monotonic() - self._last_request_at
+            if gap < self.min_request_interval_s:
+                time.sleep(self.min_request_interval_s - gap)
             req = urllib.request.Request(url, method=method.upper(), headers=headers)
             try:
                 with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+                    self._last_request_at = time.monotonic()
                     raw = resp.read().decode("utf-8", errors="replace")
                     if not raw.strip():
                         if accept_empty:
@@ -118,6 +125,7 @@ class OrionClient:
                         return None
                     return json.loads(raw)
             except urllib.error.HTTPError as e:
+                self._last_request_at = time.monotonic()
                 body = e.read().decode("utf-8", errors="replace")
                 if e.code == 401 and auth:
                     # Token expired / rejected — refresh once then retry.
@@ -127,7 +135,13 @@ class OrionClient:
                         headers["Authorization"] = f"Bearer {self._token}"
                         continue
                 if e.code == 429 and attempt < self.max_retries:
-                    time.sleep(min(2 ** attempt, 30))
+                    retry_after = e.headers.get("Retry-After") if e.headers else None
+                    try:
+                        wait_s = float(retry_after) if retry_after else min(5 * (2 ** attempt), 120)
+                    except ValueError:
+                        wait_s = min(5 * (2 ** attempt), 120)
+                    print(f"[orion] 429 rate limit — wait {wait_s:.0f}s (attempt {attempt + 1})", flush=True)
+                    time.sleep(wait_s)
                     continue
                 raise OrionApiError(e.code, body, url) from e
             except (urllib.error.URLError, TimeoutError) as e:

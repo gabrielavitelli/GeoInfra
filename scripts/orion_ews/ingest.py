@@ -20,6 +20,7 @@ import csv
 import json
 import os
 import sys
+import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -236,7 +237,7 @@ def cmd_readings(args: argparse.Namespace) -> int:
             client.refresh_token()
             # Chunk IDs to keep URLs short / stay under rate limits (60 req/min free).
             readings = []
-            chunk = 25
+            chunk = 15
 
             def chunks(xs: list[int], n: int) -> list[list[int]]:
                 if not xs:
@@ -264,6 +265,7 @@ def cmd_readings(args: argparse.Namespace) -> int:
                     )
                     readings.extend(part)
                     print(f"  raw +{len(part)} (total {len(readings)})", flush=True)
+                    time.sleep(1.0)
                 for ssid_chunk in chunks(soft_ids, chunk):
                     part = client.fetch_sensor_data(
                         start_date=start,
@@ -274,6 +276,7 @@ def cmd_readings(args: argparse.Namespace) -> int:
                     )
                     readings.extend(part)
                     print(f"  soft +{len(part)} (total {len(readings)})", flush=True)
+                    time.sleep(1.0)
 
     # Index sensor meta
     meta_by_raw = {int(r["sensor_id"]): r for r in flat if r.get("sensor_id") is not None}
