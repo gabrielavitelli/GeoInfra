@@ -1,0 +1,21 @@
+{# Compact map layer strip — visão geral. Sem OSM; km sempre on. #}
+{% load monitor_tags %}
+<div class="efc-layer-strip" id="efc-layer-strip" role="toolbar" aria-label="{% if lang_pt %}Camadas do mapa{% else %}Map layers{% endif %}"
+     data-climate-url="{% murl 'home_climate_gfs' %}"
+     data-goto-km-url="{% murl 'home_goto_km' %}">
+  <div class="efc-layer-strip__group" role="group" aria-label="Basemap">
+    <button type="button" class="efc-layer-strip__btn is-active" data-basemap="3d" title="{% if lang_pt %}3D · imagem ~2 m{% else %}3D · ~2 m imagery{% endif %}">3D</button>
+    <button type="button" class="efc-layer-strip__btn" data-basemap="sat" title="{% if lang_pt %}Satélite 2D{% else %}Satellite 2D{% endif %}">2D</button>
+  </div>
+  <span class="efc-layer-strip__sep" aria-hidden="true"></span>
+  <div class="efc-layer-strip__group" role="group" aria-label="Overlays">
+    <button type="button" class="efc-layer-strip__btn" data-overlay="susc" aria-pressed="false" title="{% if lang_pt %}Suscetibilidade{% else %}Susceptibility{% endif %}">Susc</button>
+    <button type="button" class="efc-layer-strip__btn" data-overlay="clima" aria-pressed="false" title="{% if lang_pt %}Clima GFS · chuva, vento, solo{% else %}GFS · rain, wind, soil{% endif %}">Clima</button>
+  </div>
+  <span class="efc-layer-strip__sep" aria-hidden="true"></span>
+  <form class="efc-layer-strip__goto" id="efc-goto-km-form" autocomplete="off">
+    <label class="efc-layer-strip__goto-label" for="efc-goto-km-input">{% if lang_pt %}Ir{% else %}Go{% endif %}</label>
+    <input id="efc-goto-km-input" class="efc-layer-strip__goto-input" type="number" min="0" max="900" step="1" inputmode="numeric" placeholder="km" aria-label="{% if lang_pt %}Quilômetro EFC{% else %}EFC kilometer{% endif %}"/>
+    <button type="submit" class="efc-layer-strip__btn efc-layer-strip__btn--go" title="{% if lang_pt %}Ir para o quilômetro{% else %}Go to kilometer{% endif %}">→</button>
+  </form>
+</div>

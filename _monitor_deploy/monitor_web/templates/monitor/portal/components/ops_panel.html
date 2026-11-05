@@ -1,0 +1,64 @@
+{% load humanize %}
+<div class="dj-module dj-module--metrics dj-module--compact">
+  <div class="dj-compact-peaks">
+    {% for peak in ctx.peaks %}
+    {% if peak.active %}
+    <div class="dj-compact-stat dj-compact-stat--{% if peak.tone == 'crit' %}crit{% elif peak.tone == 'warn' %}warn{% else %}calm{% endif %} dj-compact-stat--accum-active">
+      <span class="dj-compact-stat__h">{{ peak.metric }}</span>
+      {% if peak.mm is not None %}
+      <span class="dj-compact-stat__val">{{ peak.mm|floatformat:0 }} mm</span>
+      {% if peak.km is not None %}<span class="dj-compact-stat__km">km {{ peak.km }}</span>{% endif %}
+      {% else %}
+      <span class="dj-compact-stat__val">0 mm</span>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% endfor %}
+    <div class="dj-compact-stat dj-compact-stat--obs">
+      <span class="dj-compact-stat__h">{{ ctx.labels.station|default:"Estação" }}</span>
+      {% if ctx.obs.mm is not None %}
+      <span class="dj-compact-stat__val">{{ ctx.obs.mm|floatformat:0 }} mm</span>
+      <span class="dj-compact-stat__km">{{ ctx.obs.name }}</span>
+      {% else %}
+      <span class="dj-compact-stat__empty">{{ ctx.labels.empty }}</span>
+      {% endif %}
+    </div>
+    {% if ctx.entorno %}
+    <div class="dj-compact-stat dj-compact-stat--entorno" title="{{ ctx.entorno.focus_label }}">
+      <span class="dj-compact-stat__h">{{ ctx.labels.entorno }}</span>
+      {% if ctx.entorno.mm is not None %}
+      <span class="dj-compact-stat__val">{{ ctx.entorno.mm|floatformat:0 }} mm</span>
+      {% if ctx.entorno.name %}<span class="dj-compact-stat__km">{{ ctx.entorno.name }}</span>{% endif %}
+      {% else %}
+      <span class="dj-compact-stat__empty">{{ ctx.labels.empty }}</span>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if ctx.raijin %}
+    <div class="dj-compact-stat dj-compact-stat--{% if ctx.raijin.tone == 'crit' %}crit{% else %}calm{% endif %} dj-compact-stat--raijin"
+         title="{% if ctx.lang_pt %}km com alerta Raijin{% else %}km with Raijin alert{% endif %}">
+      <span class="dj-compact-stat__h">{{ ctx.raijin.metric }}</span>
+      <span class="dj-compact-stat__val">{{ ctx.raijin.n_km }} {{ ctx.raijin.unit }}</span>
+    </div>
+    {% endif %}
+  </div>
+
+  {% include "monitor/components/ia_insight.html" with ctx=ctx %}
+
+  <div class="dj-compact-sev" role="group" aria-label="{{ ctx.labels.sev_group }}">
+    {% for s in ctx.compact_severity|default:ctx.severity %}
+    <div class="dj-compact-sev__item dj-compact-sev__item--{% if s.tone == 'crit' %}crit{% elif s.tone == 'warn' %}warn{% else %}calm{% endif %}">
+      <div class="dj-compact-sev__head">
+        <span>{{ s.label }}</span>
+        <strong>{{ s.pct|floatformat:0 }}%</strong>
+      </div>
+      <div class="dj-compact-sev__track"><span style="width:{% if s.pct > 0 %}{{ s.pct|floatformat:0 }}{% else %}0{% endif %}%;"></span></div>
+      <span class="dj-compact-sev__km">{{ s.n }}/{{ s.total }} {{ s.unit|default:"km" }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if ctx.period_label %}
+  <p class="dj-module__caption">{{ ctx.period_label }}</p>
+  {% endif %}
+</div>
