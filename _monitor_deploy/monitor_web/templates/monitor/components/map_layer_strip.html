@@ -4,13 +4,13 @@
      data-climate-url="{% murl 'home_climate_gfs' %}"
      data-goto-km-url="{% murl 'home_goto_km' %}">
   <div class="efc-layer-strip__group" role="group" aria-label="Basemap">
-    <button type="button" class="efc-layer-strip__btn is-active" data-basemap="3d" title="{% if lang_pt %}3D · imagem ~2 m{% else %}3D · ~2 m imagery{% endif %}">3D</button>
+    <button type="button" class="efc-layer-strip__btn is-active" data-basemap="3d" title="{% if lang_pt %}3D · imagem ~2 m{% else %}3D · ~2 m imagery{% endif %}">🧊 3D</button>
     <button type="button" class="efc-layer-strip__btn" data-basemap="sat" title="{% if lang_pt %}Satélite 2D{% else %}Satellite 2D{% endif %}">2D</button>
   </div>
   <span class="efc-layer-strip__sep" aria-hidden="true"></span>
   <div class="efc-layer-strip__group" role="group" aria-label="Overlays">
     <button type="button" class="efc-layer-strip__btn" data-overlay="susc" aria-pressed="false" title="{% if lang_pt %}Suscetibilidade{% else %}Susceptibility{% endif %}">Susc</button>
-    <button type="button" class="efc-layer-strip__btn" data-overlay="clima" aria-pressed="false" title="{% if lang_pt %}Clima GFS · chuva, vento, solo{% else %}GFS · rain, wind, soil{% endif %}">Clima</button>
+    <button type="button" class="efc-layer-strip__btn" data-overlay="clima" aria-pressed="false" title="{% if lang_pt %}Clima GFS · nuvem, chuva, vento (replay){% else %}GFS · cloud, rain, wind (replay){% endif %}">🌧️ Clima</button>
   </div>
   <span class="efc-layer-strip__sep" aria-hidden="true"></span>
   <form class="efc-layer-strip__goto" id="efc-goto-km-form" autocomplete="off">

@@ -117,6 +117,63 @@ def _tunnel_features(main_line, cum_km) -> list[dict[str, Any]]:
     return feats
 
 
+def _km_label_features(main_line, cum_km, *, step_km: int = 50) -> list[dict[str, Any]]:
+    """Marcos km ao longo da ferrovia (sempre visíveis no 3D)."""
+    from lib_efc import position_at_km
+
+    feats: list[dict[str, Any]] = []
+    if main_line is None or cum_km is None:
+        return feats
+    km_max = float(cum_km[-1])
+    step = max(25, int(step_km))
+    km = 0.0
+    while km <= km_max + 1e-6:
+        pos = position_at_km(km, main_line, cum_km)
+        if pos is not None:
+            feats.append(
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [float(pos[1]), float(pos[0])]},
+                    "properties": {"km": int(round(km)), "label": f"km {int(round(km))}"},
+                }
+            )
+        km += step
+    # Garante o fim da linha
+    end_km = int(round(km_max))
+    if not feats or int(feats[-1]["properties"]["km"]) != end_km:
+        pos = position_at_km(float(end_km), main_line, cum_km)
+        if pos is not None:
+            feats.append(
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [float(pos[1]), float(pos[0])]},
+                    "properties": {"km": end_km, "label": f"km {end_km}"},
+                }
+            )
+    return feats
+
+
+def _cinematic_camera(main_line, cum_km) -> dict[str, float] | None:
+    """Ângulo inicial que valoriza relevo + traçado da ferrovia (trecho médio)."""
+    from lib_efc import position_at_km
+
+    if main_line is None or cum_km is None:
+        return None
+    km_max = float(cum_km[-1])
+    focus_km = min(380.0, max(180.0, km_max * 0.42))
+    pos = position_at_km(focus_km, main_line, cum_km)
+    if pos is None:
+        return None
+    return {
+        "lat": float(pos[0]),
+        "lon": float(pos[1]),
+        "zoom": 6.55,
+        "pitch": 72.0,
+        "bearing": -42.0,
+        "km": float(focus_km),
+    }
+
+
 def build_map_3d_payload(
     *,
     main_line,
@@ -140,6 +197,8 @@ def build_map_3d_payload(
     stations.extend(_station_features([ana_estacoes_df], net="ANA", color="#38bdf8"))
     stations.extend(_station_features([orion_estacoes_df], net="EWS", color="#fbbf24"))
     tunnels = _tunnel_features(main_line, cum_km)
+    km_labels = _km_label_features(main_line, cum_km, step_km=50)
+    camera = _cinematic_camera(main_line, cum_km)
     return {
         "rail": {
             "type": "FeatureCollection",
@@ -155,7 +214,9 @@ def build_map_3d_payload(
         },
         "stations": {"type": "FeatureCollection", "features": stations},
         "tunnels": {"type": "FeatureCollection", "features": tunnels},
+        "kmLabels": {"type": "FeatureCollection", "features": km_labels},
         "bounds": bounds,
+        "camera": camera,
     }
 
 

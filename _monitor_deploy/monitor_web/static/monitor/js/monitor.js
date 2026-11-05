@@ -3044,12 +3044,16 @@
       return langPt ? p[2] + "/" + p[1] + "/" + p[0] : p[1] + "/" + p[2] + "/" + p[0];
     }
 
-    function outcomeBadge(oc) {
+    function outcomeBadge(oc, kind) {
       var label = String(oc || "pending").toUpperCase();
+      if (oc === "ews" || oc === "limiar" || kind === "threshold") {
+        label = oc === "limiar" ? "LIMIAR" : "EWS";
+      }
       var cls = "efc-raijin-bell__badge";
       if (oc === "tp") cls += " efc-raijin-bell__badge--tp";
       else if (oc === "fn") cls += " efc-raijin-bell__badge--fn";
       else if (oc === "fp") cls += " efc-raijin-bell__badge--fp";
+      else if (oc === "ews" || oc === "limiar" || kind === "threshold") cls += " efc-raijin-bell__badge--ews";
       return '<span class="' + cls + '">' + label + "</span>";
     }
 
@@ -3059,32 +3063,52 @@
         else dot.setAttribute("hidden", "");
       }
       var alerts = (data && data.alerts) || [];
+      var status = (data && data.ews_status) || null;
+      var statusHtml = "";
+      if (status && status.ok && status.max_mm) {
+        var maxDay = status.max_mm.day != null ? status.max_mm.day : "—";
+        var max7 = status.max_mm["7d"] != null ? status.max_mm["7d"] : "—";
+        var n24 = (status.n_above && status.n_above["24h"]) || 0;
+        statusHtml =
+          '<p class="efc-raijin-bell__status">' +
+          (langPt
+            ? "EWS agora: máx dia " + maxDay + " mm · 7d " + max7 + " mm · n_above 24h=" + n24
+            : "EWS now: max day " + maxDay + " mm · 7d " + max7 + " mm · n_above 24h=" + n24) +
+          "</p>";
+      }
       if (!alerts.length) {
         body.innerHTML =
+          statusHtml +
           '<p class="efc-muted" style="font-size:0.75rem;margin:0.65rem 0.9rem">' +
           ((data && data.empty) ||
-            (langPt ? "Nenhum alerta Raijin nos últimos dias." : "No Raijin alerts in the last days.")) +
+            (langPt
+              ? "Nenhum alerta Raijin nem limiar EWS no período."
+              : "No Raijin or EWS threshold alerts in the period.")) +
           "</p>";
         return;
       }
-      body.innerHTML = alerts
-        .map(function (a) {
-          var mm = a.mm != null ? Math.round(Number(a.mm)) + " mm" : "—";
-          return (
-            '<div class="efc-raijin-bell__item">' +
-            '<span class="efc-raijin-bell__km">km ' +
-            a.km +
-            "</span>" +
-            '<span class="efc-raijin-bell__meta">' +
-            fmtDay(a.day) +
-            " · " +
-            mm +
-            "</span>" +
-            outcomeBadge(a.outcome) +
-            "</div>"
-          );
-        })
-        .join("");
+      body.innerHTML =
+        statusHtml +
+        alerts
+          .map(function (a) {
+            var mm = a.mm != null ? Math.round(Number(a.mm)) + " mm" : "—";
+            var extra = a.limiar ? " · " + a.limiar : "";
+            return (
+              '<div class="efc-raijin-bell__item">' +
+              '<span class="efc-raijin-bell__km">km ' +
+              a.km +
+              "</span>" +
+              '<span class="efc-raijin-bell__meta">' +
+              fmtDay(a.day) +
+              " · " +
+              mm +
+              extra +
+              "</span>" +
+              outcomeBadge(a.outcome, a.kind) +
+              "</div>"
+            );
+          })
+          .join("");
     }
 
     function fetchAlerts(thenOpen) {
@@ -4337,21 +4361,31 @@
       return base + join + "km=" + encodeURIComponent(km);
     }
 
+    var climaPayload = null;
+
     function loadClima(on) {
       var btn = strip.querySelector('[data-overlay="clima"]');
       if (btn) btn.setAttribute("aria-pressed", on ? "true" : "false");
       climaOn = !!on;
       if (!on) {
-        postToMap({ type: "efc-map-clima", on: false, points: [] });
+        postToMap({ type: "efc-map-clima", on: false, climate: { points: [], grid: [], frames: [] } });
         return;
       }
       // Camada Clima é Leaflet 2D — troca basemap para satélite.
       setBasemap("sat");
-      function send(points) {
-        postToMap({ type: "efc-map-clima", on: true, points: points || [] });
+      function send(payload) {
+        postToMap({
+          type: "efc-map-clima",
+          on: true,
+          climate: payload || {},
+          points: (payload && payload.points) || [],
+          grid: (payload && payload.grid) || null,
+          frames: (payload && payload.frames) || null,
+          frame_i: payload && payload.frame_i,
+        });
       }
-      if (climaPoints) {
-        send(climaPoints);
+      if (climaPayload) {
+        send(climaPayload);
         return;
       }
       fetch(climateApiUrl(), { credentials: "same-origin" })
@@ -4360,11 +4394,12 @@
           return r.json();
         })
         .then(function (data) {
+          climaPayload = data || {};
           climaPoints = (data && data.points) || [];
-          send(climaPoints);
+          send(climaPayload);
         })
         .catch(function () {
-          send([]);
+          send({ points: [], grid: [], frames: [] });
         });
     }
 
