@@ -143,6 +143,15 @@ class OrionClient:
                     print(f"[orion] 429 rate limit — wait {wait_s:.0f}s (attempt {attempt + 1})", flush=True)
                     time.sleep(wait_s)
                     continue
+                # Orion SQL timeouts on wide sensorData windows return HTTP 500.
+                if e.code in (500, 502, 503, 504) and attempt < self.max_retries:
+                    wait_s = min(5 * (2 ** attempt), 60)
+                    print(
+                        f"[orion] HTTP {e.code} — retry in {wait_s:.0f}s (attempt {attempt + 1})",
+                        flush=True,
+                    )
+                    time.sleep(wait_s)
+                    continue
                 raise OrionApiError(e.code, body, url) from e
             except (urllib.error.URLError, TimeoutError) as e:
                 last_err = e

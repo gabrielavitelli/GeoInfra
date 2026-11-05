@@ -254,48 +254,76 @@ def cmd_readings(args: argparse.Namespace) -> int:
         else:
             client = OrionClient.from_env()
             client.refresh_token()
-            # Chunk IDs to keep URLs short / stay under rate limits (60 req/min free).
+            # Chunk IDs + date windows: Orion times out on 30-day × many sensors.
             readings = []
-            chunk = 15
+            chunk = 8 if precip_only else 15
+            # Keep each API window short so SQL on Orion side finishes.
+            day_span = max(1, int(getattr(args, "api_day_chunk", 3) or 3))
 
             def chunks(xs: list[int], n: int) -> list[list[int]]:
                 if not xs:
                     return []
                 return [xs[i : i + n] for i in range(0, len(xs), n)]
 
-            # Prefer a single call when small; otherwise page raw then soft.
-            if len(raw_ids) + len(soft_ids) <= chunk:
-                readings = client.fetch_sensor_data(
-                    start_date=start,
-                    end_date=end,
-                    sensor_ids=raw_ids or None,
-                    soft_sensor_ids=soft_ids or None,
-                    validated=args.validated,
-                )
-                print(f"  fetched {len(readings)}", flush=True)
-            else:
+            def date_windows(d0: str, d1: str, span: int) -> list[tuple[str, str]]:
+                cur = date.fromisoformat(d0[:10])
+                end_d = date.fromisoformat(d1[:10])
+                out: list[tuple[str, str]] = []
+                while cur <= end_d:
+                    w_end = min(cur + timedelta(days=span - 1), end_d)
+                    out.append((cur.isoformat(), w_end.isoformat()))
+                    cur = w_end + timedelta(days=1)
+                return out
+
+            windows = date_windows(start, end, day_span)
+            print(
+                f"[readings] api windows={len(windows)}×{day_span}d sensor_chunk={chunk}",
+                flush=True,
+            )
+            for w_start, w_end in windows:
+                if len(raw_ids) + len(soft_ids) <= chunk:
+                    part = client.fetch_sensor_data(
+                        start_date=w_start,
+                        end_date=w_end,
+                        sensor_ids=raw_ids or None,
+                        soft_sensor_ids=soft_ids or None,
+                        validated=args.validated,
+                    )
+                    readings.extend(part)
+                    print(
+                        f"  {w_start}→{w_end} +{len(part)} (total {len(readings)})",
+                        flush=True,
+                    )
+                    time.sleep(1.2)
+                    continue
                 for sid_chunk in chunks(raw_ids, chunk):
                     part = client.fetch_sensor_data(
-                        start_date=start,
-                        end_date=end,
+                        start_date=w_start,
+                        end_date=w_end,
                         sensor_ids=sid_chunk,
                         soft_sensor_ids=None,
                         validated=args.validated,
                     )
                     readings.extend(part)
-                    print(f"  raw +{len(part)} (total {len(readings)})", flush=True)
-                    time.sleep(1.0)
+                    print(
+                        f"  raw {w_start}→{w_end} +{len(part)} (total {len(readings)})",
+                        flush=True,
+                    )
+                    time.sleep(1.2)
                 for ssid_chunk in chunks(soft_ids, chunk):
                     part = client.fetch_sensor_data(
-                        start_date=start,
-                        end_date=end,
+                        start_date=w_start,
+                        end_date=w_end,
                         sensor_ids=None,
                         soft_sensor_ids=ssid_chunk,
                         validated=args.validated,
                     )
                     readings.extend(part)
-                    print(f"  soft +{len(part)} (total {len(readings)})", flush=True)
-                    time.sleep(1.0)
+                    print(
+                        f"  soft {w_start}→{w_end} +{len(part)} (total {len(readings)})",
+                        flush=True,
+                    )
+                    time.sleep(1.2)
 
     # Index sensor meta
     meta_by_raw = {int(r["sensor_id"]): r for r in flat if r.get("sensor_id") is not None}
