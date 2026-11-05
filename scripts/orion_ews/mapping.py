@@ -64,6 +64,10 @@ def station_code_from_device(device: Mapping[str, Any]) -> str:
     m = re.search(r"\b((?:EWS|BS|BC)[A-Z]*\d+\w*)\b", name, re.I)
     if m:
         return m.group(1).upper()
+    # Trailing / embedded site codes like BG01032T (still not IMEI).
+    m2 = re.search(r"\b([A-Z]{2}\d{4,}\w*)\b", name, re.I)
+    if m2:
+        return m2.group(1).upper()
     # Leading token before " - " when it looks like a code
     head = re.split(r"\s*[-–—]\s*", name, maxsplit=1)[0].strip()
     if head and re.fullmatch(r"[A-Z]{2,}\d+\w*", head, re.I):
@@ -81,6 +85,14 @@ def station_code_from_device(device: Mapping[str, Any]) -> str:
 station_id_from_device = station_code_from_device
 
 
+def is_legacy_imei_code(code_or_location_id: Optional[str]) -> bool:
+    """True for IMEI_* / ews_IMEI_* ids that must stay out of the monitor catalog."""
+    text = str(code_or_location_id or "").strip()
+    if not text:
+        return False
+    return "IMEI_" in text.upper()
+
+
 def location_id_from_device(device: Mapping[str, Any]) -> str:
     """clima_series.location_id / locations key — prefix ews_."""
     return f"ews_{station_code_from_device(device)}"
@@ -91,8 +103,13 @@ def clean_device_display_name(raw: Optional[str], *, station_code: Optional[str]
     text = " ".join(str(raw or "").split()).strip()
     if not text:
         return (station_code or "").strip() or "EWS"
-    # Drop leading station code + separators
-    text2 = re.sub(r"^(EWS\d+|BS\d+\w*)\s*[-–—:/]*\s*", "", text, flags=re.I).strip()
+    # Drop leading station code + separators (EWS6536, EWSBC07495S, BS08687S, BC07507S)
+    text2 = re.sub(
+        r"^((?:EWS|BS|BC)[A-Z]*\d+\w*)\s*[-–—:/]*\s*",
+        "",
+        text,
+        flags=re.I,
+    ).strip()
     if text2:
         return text2
     return text
@@ -199,3 +216,17 @@ def device_to_location_row(device: Mapping[str, Any], source: str = SOURCE_ORION
             "display_name": display,
         },
     }
+
+
+def filter_catalog_locations(locations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop IMEI_* / ews_IMEI_* rows so they never pollute locations / peaks."""
+    kept: list[dict[str, Any]] = []
+    dropped = 0
+    for loc in locations or []:
+        if is_legacy_imei_code(loc.get("location_id")) or is_legacy_imei_code(loc.get("station_id")):
+            dropped += 1
+            continue
+        kept.append(loc)
+    if dropped:
+        print(f"[catalog] dropped {dropped} IMEI_* locations", flush=True)
+    return kept

@@ -40,6 +40,8 @@ from scripts.orion_ews.mapping import (  # noqa: E402
     SOURCE_ORION,
     clima_series_payload,
     device_to_location_row,
+    filter_catalog_locations,
+    is_legacy_imei_code,
     is_precip_sensor,
     map_sensor_type,
     reading_to_clima_row,
@@ -119,7 +121,7 @@ def cmd_catalog(args: argparse.Namespace) -> int:
         print(f"[catalog] {len(devices)} devices", flush=True)
 
     sensors = flatten_device_sensors(devices)
-    locations = [device_to_location_row(d) for d in devices]
+    locations = filter_catalog_locations([device_to_location_row(d) for d in devices])
     summary = []
     for d in devices:
         summary.append(
@@ -356,7 +358,16 @@ def cmd_readings(args: argparse.Namespace) -> int:
     _write_ndjson(clima_out, clima_series_payload(clima))
     print(f"wrote staging={out} ({len(staging)} rows) clima={clima_out} ({len(clima)} rows)")
 
-    locations = [device_to_location_row(d, source=source) for d in devices]
+    locations = filter_catalog_locations(
+        [device_to_location_row(d, source=source) for d in devices]
+    )
+    # Never persist tip rows keyed by legacy IMEI location ids.
+    clima = [
+        r
+        for r in clima
+        if not is_legacy_imei_code(r.get("location_id"))
+        and not is_legacy_imei_code(r.get("station_id"))
+    ]
     if getattr(args, "gcs_prefix", None):
         _upload_gcs(args, devices=devices, staging=staging, clima=clima, locations=locations)
     if args.bq_project:
@@ -486,6 +497,7 @@ def _maybe_load_bq(
         job.result()
         print(f"[bq] clima_series append ok ({job.output_rows} hourly rows)")
 
+    locations = filter_catalog_locations(locations)
     loc_payload = []
     for loc in locations:
         loc_payload.append(
@@ -578,6 +590,17 @@ def _maybe_load_bq(
             client.query(merge_sql).result()
             client.query(f"DROP TABLE IF EXISTS `{staging}`").result()
             print(f"[bq] locations MERGE ok ({len(stage_rows)} Orion/EWS sites)", flush=True)
+        # Purge leftover IMEI_* catalog pollution from earlier ingest runs.
+        purge = client.query(
+            f"""
+            DELETE FROM `{locs_table}`
+            WHERE source = 'orion'
+              AND (STARTS_WITH(location_id, 'ews_IMEI_') OR STARTS_WITH(location_id, 'IMEI_')
+                   OR location_id LIKE '%IMEI_%')
+            """
+        )
+        purge.result()
+        print(f"[bq] purged IMEI_* orion locations (job {purge.job_id})", flush=True)
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     print("Orion EWS ingest doctor")

@@ -53,13 +53,27 @@ def _read_json(path_or_gs: str) -> Any:
     return json.loads(raw)
 
 
+# Physical sanity: a single tip/hour bucket above this is almost never real
+# incremental rain (usually a daily soft total wrongly treated as a tip).
+_MAX_TIP_MM = 25.0
+_MAX_HOUR_MM = 120.0
+
+
 def to_hourly_precip(rows: list[dict[str, Any]], *, source: str = "orion") -> list[dict[str, Any]]:
-    """Sum precip_mm into UTC hour buckets; keep date + valid_time (hourly)."""
+    """Sum precip_mm **tips** into UTC hour buckets; keep date + valid_time (hourly).
+
+    Drops absurd tip values (soft mm/dia / cumulative totals mis-tagged as tips)
+    so the monitor does not sum 80–180 mm every hour into multi‑thousand totals.
+    """
     buckets: dict[tuple[str, str], float] = defaultdict(float)
+    skipped = 0
     for r in rows:
         if (r.get("variable") or "") != "precip_mm":
             continue
         loc = r.get("location_id")
+        # Never keep legacy IMEI_ location ids — remap happens upstream.
+        if not loc or "IMEI_" in str(loc):
+            continue
         raw_dt = r.get("date") or r.get("valid_time") or r.get("obs_time")
         if not loc or not raw_dt:
             continue
@@ -72,12 +86,22 @@ def to_hourly_precip(rows: list[dict[str, Any]], *, source: str = "orion") -> li
             val = float(r.get("value"))
         except (TypeError, ValueError):
             continue
+        if val < 0:
+            skipped += 1
+            continue
+        # Soft daily totals look like 20–200 mm every sample — not a tip.
+        if val > _MAX_TIP_MM:
+            skipped += 1
+            continue
         key = (str(loc), hour.isoformat(sep="T"))
         buckets[key] += val
 
     now = datetime.now(timezone.utc).isoformat()
     out: list[dict[str, Any]] = []
     for (loc, hour_iso), mm in sorted(buckets.items()):
+        if mm > _MAX_HOUR_MM:
+            # Cap pathological hour sums (still log via print once).
+            mm = _MAX_HOUR_MM
         hour = datetime.fromisoformat(hour_iso)
         out.append(
             {
@@ -90,6 +114,8 @@ def to_hourly_precip(rows: list[dict[str, Any]], *, source: str = "orion") -> li
                 "valid_time": hour.isoformat(sep=" "),  # TIMESTAMP
             }
         )
+    if skipped:
+        print(f"[xform] skipped {skipped} absurd tip values (>{_MAX_TIP_MM} mm)", flush=True)
     return out
 
 
@@ -149,6 +175,9 @@ def upsert_locations(client: bigquery.Client, locations: list[dict[str, Any]], *
     rows = []
     for loc in locations:
         lat, lon = loc.get("lat"), loc.get("lon")
+        lid = str(loc.get("location_id") or "")
+        if "IMEI_" in lid.upper():
+            continue
         if lat is None or lon is None:
             continue
         # Live locations.extra is INT64 — never send names/strings here.
@@ -190,6 +219,15 @@ def upsert_locations(client: bigquery.Client, locations: list[dict[str, Any]], *
     """
     client.query(merge).result()
     client.query(f"DROP TABLE IF EXISTS `{stage}`").result()
+    # Drop legacy IMEI_* rows left by older ingest runs.
+    client.query(
+        f"""
+        DELETE FROM `{table}`
+        WHERE source = 'orion'
+          AND (STARTS_WITH(location_id, 'ews_IMEI_') OR STARTS_WITH(location_id, 'IMEI_')
+               OR location_id LIKE '%IMEI_%')
+        """
+    ).result()
     print(f"[bq] locations MERGE ok ({len(rows)} orion stations)")
     return len(rows)
 
@@ -209,6 +247,10 @@ def upsert_orion_devices(client: bigquery.Client, locations: list[dict[str, Any]
     rows = []
     now = datetime.now(timezone.utc).isoformat()
     for loc in locations:
+        lid = str(loc.get("location_id") or "")
+        sid = str(loc.get("station_id") or "")
+        if "IMEI_" in lid.upper() or "IMEI_" in sid.upper():
+            continue
         extra = loc.get("extra") or {}
         rows.append(
             {
