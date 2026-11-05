@@ -757,6 +757,12 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--out", default="/tmp/orion_readings.ndjson")
     r.add_argument("--clima-out", default=None)
     r.add_argument("--days", type=int, default=7)
+    r.add_argument(
+        "--api-day-chunk",
+        type=int,
+        default=3,
+        help="Split Orion /sensorData pulls into N-day windows (avoids HTTP 500 timeouts)",
+    )
     r.add_argument("--start", default=None)
     r.add_argument("--end", default=None)
     r.add_argument("--serial", default="")
