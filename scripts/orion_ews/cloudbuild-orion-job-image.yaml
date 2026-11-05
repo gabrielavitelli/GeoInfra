@@ -4,6 +4,8 @@
 
 substitutions:
   _TAG: latest
+  # Manual `gcloud builds submit` leaves SHORT_SHA empty — default a safe tag.
+  _SHA_TAG: manual
 
 steps:
   - name: gcr.io/cloud-builders/docker
@@ -12,14 +14,14 @@ steps:
       - -t
       - gcr.io/$PROJECT_ID/orion-ews-ingest:${_TAG}
       - -t
-      - gcr.io/$PROJECT_ID/orion-ews-ingest:$SHORT_SHA
+      - gcr.io/$PROJECT_ID/orion-ews-ingest:${_SHA_TAG}
       - .
 
   - name: gcr.io/cloud-builders/docker
     args: ["push", "gcr.io/$PROJECT_ID/orion-ews-ingest:${_TAG}"]
 
   - name: gcr.io/cloud-builders/docker
-    args: ["push", "gcr.io/$PROJECT_ID/orion-ews-ingest:$SHORT_SHA"]
+    args: ["push", "gcr.io/$PROJECT_ID/orion-ews-ingest:${_SHA_TAG}"]
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
