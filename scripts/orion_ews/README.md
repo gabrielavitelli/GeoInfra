@@ -1,65 +1,51 @@
 # Orion Data (EWS) → climaticsystem / monitor EFC
 
 API: [Orion Data v1.3](https://docs.oriondata.io/api/orion-data/v1-3/)  
-Auth: **User Key** (Secret Manager `orion-user-key` @ `climaticsystem`) → `/token` → Bearer JWT. Login/senha = só portal.
+Auth: **User Key** (Secret Manager `orion-user-key`) → JWT. Login/senha = só portal.
 
-## Destino EFC (horário, sem agregar só por dia)
+## Destino (horário)
 
-`clima_series`:
+`clima_series`: `source=orion`, `location_id=ews_*`, `variable=precip_mm`,  
+`date` (DATE) + `valid_time` (TIMESTAMP horário = soma dos tips 15‑min).  
+Também: `orion_devices` + `locations` (`source=orion`).
 
-| col | uso Orion |
-|---|---|
-| `date` | DATE do dia UTC |
-| `valid_time` | TIMESTAMP na **hora** (soma dos tips 15‑min daquela hora) |
-| `location_id` | `ews_EWS6536` |
-| `source` | `orion` |
-| `variable` | `precip_mm` |
-| `value` | mm na hora |
+## Produção barata — Cloud Run Job 24×/dia
 
-Também: `orion_devices` (nomes) + `locations` (`source=orion`).
+| Peça | Nome |
+|------|------|
+| Imagem | `gcr.io/climaticsystem/orion-ews-ingest` |
+| Job | `orion-ews-precip` (1 vCPU, 512 Mi, ~1–2 min/run) |
+| Scheduler | `orion-ews-precip-hourly` — `15 * * * *` America/Sao_Paulo |
 
-GCS: `gs://efc-clima-data/obs/ews/orion_*_latest.*`
-
-## Custo / frequência
-
-| Frequência | Lookback | Estimativa* | Quando usar |
-|---|---|---|---|
-| **24×/dia** (`15 * * * *`) | `_DAYS=1`, precip-only | **~$2–8/mês** | **Recomendado** (painel “quase ao vivo”) |
-| 8×/dia (`0 */3 * * *`) | `_DAYS=1` | ~⅓ do acima | Se precisar apertar orçamento |
-| 1×/dia | `_DAYS=2` | mínimo | Só histórico |
-
-\*Cloud Build `E2_MEDIUM` ~2–5 min + BQ load de ~0,5–5k linhas/hora + API Orion (sem custo GCP). Dominante = minutos de build, não BigQuery.
-
-**24×/dia é barato o bastante** para este volume (~21 pluviômetros). Não use lookback de 7 dias no horário.
-
-## Comandos
+**Por que barato:** deps já na imagem (sem `pip` / Cloud Build a cada hora).  
+Estimativa ~**US$1–3/mês** em 24×/dia (vs ~US$5 com Cloud Build + pip).
 
 ```bash
-# Ping
-python3 -m scripts.orion_ews.ingest doctor --ping
+# Rebuild imagem + redeploy job
+gcloud builds submit --config=scripts/orion_ews/cloudbuild-orion-job-image.yaml \
+  --project=climaticsystem scripts/orion_ews
 
-# Precip-only 1 dia → GCS + BQ horário
+# Rodar na mão
+gcloud run jobs execute orion-ews-precip --region=us-central1 --wait
+```
+
+## Local / manual
+
+```bash
+python3 -m scripts.orion_ews.ingest doctor --ping
 python3 -m scripts.orion_ews.ingest readings --precip-only --days 1 \
   --bq-project climaticsystem \
   --gcs-prefix gs://efc-clima-data/obs/ews/
-
-# Só recarregar NDJSON já no GCS (zero chamada Orion)
+# Só recarregar GCS → BQ (sem API Orion):
 python3 -m scripts.orion_ews.load_gcs_to_bq_hourly
 ```
 
-## Scheduler horário (24×)
+## Frequência
 
-```bash
-gcloud builds submit --config=scripts/orion_ews/cloudbuild-orion-ingest.yaml \
-  --project=climaticsystem --substitutions=_DAYS=1
+| Freq | Custo relativo | Quando |
+|------|----------------|--------|
+| **24×/dia** (atual) | baixo (Run Job) | painel quase ao vivo |
+| 8×/dia | ~⅓ | apertar orçamento |
+| 1×/dia | mínimo | só histórico |
 
-gcloud scheduler jobs create http orion-ews-precip-hourly \
-  --project=climaticsystem --location=us-central1 \
-  --schedule='15 * * * *' --time-zone=America/Sao_Paulo \
-  --uri='https://cloudbuild.googleapis.com/v1/projects/climaticsystem/builds' \
-  --message-body-from-file=scripts/orion_ews/scheduler_build_body.json \
-  --oauth-service-account-email=894301304159-compute@developer.gserviceaccount.com \
-  --oauth-token-scope=https://www.googleapis.com/auth/cloud-platform
-```
-
-IAM: compute SA precisa `roles/cloudbuild.builds.editor` (+ secret accessor no Cloud Build SA, já concedido).
+Não use lookback de 7 dias no job horário.
