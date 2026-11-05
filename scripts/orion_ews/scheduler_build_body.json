@@ -1,14 +1,38 @@
 {
   "source": {
-    "repoSource": {
-      "projectId": "climaticsystem",
-      "repoName": "github_gabrielavitelli_geoinfra",
-      "branchName": "cursor/orion-pluvio-monitor-9ef8"
+    "storageSource": {
+      "bucket": "climaticsystem_cloudbuild",
+      "object": "orion-ingest/src.tgz"
     }
   },
-  "substitutions": {
-    "_DAYS": "1",
-    "_BQ_DATASET": "efc_clima",
-    "_GCS_PREFIX": "gs://efc-clima-data/obs/ews/"
-  }
+  "steps": [
+    {
+      "name": "python:3.11-slim",
+      "id": "ingest-precip-hourly",
+      "entrypoint": "bash",
+      "secretEnv": [
+        "ORION_USER_KEY"
+      ],
+      "env": [
+        "PROJECT_ID=$PROJECT_ID"
+      ],
+      "args": [
+        "-c",
+        "set -euo pipefail\npip install -q -r scripts/orion_ews/requirements.txt google-cloud-bigquery google-cloud-storage\npython -m scripts.orion_ews.ingest doctor --ping --no-from-secret\npython -m scripts.orion_ews.ingest readings --precip-only --days 1   --out /workspace/orion_readings.ndjson   --bq-project $PROJECT_ID --bq-dataset efc_clima   --gcs-prefix gs://efc-clima-data/obs/ews/ --no-from-secret\n"
+      ]
+    }
+  ],
+  "availableSecrets": {
+    "secretManager": [
+      {
+        "versionName": "projects/climaticsystem/secrets/orion-user-key/versions/latest",
+        "env": "ORION_USER_KEY"
+      }
+    ]
+  },
+  "options": {
+    "logging": "CLOUD_LOGGING_ONLY",
+    "machineType": "E2_MEDIUM"
+  },
+  "timeout": "1200s"
 }
