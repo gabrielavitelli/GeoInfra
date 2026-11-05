@@ -19,16 +19,23 @@ def _peak_tone(mm, th: float) -> str:
 
 
 def _station_lookup_tables(dataset: str | None) -> tuple[dict, dict, dict]:
-    """Lookups de nome de estação — sempre via cache Redis (TTL 1h)."""
+    """Lookups de nome de estação — Redis TTL 1h; parallel on cold miss."""
     try:
+        import concurrent.futures
+
         from monitor_web.services.home import _cached_station_catalog
         from monitor_web.services.home_impact_enrich import _build_station_lookup
 
         ds = dataset or ""
-        bnd = _build_station_lookup(_cached_station_catalog("bndmet", ds))
-        ana = _build_station_lookup(_cached_station_catalog("ana", ds))
-        ews = _build_station_lookup(_cached_station_catalog("orion", ds))
-        return bnd, ana, ews
+
+        def _one(kind: str):
+            return _build_station_lookup(_cached_station_catalog(kind, ds))
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+            f_b = pool.submit(_one, "bndmet")
+            f_a = pool.submit(_one, "ana")
+            f_o = pool.submit(_one, "orion")
+            return f_b.result(), f_a.result(), f_o.result()
     except Exception:
         return {}, {}, {}
 

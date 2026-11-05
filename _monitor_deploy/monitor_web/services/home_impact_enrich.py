@@ -143,19 +143,19 @@ def _cached_lookups(bq_dataset: str | None = None):
     ds = bq_dataset or ""
 
     def _load():
-        try:
-            from lib_efc import load_orion_estacoes
+        from monitor_web.services.home import _cached_station_catalog
 
-            ews = _build_station_lookup(load_orion_estacoes(bq_dataset=ds or None))
+        try:
+            ews = _build_station_lookup(_cached_station_catalog("orion", ds))
         except Exception:
             ews = {}
         return {
-            "bndmet": _build_station_lookup(load_bndmet_estacoes(bq_dataset=ds or None)),
-            "ana": _build_station_lookup(load_ana_estacoes(bq_dataset=ds or None)),
+            "bndmet": _build_station_lookup(_cached_station_catalog("bndmet", ds)),
+            "ana": _build_station_lookup(_cached_station_catalog("ana", ds)),
             "ews": ews,
         }
 
-    return cached_call(f"home_impact_station_lookups_v2_{ds}", 3600, _load)
+    return cached_call(f"home_impact_station_lookups_v3_{ds}", 3600, _load)
 
 
 def enrich_home_impact(
