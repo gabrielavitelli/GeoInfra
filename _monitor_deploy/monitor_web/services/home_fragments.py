@@ -24,8 +24,16 @@ from lib_efc import (
     get_merge_along_railway_stats,
 )
 from monitor_web.i18n import get_lang
-from monitor_web.services.cache_keys import bq_fingerprint, cached_call, cached_peek, map_folium_cache_key, map_folium_stable_cache_key
+from monitor_web.services.cache_keys import (
+    bq_fingerprint,
+    cached_call,
+    cached_call_swr,
+    cached_peek,
+    map_folium_cache_key,
+    map_folium_stable_cache_key,
+)
 from monitor_web.services.home import (
+    _cached_station_accum,
     _csv_mtime,
     _map_load_timeout_message,
     _map_unavailable_message,
@@ -52,9 +60,13 @@ MAP_KM_STEP = max(2, int(os.environ.get("MONITOR_MAP_KM_STEP", "10") or "10"))
 # Bump when Folium render format changes (e.g. inline vs Jupyter srcdoc iframe).
 # v53: suscetibilidade raster 4096px (pixels GeoTIFF); inclui bust via env.
 _susc_bust = (os.environ.get("SUSCETIBILIDADE_CACHE_BUST") or "").strip()
-MAP_CACHE_VER = (os.environ.get("MONITOR_MAP_CACHE_VER") or "folium_v54_clima_wind_km3d").strip()
+# v55: MapLibre 3D lazy (sem CDN no first paint) + stations parallel cache.
+MAP_CACHE_VER = (os.environ.get("MONITOR_MAP_CACHE_VER") or "folium_v55_lazy3d").strip()
 if _susc_bust:
     MAP_CACHE_VER = f"{MAP_CACHE_VER}_{_susc_bust}"
+
+STATION_PANEL_TTL = int(os.environ.get("MONITOR_STATION_PANEL_TTL", "1800") or "1800")
+STATION_ROWS_TTL = int(os.environ.get("MONITOR_STATION_ROWS_TTL", "900") or "900")
 
 
 def parse_fc_km(raw, *, default: int = 379, km_max: int = 900) -> int:
@@ -499,16 +511,14 @@ def _station_obs_for_day(dataset: str, ref_date: str, *, hours: int = 720) -> di
     key = f"station_obs_v5_{dataset}_{str(ref_date)[:10]}_{h}_{fp}"
 
     def _load() -> dict:
-        from lib_efc import get_ana_accum_hours_stale, get_bndmet_accum_hours_stale
-
         day = str(ref_date)[:10]
         out: dict = {"station_obs_hours": h}
         try:
-            b_acc, _, _ = get_bndmet_accum_hours_stale(day, hours=h, bq_dataset=dataset)
+            b_acc, _, _ = _cached_station_accum("bndmet", day, h, dataset)
         except Exception:
             b_acc = {}
         try:
-            a_acc, _, _ = get_ana_accum_hours_stale(day, hours=h, bq_dataset=dataset)
+            a_acc, _, _ = _cached_station_accum("ana", day, h, dataset)
         except Exception:
             a_acc = {}
 
@@ -574,20 +584,21 @@ def _merge_station_accum_rows(
     return list(best.values())
 
 
-def _station_rows_for_window(dataset: str, ref_date: str, *, hours: int) -> list[tuple[str, str, float]]:
-    """Estações BNDMET/ANA: une horário (CSV/BQ) + clima_series e fica com o maior por estação."""
+def _station_rows_for_window_uncached(dataset: str, ref_date: str, *, hours: int) -> list[tuple[str, str, float]]:
+    """Estações BNDMET/ANA/EWS: une horário + clima_series (sem cache)."""
     from monitor_web.services.accum_window import accum_hours_to_days
 
     day = str(ref_date)[:10]
     hourly_rows: list[tuple[str, str, float]] = []
     try:
-        from lib_efc import get_ana_accum_hours_stale, get_bndmet_accum_hours_stale
-
-        from lib_efc import get_orion_accum_hours_stale
-
-        b_acc, _, _ = get_bndmet_accum_hours_stale(day, hours=hours, bq_dataset=dataset)
-        a_acc, _, _ = get_ana_accum_hours_stale(day, hours=hours, bq_dataset=dataset)
-        o_acc, _, _ = get_orion_accum_hours_stale(day, hours=hours, bq_dataset=dataset)
+        # Paraleliza as 3 redes (antes: serial; compartilham cache do mapa).
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+            fut_b = pool.submit(_cached_station_accum, "bndmet", day, hours, dataset)
+            fut_a = pool.submit(_cached_station_accum, "ana", day, hours, dataset)
+            fut_o = pool.submit(_cached_station_accum, "orion", day, hours, dataset)
+            b_acc, _, _ = fut_b.result()
+            a_acc, _, _ = fut_a.result()
+            o_acc, _, _ = fut_o.result()
         for cod, mm in (b_acc or {}).items():
             try:
                 hourly_rows.append(("bndmet", str(cod), float(mm or 0.0)))
@@ -628,6 +639,15 @@ def _station_rows_for_window(dataset: str, ref_date: str, *, hours: int) -> list
         series_rows = []
 
     return _merge_station_accum_rows(hourly_rows, series_rows)
+
+
+def _station_rows_for_window(dataset: str, ref_date: str, *, hours: int) -> list[tuple[str, str, float]]:
+    """Linhas por janela com cache Redis/LocMem (evita N×BQ no painel + entorno)."""
+    day = str(ref_date)[:10]
+    h = int(hours)
+    fp = bq_fingerprint()
+    key = f"station_rows_v1_{dataset}_{day}_{h}_{fp}"
+    return list(cached_call(key, STATION_ROWS_TTL, _station_rows_for_window_uncached, dataset, day, hours=h) or [])
 
 
 # Raio ao redor do km selecionado; buffer do corredor EFC quando não há foco.
@@ -737,12 +757,14 @@ def _station_entorno_peaks_for_windows(
     main_line,
     cum_km,
     has_km_focus: bool,
+    rows_by_hours: dict[int, list] | None = None,
 ) -> dict:
     """
     Máximo observado entre estações no entorno do km (raio) ou do corredor EFC.
 
     - Com km selecionado: raio ENTORNO_FOCUS_RADIUS_KM ao redor do ponto na ferrovia.
     - Sem km: estações a até ENTORNO_CORRIDOR_BUFFER_KM de qualquer ponto da linha.
+    - ``rows_by_hours`` evita reconsultar BQ (reusa o mesmo fetch do painel).
     """
     from lib_efc import haversine_km, position_at_km
 
@@ -759,7 +781,10 @@ def _station_entorno_peaks_for_windows(
 
     peaks: dict = {}
     for kind, hours, _th in windows:
-        rows = _station_rows_for_window(dataset, day, hours=hours)
+        if rows_by_hours is not None and int(hours) in rows_by_hours:
+            rows = rows_by_hours[int(hours)]
+        else:
+            rows = _station_rows_for_window(dataset, day, hours=hours)
         best = None
         n_in = 0
         for src, cod, mm in rows or []:
@@ -845,7 +870,7 @@ def _station_panel_windows(
     day = str(ref_date)[:10]
     fp = bq_fingerprint()
     focus_tag = f"km{int(focus_km)}" if has_km_focus and focus_km is not None else "corridor"
-    key = f"station_panel_v4_{dataset}_{day}_{focus_tag}_{fp}"
+    key = f"station_panel_v5_{dataset}_{day}_{focus_tag}_{fp}"
     windows = (
         ("24h", ACCUM_HOURS_24, float(THRESHOLD_24H_MM)),
         ("5d", ACCUM_HOURS_5D, float(THRESHOLD_120H_MM)),
@@ -854,9 +879,23 @@ def _station_panel_windows(
     )
 
     def _load() -> dict:
+        # 4 janelas em paralelo (antes: serial × entorno = ~32 BQ).
+        rows_by_hours: dict[int, list] = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            futs = {
+                int(hours): pool.submit(_station_rows_for_window, dataset, day, hours=int(hours))
+                for _kind, hours, _th in windows
+            }
+            for h, fut in futs.items():
+                try:
+                    rows_by_hours[h] = list(fut.result() or [])
+                except Exception as exc:
+                    logger.warning("station_rows window %sh failed: %s", h, exc)
+                    rows_by_hours[h] = []
+
         peaks: dict = {}
         for kind, hours, th in windows:
-            rows = _station_rows_for_window(dataset, day, hours=hours)
+            rows = rows_by_hours.get(int(hours)) or []
             if not rows:
                 peaks[kind] = {
                     "mm": 0.0,
@@ -887,6 +926,7 @@ def _station_panel_windows(
                     main_line=main_line,
                     cum_km=cum_km,
                     has_km_focus=has_km_focus,
+                    rows_by_hours=rows_by_hours,
                 )
             )
         except Exception as exc:
@@ -898,7 +938,9 @@ def _station_panel_windows(
         return out
 
     try:
-        return dict(cached_call(key, 300, _load) or {})
+        return dict(
+            cached_call_swr(key, STATION_PANEL_TTL, _load, stale_ttl=STATION_PANEL_TTL * 4) or {}
+        )
     except Exception as exc:
         logger.warning("station_panel_windows failed: %s", exc)
         return {"station_panel_peaks": {}, "station_panel_entorno_peaks": {}}
@@ -982,8 +1024,14 @@ def _align_indicators_impact(
     main_line=None,
     cum_km=None,
     has_km_focus: bool = False,
+    portal_fast: bool = False,
 ) -> tuple[dict, int]:
-    """Mesmo período do mapa + TPs do dia (hero/tabela) nos envelopes do painel."""
+    """Mesmo período do mapa + TPs do dia (hero/tabela) nos envelopes do painel.
+
+    ``portal_fast=True``: evita BQ bloqueante (Raijin envelopes / backfill peaks /
+    station panel miss). Serve cache se houver; caso contrário zera e deixa o
+    warmup / próximo request preencher.
+    """
     from monitor_web.services.home_accumulated_alerts import (
         apply_raijin_period_envelopes,
         parse_accumulated_period,
@@ -995,6 +1043,7 @@ def _align_indicators_impact(
         impact_lite_from_day_exceed,
     )
     from monitor_web.services.suscetibilidade import count_unique_alert_kms
+    from monitor_web.template_paths import is_portal_request
 
     d_start, d_end, period_key = parse_accumulated_period(request, date_end_cap=sel)
     period_lbl = period_label_pt(period_key, d_start, d_end)
@@ -1004,47 +1053,95 @@ def _align_indicators_impact(
     out["period_label"] = period_lbl
     out["ref_date"] = sel
 
-    tp_day = _raijin_tp_day_df(dataset, sel)
-    n_tp_day = count_unique_alert_kms(tp_day)
-    if tp_day is not None and not tp_day.empty:
-        tp_lite = impact_lite_from_day_exceed(
-            tp_day,
-            km_max=km_max,
-            lang_pt=lang_pt,
-            period_label=period_lbl,
-            ref_date=sel,
-        )
-        for k in (
-            "max24_ensemble_mm",
-            "max24_ensemble_km",
-            "n_km_24_envelope",
-            "pct_km_24_envelope",
-        ):
-            if tp_lite.get(k) is not None:
-                out[k] = tp_lite[k]
+    src = alerts_source_for_request(request) if request is not None else "merge"
+    use_portal_fast = bool(portal_fast) or (
+        request is not None and is_portal_request(request) and src == "merge"
+    )
 
-    out = apply_raijin_period_envelopes(
-        out,
-        dataset=dataset,
-        date_start=d_start,
-        date_end=d_end,
-        period_key=period_key,
-        km_max=km_max,
-        n_km_24=n_tp_day if n_tp_day else None,
-    )
-    out = backfill_impact_peaks(out, dataset=dataset, ref_date=sel)
+    # Portal MERGE: não bloqueia em queries Raijin (KPIs são limiares MERGE).
+    n_tp_day = 0
+    if not use_portal_fast or src == "raijin":
+        tp_day = _raijin_tp_day_df(dataset, sel)
+        n_tp_day = count_unique_alert_kms(tp_day)
+        if tp_day is not None and not tp_day.empty:
+            tp_lite = impact_lite_from_day_exceed(
+                tp_day,
+                km_max=km_max,
+                lang_pt=lang_pt,
+                period_label=period_lbl,
+                ref_date=sel,
+            )
+            for k in (
+                "max24_ensemble_mm",
+                "max24_ensemble_km",
+                "n_km_24_envelope",
+                "pct_km_24_envelope",
+            ):
+                if tp_lite.get(k) is not None:
+                    out[k] = tp_lite[k]
+        out = apply_raijin_period_envelopes(
+            out,
+            dataset=dataset,
+            date_start=d_start,
+            date_end=d_end,
+            period_key=period_key,
+            km_max=km_max,
+            n_km_24=n_tp_day if n_tp_day else None,
+        )
+        if not use_portal_fast:
+            out = backfill_impact_peaks(out, dataset=dataset, ref_date=sel)
     out = coerce_missing_peaks_to_zero(out)
-    out = _attach_station_obs(
-        out,
-        dataset=dataset,
-        ref_date=sel,
-        lang_pt=lang_pt,
-        accum_hours=accum_hours,
-        focus_km=focus_km,
-        main_line=main_line,
-        cum_km=cum_km,
-        has_km_focus=has_km_focus,
-    )
+
+    if use_portal_fast:
+        # Peek cache do painel de estações; se frio, segue sem bloquear first paint.
+        fp = bq_fingerprint()
+        focus_tag = f"km{int(focus_km)}" if has_km_focus and focus_km is not None else "corridor"
+        panel_key = f"station_panel_v5_{dataset}_{str(sel)[:10]}_{focus_tag}_{fp}"
+        panel = cached_peek(panel_key)
+        if panel:
+            out = dict(out)
+            out.update(panel)
+            try:
+                from monitor_web.services.home_impact_enrich import enrich_home_impact
+
+                out = enrich_home_impact(
+                    out, lang_pt=lang_pt, main_line=main_line, cum_km=cum_km, bq_dataset=dataset
+                )
+            except Exception:
+                pass
+        else:
+            # Dispara warm em background (não espera).
+            def _warm_panel():
+                try:
+                    _station_panel_windows(
+                        dataset,
+                        sel,
+                        focus_km=focus_km,
+                        main_line=main_line,
+                        cum_km=cum_km,
+                        has_km_focus=has_km_focus,
+                    )
+                except Exception as exc:
+                    logger.warning("station_panel warm failed: %s", exc)
+
+            try:
+                import threading
+
+                threading.Thread(target=_warm_panel, name="warm-station-panel", daemon=True).start()
+            except Exception:
+                pass
+    else:
+        out = _attach_station_obs(
+            out,
+            dataset=dataset,
+            ref_date=sel,
+            lang_pt=lang_pt,
+            accum_hours=accum_hours,
+            focus_km=focus_km,
+            main_line=main_line,
+            cum_km=cum_km,
+            has_km_focus=has_km_focus,
+        )
     n_raijin = int(out.get("n_km_24_envelope") or 0)
     return out, n_raijin
 
@@ -1293,34 +1390,26 @@ def build_indicators_fragment_portal_fast(request) -> dict:
 
     if impact is None or not impact.get("available"):
         df_day = cached[0] if cached is not None else None
+        # Portal fast: NÃO dispara BQ bloqueante no first paint.
+        # Se o cache day_exceed estiver frio, devolve lite vazio e aquece em background.
         if df_day is None or (hasattr(df_day, "empty") and df_day.empty):
+
+            def _warm_day_exceed():
+                try:
+                    _day_exceed_and_points(dataset, sel, alerts_source="merge", light=False)
+                    _day_merge_light_impl(dataset, sel)
+                except Exception as exc:
+                    logger.warning("indicators day_exceed warm failed: %s", exc)
+
             try:
-                # KPIs de limiar operacional (49/250/150/465 mm) vêm do MERGE,
-                # não do Raijin (alerts_source do mapa).
-                full_tuple = _day_exceed_and_points(dataset, sel, alerts_source="merge", light=False)
-                if full_tuple is not None and full_tuple[0] is not None:
-                    df_day = full_tuple[0]
-                    cached = full_tuple
-            except Exception as exc:
-                logger.warning("indicators day_exceed operational failed: %s", exc)
-                df_day = None
-        # Complementa 24h/5d do dia (path operacional às vezes só traz 7d/30d).
-        try:
-            lite_tuple = _day_merge_light_impl(dataset, sel)
-            if lite_tuple is not None and lite_tuple[0] is not None and not lite_tuple[0].empty:
-                key = _day_exceed_cache_key(dataset, sel, alerts_source="merge", light=True)
-                cached_call(key, _ttl(), lambda lt=lite_tuple: lt)
-                if df_day is None or (hasattr(df_day, "empty") and df_day.empty):
-                    df_day = lite_tuple[0]
-                    cached = lite_tuple
-                else:
-                    df_day = pd.concat([df_day, lite_tuple[0]], ignore_index=True)
-                    if cached is not None and len(cached) >= 5:
-                        cached = (df_day, cached[1], cached[2], cached[3], cached[4])
-                    else:
-                        cached = lite_tuple
-        except Exception as exc:
-            logger.warning("indicators lite day_exceed failed: %s", exc)
+                import threading
+
+                threading.Thread(
+                    target=_warm_day_exceed, name="warm-day-exceed", daemon=True
+                ).start()
+            except Exception:
+                pass
+            df_day = None
         impact = impact_lite_from_day_exceed(
             df_day,
             km_max=p["km_max"],
@@ -1341,6 +1430,7 @@ def build_indicators_fragment_portal_fast(request) -> dict:
         main_line=p.get("main_line"),
         cum_km=p.get("cum_km"),
         has_km_focus=bool(p.get("has_km_focus")),
+        portal_fast=True,
     )
 
     df_day_ind = cached[0] if cached is not None else None

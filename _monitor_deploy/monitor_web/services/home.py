@@ -246,11 +246,10 @@ def folium_map_standalone_html(m, *, height: str = "390px", map3d_payload: dict 
         '}'
         '});'
         "})();</script>"
-        '<script src="/static/monitor/js/map_clima_layer.js?v=20261105clima2"></script>'
-        # MapLibre 3D (~2 m Esri + DEM Terrarium) — default visão geral
-        '<link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>'
-        '<script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>'
-        '<div id="efc-maplibre-3d" style="position:absolute;inset:0;z-index:450;display:block;"></div>'
+        '<script src="/static/monitor/js/map_clima_layer.js?v=20261105speed1"></script>'
+        # MapLibre 3D — lazy: só baixa CDN + inicia quando o parent pede mode=3d
+        # (Leaflet 2D pinta primeiro; evita 20–40s de tiles DEM/MapLibre no first paint).
+        '<div id="efc-maplibre-3d" style="position:absolute;inset:0;z-index:450;display:none;"></div>'
         '<style>.efc-km-goto-marker{background:transparent;border:0;}'
         '.efc-km-goto-label{font:800 15px/1.1 "IBM Plex Sans",sans-serif;color:#fff;'
         'background:rgba(15,23,42,.92);border:2px solid #38bdf8;border-radius:10px;'
@@ -259,67 +258,55 @@ def folium_map_standalone_html(m, *, height: str = "390px", map3d_payload: dict 
         'color:#94a3b8;margin-top:3px;letter-spacing:.04em;text-transform:uppercase;}</style>'
         '<script>(function(){'
         f"var OVERLAY={payload_js};"
-        'window.__efcRailBounds=OVERLAY&&OVERLAY.bounds||null;'
-        'var host=document.getElementById("efc-maplibre-3d");if(!host||!window.maplibregl)return;'
-        'var foliumEl=document.querySelector(".folium-map");'
-        'if(foliumEl){foliumEl.style.position="relative";host.parentNode===document.body&&foliumEl.appendChild(host);'
-        'if(host.parentNode!==foliumEl){foliumEl.style.height=foliumEl.style.height||"100%";'
-        'foliumEl.appendChild(host);}}'
-        'var satTiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";'
-        'var demTiles="https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";'
-        'var style={version:8,sources:{esri:{type:"raster",tiles:[satTiles],tileSize:256,maxzoom:17,'
-        'attribution:"Esri · ~2 m"},terrainSource:{type:"raster-dem",tiles:[demTiles],tileSize:256,'
-        'maxzoom:15,encoding:"terrarium"}},layers:[{id:"sat",type:"raster",source:"esri"}],'
-        'terrain:{source:"terrainSource",exaggeration:2.85}};'
-        'var c={lat:-5.05,lon:-48.35,zoom:6.15};'
-        'try{var fm=document.querySelector(".folium-map");'
-        'for(var k in window){if(k.indexOf("map_")==0&&window[k]&&window[k].getCenter){'
-        'var cc=window[k].getCenter();c.lat=cc.lat;c.lon=cc.lng;c.zoom=window[k].getZoom()||6.15;break;}}}catch(e0){}'
-        'var map3d=new maplibregl.Map({container:host,style:style,center:[c.lon,c.lat],zoom:Math.max(5.6,c.zoom-0.15),'
-        'pitch:68,bearing:-32,maxPitch:80,attributionControl:false});'
-        'map3d.addControl(new maplibregl.NavigationControl({visualizePitch:true}),"top-right");'
-        'window.__efcMap3d=map3d;window.__efcMap3dHost=host;window.__efcKmGotoMarker=null;'
-        'function addOverlay(){if(!OVERLAY)return;'
-        'if(OVERLAY.rail){map3d.addSource("efc-rail",{type:"geojson",data:OVERLAY.rail});'
-        'map3d.addLayer({id:"efc-rail-casing",type:"line",source:"efc-rail",paint:{'
+        'window.__efcMap3dOverlay=OVERLAY;window.__efcRailBounds=OVERLAY&&OVERLAY.bounds||null;'
+        'var host=document.getElementById("efc-maplibre-3d");if(!host)return;'
+        'var map3d=null,loading=null,pendingGoto=null;'
+        'function ensureHost(){var foliumEl=document.querySelector(".folium-map");'
+        'if(foliumEl){foliumEl.style.position="relative";'
+        'if(host.parentNode!==foliumEl){foliumEl.style.height=foliumEl.style.height||"100%";foliumEl.appendChild(host);}}}'
+        'function loadScript(src){return new Promise(function(res,rej){'
+        'if(window.maplibregl){res();return;}var s=document.createElement("script");s.src=src;s.async=true;'
+        's.onload=function(){res();};s.onerror=rej;document.head.appendChild(s);});}'
+        'function loadCss(href){if(document.querySelector(\'link[data-efc-maplibre="1"]\'))return;'
+        'var l=document.createElement("link");l.rel="stylesheet";l.href=href;l.setAttribute("data-efc-maplibre","1");'
+        'document.head.appendChild(l);}'
+        'function addOverlay(m){if(!OVERLAY||!m)return;'
+        'if(OVERLAY.rail){m.addSource("efc-rail",{type:"geojson",data:OVERLAY.rail});'
+        'm.addLayer({id:"efc-rail-casing",type:"line",source:"efc-rail",paint:{'
         '"line-color":"#0b1220","line-width":7,"line-opacity":0.92,"line-blur":0.2}});'
-        'map3d.addLayer({id:"efc-rail-ballast",type:"line",source:"efc-rail",paint:{'
+        'm.addLayer({id:"efc-rail-ballast",type:"line",source:"efc-rail",paint:{'
         '"line-color":"#94a3b8","line-width":3.4,"line-opacity":0.95}});'
-        'map3d.addLayer({id:"efc-rail-steel",type:"line",source:"efc-rail",paint:{'
+        'm.addLayer({id:"efc-rail-steel",type:"line",source:"efc-rail",paint:{'
         '"line-color":"#f8fafc","line-width":1.25,"line-opacity":1}});}'
-        'if(OVERLAY.kmLabels){map3d.addSource("efc-km-labels",{type:"geojson",data:OVERLAY.kmLabels});'
-        'map3d.addLayer({id:"efc-km-halo",type:"symbol",source:"efc-km-labels",layout:{'
+        'if(OVERLAY.kmLabels){m.addSource("efc-km-labels",{type:"geojson",data:OVERLAY.kmLabels});'
+        'm.addLayer({id:"efc-km-halo",type:"symbol",source:"efc-km-labels",layout:{'
         '"text-field":["concat","km ",["to-string",["get","km"]]],"text-size":12,'
         '"text-font":["Open Sans Bold","Arial Unicode MS Bold"],'
         '"text-offset":[0,-0.9],"text-anchor":"bottom","text-allow-overlap":true,'
         '"symbol-placement":"point"},paint:{'
         '"text-color":"#f8fafc","text-halo-color":"#0b1220","text-halo-width":1.6,"text-opacity":0.95}});}'
-        'if(OVERLAY.tunnels){map3d.addSource("efc-tunnels",{type:"geojson",data:OVERLAY.tunnels});'
-        'map3d.addLayer({id:"efc-tunnel-line",type:"line",source:"efc-tunnels",'
+        'if(OVERLAY.tunnels){m.addSource("efc-tunnels",{type:"geojson",data:OVERLAY.tunnels});'
+        'm.addLayer({id:"efc-tunnel-line",type:"line",source:"efc-tunnels",'
         'filter:["==",["get","kind"],"tunnel"],paint:{'
         '"line-color":"#f59e0b","line-width":6,"line-opacity":0.92,"line-dasharray":[1.2,1.1]}});'
-        'map3d.addLayer({id:"efc-tunnel-portal",type:"circle",source:"efc-tunnels",'
+        'm.addLayer({id:"efc-tunnel-portal",type:"circle",source:"efc-tunnels",'
         'filter:["==",["get","kind"],"portal"],paint:{'
         '"circle-radius":7,"circle-color":"#78350f","circle-stroke-width":2,"circle-stroke-color":"#fbbf24"}});}'
-        'if(OVERLAY.stations){map3d.addSource("efc-stations",{type:"geojson",data:OVERLAY.stations});'
-        'map3d.addLayer({id:"efc-stations",type:"circle",source:"efc-stations",paint:{'
+        'if(OVERLAY.stations){m.addSource("efc-stations",{type:"geojson",data:OVERLAY.stations});'
+        'm.addLayer({id:"efc-stations",type:"circle",source:"efc-stations",paint:{'
         '"circle-radius":5.5,"circle-color":["get","color"],"circle-stroke-width":1.4,'
         '"circle-stroke-color":"#0f172a","circle-opacity":0.95}});'
-        'map3d.on("click","efc-stations",function(e){var f=e.features&&e.features[0];if(!f)return;'
+        'm.on("click","efc-stations",function(e){var f=e.features&&e.features[0];if(!f)return;'
         'var p=f.properties||{};new maplibregl.Popup({offset:10}).setLngLat(e.lngLat)'
-        '.setHTML("<b>"+(p.name||p.code||"")+"</b><br>"+(p.net||"")+(p.code?" · "+p.code:"")).addTo(map3d);});'
-        'map3d.on("mouseenter","efc-stations",function(){map3d.getCanvas().style.cursor="pointer";});'
-        'map3d.on("mouseleave","efc-stations",function(){map3d.getCanvas().style.cursor="";});}'
-        '}'
-        'function cinematicEntry(){'
+        '.setHTML("<b>"+(p.name||p.code||"")+"</b><br>"+(p.net||"")+(p.code?" · "+p.code:"")).addTo(m);});'
+        'm.on("mouseenter","efc-stations",function(){m.getCanvas().style.cursor="pointer";});'
+        'm.on("mouseleave","efc-stations",function(){m.getCanvas().style.cursor="";});}}'
+        'function cinematicEntry(m){'
         'if(OVERLAY&&OVERLAY.camera){var cam=OVERLAY.camera;'
-        'map3d.jumpTo({center:[cam.lon,cam.lat],zoom:cam.zoom||6.4,pitch:cam.pitch||70,bearing:cam.bearing||-38});'
-        'return;}'
-        'if(OVERLAY&&OVERLAY.bounds){try{map3d.fitBounds(OVERLAY.bounds,{padding:{top:36,bottom:72,left:48,right:48},'
+        'm.jumpTo({center:[cam.lon,cam.lat],zoom:cam.zoom||6.4,pitch:cam.pitch||70,bearing:cam.bearing||-38});return;}'
+        'if(OVERLAY&&OVERLAY.bounds){try{m.fitBounds(OVERLAY.bounds,{padding:{top:36,bottom:72,left:48,right:48},'
         'pitch:70,bearing:-38,duration:0,maxZoom:6.6});}catch(eB){}}}'
-        'map3d.on("load",function(){addOverlay();cinematicEntry();'
-        'window.parent.postMessage({type:"efc-map-3d-ready"},"*");});'
-        'function showGotoKm(p){if(!p||p.lat==null||p.lon==null)return;'
+        'function showGotoKm(p){if(!map3d||!p||p.lat==null||p.lon==null){pendingGoto=p;return;}'
         'var lon=Number(p.lon),lat=Number(p.lat),km=p.km!=null?Math.round(Number(p.km)):null;'
         'map3d.easeTo({center:[lon,lat],zoom:12.6,pitch:66,bearing:-28,duration:950});'
         'if(window.__efcKmGotoMarker){try{window.__efcKmGotoMarker.remove();}catch(eM){}}'
@@ -327,13 +314,34 @@ def folium_map_standalone_html(m, *, height: str = "390px", map3d_payload: dict 
         'el.innerHTML=(km!=null?("km "+km):"EFC")+"<small>ferrovia</small>";'
         'window.__efcKmGotoMarker=new maplibregl.Marker({element:el,anchor:"bottom",offset:[0,-10]})'
         '.setLngLat([lon,lat]).addTo(map3d);}'
+        'function init3d(){if(map3d){host.style.display="block";try{map3d.resize();}catch(eR){}return Promise.resolve(map3d);}'
+        'if(loading)return loading;ensureHost();host.style.display="block";'
+        'loadCss("https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css");'
+        'loading=loadScript("https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js").then(function(){'
+        'var satTiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";'
+        'var demTiles="https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";'
+        'var style={version:8,sources:{esri:{type:"raster",tiles:[satTiles],tileSize:256,maxzoom:17,'
+        'attribution:"Esri · ~2 m"},terrainSource:{type:"raster-dem",tiles:[demTiles],tileSize:256,'
+        'maxzoom:15,encoding:"terrarium"}},layers:[{id:"sat",type:"raster",source:"esri"}],'
+        'terrain:{source:"terrainSource",exaggeration:2.85}};'
+        'var c={lat:-5.05,lon:-48.35,zoom:6.15};'
+        'try{for(var k in window){if(k.indexOf("map_")==0&&window[k]&&window[k].getCenter){'
+        'var cc=window[k].getCenter();c.lat=cc.lat;c.lon=cc.lng;c.zoom=window[k].getZoom()||6.15;break;}}}catch(e0){}'
+        'map3d=new maplibregl.Map({container:host,style:style,center:[c.lon,c.lat],zoom:Math.max(5.6,c.zoom-0.15),'
+        'pitch:68,bearing:-32,maxPitch:80,attributionControl:false});'
+        'map3d.addControl(new maplibregl.NavigationControl({visualizePitch:true}),"top-right");'
+        'window.__efcMap3d=map3d;window.__efcMap3dHost=host;window.__efcKmGotoMarker=null;'
+        'map3d.on("load",function(){addOverlay(map3d);cinematicEntry(map3d);'
+        'if(pendingGoto){showGotoKm(pendingGoto);pendingGoto=null;}'
+        'window.parent.postMessage({type:"efc-map-3d-ready"},"*");});'
+        'return map3d;}).catch(function(err){loading=null;host.style.display="none";throw err;});'
+        'return loading;}'
         'window.addEventListener("message",function(ev){var p=ev.data;if(!p||!p.type)return;'
         'if(p.type==="efc-map-basemap"){'
-        'var want3d=String(p.mode||"3d")==="3d";'
-        'host.style.display=want3d?"block":"none";'
-        'if(want3d){try{map3d.resize();}catch(eR){}}'
+        'var want3d=String(p.mode||"")==="3d";'
+        'if(want3d){init3d();}else{host.style.display="none";}'
         '}'
-        'if(p.type==="efc-map-goto-km"&&window.__efcMap3d){showGotoKm(p);}'
+        'if(p.type==="efc-map-goto-km"){if(map3d)showGotoKm(p);else pendingGoto=p;}'
         '});'
         '})();</script>'
     )
@@ -385,6 +393,50 @@ def _map_suscetibilidade_enabled() -> bool:
     return os.environ.get("SKIP_SUSCETIBILIDADE", "").strip().lower() not in ("1", "true", "yes")
 
 
+def _cached_station_catalog(kind: str, dataset: str):
+    """Catálogos BNDMET/ANA/Orion — TTL longo (mudam raramente)."""
+    fp = bq_fingerprint()
+    ttl = int(os.environ.get("MONITOR_STATION_CATALOG_TTL", "3600") or "3600")
+    key = f"station_catalog_v1_{kind}_{dataset}_{fp}"
+
+    def _load():
+        if kind == "bndmet":
+            return load_bndmet_estacoes(bq_dataset=dataset)
+        if kind == "ana":
+            return load_ana_estacoes(bq_dataset=dataset)
+        if kind == "orion":
+            return load_orion_estacoes(bq_dataset=dataset)
+        return None
+
+    return cached_call(key, ttl, _load)
+
+
+def _cached_station_accum(kind: str, ref_date: str, hours: int, dataset: str):
+    """Acumulados por rede/janela — reutilizados por mapa + painel de indicadores."""
+    from lib_efc import (
+        get_ana_accum_hours_stale,
+        get_bndmet_accum_hours_stale,
+        get_orion_accum_hours_stale,
+    )
+
+    fp = bq_fingerprint()
+    day = str(ref_date)[:10]
+    h = int(hours)
+    ttl = int(os.environ.get("MONITOR_STATION_ACCUM_TTL", "900") or "900")
+    key = f"station_accum_v1_{kind}_{dataset}_{day}_{h}_{fp}"
+
+    def _load():
+        if kind == "bndmet":
+            return get_bndmet_accum_hours_stale(day, hours=h, bq_dataset=dataset)
+        if kind == "ana":
+            return get_ana_accum_hours_stale(day, hours=h, bq_dataset=dataset)
+        if kind == "orion":
+            return get_orion_accum_hours_stale(day, hours=h, bq_dataset=dataset)
+        return {}, set(), {}
+
+    return cached_call(key, ttl, _load)
+
+
 def _operational_map_html(
     ref_date: str,
     dataset: str,
@@ -397,26 +449,11 @@ def _operational_map_html(
     lang_pt: bool = True,
     show_suscetibilidade: bool = False,
 ):
+    import concurrent.futures
+
     main_line, cum_km, markers_100, all_lines = _railway()
     if main_line is None:
         return ""
-    estacoes = load_bndmet_estacoes(bq_dataset=dataset)
-    ana_est = load_ana_estacoes(bq_dataset=dataset)
-    orion_est = load_orion_estacoes(bq_dataset=dataset)
-    # Orion/EWS no mesmo layer de marcadores (códigos EWS*/BS*/BC*), acumulado à parte.
-    if orion_est is not None and not orion_est.empty:
-        import pandas as _pd
-
-        estacoes = (
-            _pd.concat([estacoes, orion_est], ignore_index=True)
-            if estacoes is not None and not getattr(estacoes, "empty", True)
-            else orion_est
-        )
-    from lib_efc import (
-        get_ana_accum_hours_stale,
-        get_bndmet_accum_hours_stale,
-        get_orion_accum_hours_stale,
-    )
     from monitor_web.services.accum_window import parse_accum_hours
 
     def _merge_acc(a: dict, b: dict) -> dict:
@@ -429,16 +466,43 @@ def _operational_map_html(
         return out
 
     hours = parse_accum_hours(accum_hours)
-    # Popup mantém 24 h + 5 D; a cor segue a janela do menu Acumulado.
-    acc24_b, _, _ = get_bndmet_accum_hours_stale(ref_date, hours=24, bq_dataset=dataset)
-    acc24_o, _, _ = get_orion_accum_hours_stale(ref_date, hours=24, bq_dataset=dataset)
+    # Sempre 24h + 120h no popup; se a janela ativa for outra, busca também.
+    need_hours = {24, 120, int(hours)}
+
+    # Catálogos + acumulados em paralelo (antes: 10–15 BQ seriais → 20–40s).
+    jobs: dict[str, concurrent.futures.Future] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        jobs["bndmet_cat"] = pool.submit(_cached_station_catalog, "bndmet", dataset)
+        jobs["ana_cat"] = pool.submit(_cached_station_catalog, "ana", dataset)
+        jobs["orion_cat"] = pool.submit(_cached_station_catalog, "orion", dataset)
+        for h in sorted(need_hours):
+            for kind in ("bndmet", "orion", "ana"):
+                jobs[f"{kind}_{h}"] = pool.submit(
+                    _cached_station_accum, kind, ref_date, h, dataset
+                )
+        results = {k: f.result() for k, f in jobs.items()}
+
+    estacoes = results["bndmet_cat"]
+    ana_est = results["ana_cat"]
+    orion_est = results["orion_cat"]
+    # Orion/EWS no mesmo layer de marcadores (códigos EWS*/BS*/BC*), acumulado à parte.
+    if orion_est is not None and not getattr(orion_est, "empty", True):
+        import pandas as _pd
+
+        estacoes = (
+            _pd.concat([estacoes, orion_est], ignore_index=True)
+            if estacoes is not None and not getattr(estacoes, "empty", True)
+            else orion_est
+        )
+
+    def _triple(kind: str, h: int):
+        return results.get(f"{kind}_{h}") or ({}, set(), {})
+
+    acc24_b, _, _ = _triple("bndmet", 24)
+    acc24_o, _, _ = _triple("orion", 24)
     acc24 = _merge_acc(acc24_b, acc24_o)
-    acc120_b, st_stale, last_obs = get_bndmet_accum_hours_stale(
-        ref_date, hours=120, bq_dataset=dataset
-    )
-    acc120_o, st_o, lo_o = get_orion_accum_hours_stale(
-        ref_date, hours=120, bq_dataset=dataset
-    )
+    acc120_b, st_stale, last_obs = _triple("bndmet", 120)
+    acc120_o, st_o, lo_o = _triple("orion", 120)
     acc120 = _merge_acc(acc120_b, acc120_o)
     st_stale = set(st_stale or {}) | set(st_o or {})
     last_obs = {**(last_obs or {}), **(lo_o or {})}
@@ -447,23 +511,19 @@ def _operational_map_html(
     elif hours == 120:
         acc = acc120
     else:
-        acc_b, st_stale, last_obs = get_bndmet_accum_hours_stale(
-            ref_date, hours=hours, bq_dataset=dataset
-        )
-        acc_o, st_o, lo_o = get_orion_accum_hours_stale(
-            ref_date, hours=hours, bq_dataset=dataset
-        )
+        acc_b, st_stale, last_obs = _triple("bndmet", hours)
+        acc_o, st_o, lo_o = _triple("orion", hours)
         acc = _merge_acc(acc_b, acc_o)
         st_stale = set(st_stale or {}) | set(st_o or {})
         last_obs = {**(last_obs or {}), **(lo_o or {})}
-    ana_acc24, _, _ = get_ana_accum_hours_stale(ref_date, hours=24, bq_dataset=dataset)
-    ana_acc120, ana_st, ana_lo = get_ana_accum_hours_stale(ref_date, hours=120, bq_dataset=dataset)
+    ana_acc24, _, _ = _triple("ana", 24)
+    ana_acc120, ana_st, ana_lo = _triple("ana", 120)
     if hours == 24:
         ana_acc = ana_acc24
     elif hours == 120:
         ana_acc = ana_acc120
     else:
-        ana_acc, ana_st, ana_lo = get_ana_accum_hours_stale(ref_date, hours=hours, bq_dataset=dataset)
+        ana_acc, ana_st, ana_lo = _triple("ana", hours)
     m = build_folium_railway_map(
         main_line,
         all_lines or [],

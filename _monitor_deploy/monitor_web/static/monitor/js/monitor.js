@@ -4447,9 +4447,10 @@
       });
     }
 
-    var prefBase = "3d";
+    // Default satélite (Leaflet 2D) — 3D MapLibre é lazy e só sobe se o user pedir.
+    var prefBase = "sat";
     try {
-      prefBase = localStorage.getItem(BASE_KEY) || "3d";
+      prefBase = localStorage.getItem(BASE_KEY) || "sat";
     } catch (e5) {}
     setBasemap(prefBase);
     var prefSusc = false;
