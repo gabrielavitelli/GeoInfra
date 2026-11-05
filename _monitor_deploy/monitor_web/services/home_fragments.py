@@ -1102,14 +1102,8 @@ def _align_indicators_impact(
         if panel:
             out = dict(out)
             out.update(panel)
-            try:
-                from monitor_web.services.home_impact_enrich import enrich_home_impact
-
-                out = enrich_home_impact(
-                    out, lang_pt=lang_pt, main_line=main_line, cum_km=cum_km, bq_dataset=dataset
-                )
-            except Exception:
-                pass
+            # Não chama enrich_home_impact aqui: ele carrega catálogos BQ (~segundos)
+            # e bloqueava o first paint mesmo com painel em cache.
         else:
             # Dispara warm em background (não espera).
             def _warm_panel():
