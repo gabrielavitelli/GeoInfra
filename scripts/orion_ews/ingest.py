@@ -37,10 +37,15 @@ from scripts.orion_ews.client import (  # noqa: E402
 )
 from scripts.orion_ews.mapping import (  # noqa: E402
     SOURCE_ORION,
+    clima_series_payload,
     device_to_location_row,
     map_sensor_type,
     reading_to_clima_row,
     station_id_from_device,
+)
+from scripts.orion_ews.secrets import (  # noqa: E402
+    key_fingerprint,
+    load_orion_user_key,
 )
 
 
@@ -84,11 +89,25 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
             w.writerow(flat)
 
 
+def _ensure_key(args: argparse.Namespace) -> None:
+    if getattr(args, "fixture", None) or getattr(args, "fixture_devices", None):
+        return
+    if os.environ.get("ORION_USER_KEY") or os.environ.get("ORION_API_KEY"):
+        return
+    if getattr(args, "from_secret", True):
+        val = load_orion_user_key(
+            project=getattr(args, "gcp_project", "climaticsystem"),
+            secret=getattr(args, "secret_name", "orion-user-key"),
+        )
+        print(f"[secret] loaded orion-user-key ({key_fingerprint(val)})", flush=True)
+
+
 def cmd_catalog(args: argparse.Namespace) -> int:
     if args.fixture:
         devices = _load_json(Path(args.fixture))
         print(f"[fixture] {len(devices)} devices from {args.fixture}")
     else:
+        _ensure_key(args)
         client = OrionClient.from_env()
         print(f"[auth] ORION_USER_KEY={redact_secret(client.api_key)} → /token …", flush=True)
         client.refresh_token()
@@ -160,11 +179,13 @@ def _date_range(args: argparse.Namespace) -> tuple[str, str]:
 
 def cmd_readings(args: argparse.Namespace) -> int:
     start, end = _date_range(args)
+    source = getattr(args, "source", SOURCE_ORION) or SOURCE_ORION
     if args.fixture_devices:
         devices = _load_json(Path(args.fixture_devices))
         if isinstance(devices, dict) and "devices" in devices:
             devices = devices["devices"]
     else:
+        _ensure_key(args)
         client = OrionClient.from_env()
         client.refresh_token()
         serials = [s.strip() for s in (args.serial or "").split(",") if s.strip()] or None
@@ -295,7 +316,12 @@ def cmd_readings(args: argparse.Namespace) -> int:
                 "comment": reading.get("comment"),
             }
         )
-        row = reading_to_clima_row(device=device or meta, sensor_meta=meta, reading=reading)
+        row = reading_to_clima_row(
+            device=device or meta,
+            sensor_meta=meta,
+            reading=reading,
+            source=source,
+        )
         if row:
             clima.append(row)
 
@@ -305,12 +331,74 @@ def cmd_readings(args: argparse.Namespace) -> int:
     else:
         _write_ndjson(out, staging)
     clima_out = Path(args.clima_out) if args.clima_out else out.with_name(out.stem + "_clima_series.ndjson")
-    _write_ndjson(clima_out, clima)
+    _write_ndjson(clima_out, clima_series_payload(clima))
     print(f"wrote staging={out} ({len(staging)} rows) clima={clima_out} ({len(clima)} rows)")
 
+    locations = [device_to_location_row(d, source=source) for d in devices]
+    if getattr(args, "gcs_prefix", None):
+        _upload_gcs(args, devices=devices, staging=staging, clima=clima, locations=locations)
     if args.bq_project:
-        _maybe_load_bq(args, clima, locations=[device_to_location_row(d) for d in devices])
+        _maybe_load_bq(args, clima, locations=locations)
     return 0
+
+
+def _upload_gcs(
+    args: argparse.Namespace,
+    *,
+    devices: list[dict[str, Any]],
+    staging: list[dict[str, Any]],
+    clima: list[dict[str, Any]],
+    locations: list[dict[str, Any]],
+) -> None:
+    """Write catalog + consolidated timeseries under gs://efc-clima-data/obs/ews/."""
+    try:
+        from google.cloud import storage  # type: ignore
+    except ImportError:
+        print("[gcs] google-cloud-storage ausente — pulando upload", file=sys.stderr)
+        return
+
+    prefix = args.gcs_prefix.rstrip("/") + "/"
+    # gs://bucket/path/
+    assert prefix.startswith("gs://"), "--gcs-prefix must be gs://..."
+    _, _, rest = prefix.partition("gs://")
+    bucket_name, _, path = rest.partition("/")
+    client = storage.Client(project=args.bq_project or args.gcp_project or "climaticsystem")
+    bucket = client.bucket(bucket_name)
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    files = {
+        f"{path}orion_devices_latest.json": json.dumps(
+            {"pulled_at_utc": datetime.now(timezone.utc).isoformat(), "devices": devices},
+            ensure_ascii=False,
+            default=str,
+        ),
+        f"{path}orion_locations_latest.json": json.dumps(locations, ensure_ascii=False, default=str),
+        f"{path}orion_readings_latest.ndjson": "\n".join(
+            json.dumps(r, ensure_ascii=False, default=str) for r in staging
+        )
+        + ("\n" if staging else ""),
+        f"{path}orion_clima_series_latest.ndjson": "\n".join(
+            json.dumps(r, ensure_ascii=False, default=str) for r in clima_series_payload(clima)
+        )
+        + ("\n" if clima else ""),
+        f"{path}runs/{stamp}/summary.json": json.dumps(
+            {
+                "pulled_at_utc": datetime.now(timezone.utc).isoformat(),
+                "n_devices": len(devices),
+                "n_staging": len(staging),
+                "n_clima": len(clima),
+                "sample_station_ids": [
+                    station_id_from_device(d) for d in devices[:10]
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+    }
+    for blob_name, body in files.items():
+        blob = bucket.blob(blob_name)
+        blob.upload_from_string(body, content_type="application/json")
+        print(f"[gcs] gs://{bucket_name}/{blob_name} ({len(body)} bytes)")
 
 
 def _maybe_load_bq(
@@ -332,41 +420,28 @@ def _maybe_load_bq(
     project = args.bq_project
     dataset = args.bq_dataset
     client = bigquery.Client(project=project)
-    staging_table = f"{project}.{dataset}.orion_readings_staging"
     series_table = f"{project}.{dataset}.clima_series"
-    loc_table = f"{project}.{dataset}.orion_devices"
 
-    print(f"[bq] loading {len(clima_rows)} clima rows → {series_table} (append)")
-    if not clima_rows:
-        return
-    # Narrow columns for clima_series long format
-    series_payload = [
-        {
-            "source": r["source"],
-            "station_id": r["station_id"],
-            "variable": r["variable"],
-            "value": r["value"],
-            "obs_time": r["obs_time"],
-        }
-        for r in clima_rows
-    ]
-    job = client.load_table_from_json(
-        series_payload,
-        series_table,
-        job_config=bigquery.LoadJobConfig(
-            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
-            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
-        ),
-    )
-    job.result()
-    print(f"[bq] clima_series append ok ({job.output_rows} rows)")
+    series_payload = clima_series_payload(clima_rows)
+    print(f"[bq] loading {len(series_payload)} rows → {series_table} (append)")
+    if series_payload:
+        job = client.load_table_from_json(
+            series_payload,
+            series_table,
+            job_config=bigquery.LoadJobConfig(
+                write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+                source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+            ),
+        )
+        job.result()
+        print(f"[bq] clima_series append ok ({job.output_rows} rows)")
 
-    # Upsert-ish: replace orion_devices snapshot
     loc_payload = []
     for loc in locations:
         loc_payload.append(
             {
                 "source": loc["source"],
+                "location_id": loc.get("location_id"),
                 "station_id": loc["station_id"],
                 "name": loc["name"],
                 "lat": loc["lat"],
@@ -379,35 +454,55 @@ def _maybe_load_bq(
                 "pulled_at": datetime.now(timezone.utc).isoformat(),
             }
         )
+    devices_table = f"{project}.{dataset}.orion_devices"
     job2 = client.load_table_from_json(
         loc_payload,
-        f"{project}.{dataset}.orion_devices",
+        devices_table,
         job_config=bigquery.LoadJobConfig(
             write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+            autodetect=True,
         ),
     )
     job2.result()
-    print(f"[bq] orion_devices replaced ({job2.output_rows} rows); staging ref={staging_table}")
+    print(f"[bq] {devices_table} replaced ({job2.output_rows} rows)")
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
-    key = os.environ.get("ORION_USER_KEY") or os.environ.get("ORION_API_KEY")
     print("Orion EWS ingest doctor")
+    key = os.environ.get("ORION_USER_KEY") or os.environ.get("ORION_API_KEY")
+    if not key and getattr(args, "from_secret", True):
+        try:
+            key = load_orion_user_key(
+                project=args.gcp_project,
+                secret=args.secret_name,
+                allow_missing=True,
+            )
+            if key:
+                print(f"  secret:            {args.secret_name}@{args.gcp_project} ({key_fingerprint(key)})")
+        except Exception as e:  # noqa: BLE001
+            print(f"  secret load:       FAIL ({type(e).__name__}: {e})")
     print(f"  ORION_USER_KEY set: {bool(os.environ.get('ORION_USER_KEY'))}")
-    print(f"  ORION_API_KEY set:  {bool(os.environ.get('ORION_API_KEY'))}")
     if key:
         print(f"  key preview:       {redact_secret(key)}")
     else:
-        print("  → cole só a User Key (não a senha) em ORION_USER_KEY")
-    print(f"  base URL: https://api.oriondata.io/api")
-    print(f"  BQ target (proposed): climaticsystem.efc_clima source=orion")
-    print(f"  GCS legacy path: gs://efc-clima-data/obs/ews/")
+        print("  → defina ORION_USER_KEY ou autentique gcloud para ler orion-user-key")
+    print("  base URL: https://api.oriondata.io/api")
+    print("  BQ target: climaticsystem.efc_clima (source=orion, location_id=ews_*)")
+    print("  GCS path:  gs://efc-clima-data/obs/ews/")
     if args.ping and key:
         try:
             client = OrionClient.from_env()
             client.refresh_token()
             devices = client.list_devices()
             print(f"  ping OK — {len(devices)} devices visible")
+            for d in devices[:8]:
+                print(
+                    f"    - {station_id_from_device(d)}: {d.get('deviceName')} "
+                    f"[{d.get('status')}] bat={d.get('batteryPercentage')}% "
+                    f"imei={d.get('serialNumber')} lat={d.get('latitude')} lon={d.get('longitude')}"
+                )
+            codes = {station_id_from_device(d) for d in devices}
+            print(f"  EWS6536 present: {'EWS6536' in codes}")
         except (OrionAuthError, Exception) as e:  # noqa: BLE001
             print(f"  ping FAIL — {type(e).__name__}: {e}")
             return 1
@@ -417,12 +512,73 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_smoke(args: argparse.Namespace) -> int:
+    """End-to-end: secret → catalog → recent readings → optional BQ/GCS."""
+    args.from_secret = True
+    rc = cmd_doctor(argparse.Namespace(
+        ping=True,
+        from_secret=True,
+        gcp_project=args.gcp_project,
+        secret_name=args.secret_name,
+    ))
+    if rc != 0:
+        return rc
+    cat_args = argparse.Namespace(
+        fixture=None,
+        out=args.out_dir.rstrip("/") + "/orion_devices.json",
+        sensors_out=args.out_dir.rstrip("/") + "/orion_sensors.csv",
+        serial=args.serial,
+        from_secret=True,
+        gcp_project=args.gcp_project,
+        secret_name=args.secret_name,
+    )
+    Path(args.out_dir).mkdir(parents=True, exist_ok=True)
+    rc = cmd_catalog(cat_args)
+    if rc != 0:
+        return rc
+    read_args = argparse.Namespace(
+        fixture_devices=None,
+        fixture_readings=None,
+        out=args.out_dir.rstrip("/") + "/orion_readings.ndjson",
+        clima_out=args.out_dir.rstrip("/") + "/orion_clima_series.ndjson",
+        days=args.days,
+        start=None,
+        end=None,
+        serial=args.serial,
+        validated=False,
+        soft_only=False,
+        raw_only=False,
+        dry_run=False,
+        bq_project=args.bq_project,
+        bq_dataset=args.bq_dataset,
+        gcs_prefix=args.gcs_prefix,
+        source=args.source,
+        from_secret=True,
+        gcp_project=args.gcp_project,
+        secret_name=args.secret_name,
+    )
+    return cmd_readings(read_args)
+
+
+def _add_secret_args(ap: argparse.ArgumentParser) -> None:
+    ap.add_argument("--gcp-project", default="climaticsystem")
+    ap.add_argument("--secret-name", default="orion-user-key")
+    ap.add_argument(
+        "--no-from-secret",
+        dest="from_secret",
+        action="store_false",
+        help="Do not call Secret Manager (env only)",
+    )
+    ap.set_defaults(from_secret=True)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Orion Data (EWS) → EFC climaticsystem ingest")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     d = sub.add_parser("doctor", help="Check env / optional API ping")
     d.add_argument("--ping", action="store_true", help="Call /token + /userDevices")
+    _add_secret_args(d)
     d.set_defaults(func=cmd_doctor)
 
     c = sub.add_parser("catalog", help="List devices + sensors")
@@ -430,6 +586,7 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--sensors-out", default=None)
     c.add_argument("--serial", default="", help="Comma-separated IMEI filter")
     c.add_argument("--fixture", default=None, help="Local JSON (no API call)")
+    _add_secret_args(c)
     c.set_defaults(func=cmd_catalog)
 
     r = sub.add_parser("readings", help="Pull sensor time series")
@@ -447,7 +604,25 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--fixture-readings", default=None)
     r.add_argument("--bq-project", default=None, help="e.g. climaticsystem")
     r.add_argument("--bq-dataset", default="efc_clima")
+    r.add_argument(
+        "--gcs-prefix",
+        default=None,
+        help="e.g. gs://efc-clima-data/obs/ews/",
+    )
+    r.add_argument("--source", default=SOURCE_ORION, choices=["orion", "ews"])
+    _add_secret_args(r)
     r.set_defaults(func=cmd_readings)
+
+    s = sub.add_parser("smoke", help="Secret → catalog → readings → optional BQ/GCS")
+    s.add_argument("--out-dir", default="/tmp/orion_smoke")
+    s.add_argument("--days", type=int, default=3)
+    s.add_argument("--serial", default="", help="Optional IMEI filter")
+    s.add_argument("--bq-project", default=None)
+    s.add_argument("--bq-dataset", default="efc_clima")
+    s.add_argument("--gcs-prefix", default=None)
+    s.add_argument("--source", default=SOURCE_ORION, choices=["orion", "ews"])
+    _add_secret_args(s)
+    s.set_defaults(func=cmd_smoke)
 
     return p
 

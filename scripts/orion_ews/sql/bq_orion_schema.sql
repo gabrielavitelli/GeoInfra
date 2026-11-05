@@ -1,42 +1,30 @@
--- Orion / EWS landing tables for climaticsystem.efc_clima
--- Run once (or via terraform/migration) before the ingest job appends.
--- Project: climaticsystem | Dataset: efc_clima
---
--- Design:
---   * orion_devices     — device catalog snapshot (map / battery / status)
---   * orion_sensors     — channel dictionary (raw + soft)
---   * orion_readings_staging — raw API payload (optional audit)
---   * clima_series      — EXISTING long table; append with source='orion'
---                         (monitor already filters by source; add 'orion'/'ews')
---   * locations         — EXISTING catalog; MERGE station rows for map layers
+-- Orion / EWS landing for climaticsystem.efc_clima
+-- Live clima_series columns (do not invent others on append):
+--   date, location_id, source, ingested_at, variable, value
+-- location_id convention: ews_EWS6536  (cf. estacao_A044 for BNDMET/ANA)
 
--- ---------------------------------------------------------------------------
--- Device catalog
--- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `climaticsystem.efc_clima.orion_devices` (
-  source           STRING OPTIONS(description="Always 'orion'"),
-  station_id       STRING OPTIONS(description="EWS#### from deviceName, else IMEI_*"),
+  source           STRING,
+  location_id      STRING,
+  station_id       STRING,
   name             STRING,
   lat              FLOAT64,
   lon              FLOAT64,
-  status           STRING OPTIONS(description="Online|Offline"),
+  status           STRING,
   battery_pct      INT64,
-  serial_number    STRING OPTIONS(description="IMEI"),
+  serial_number    STRING,
   reference        STRING,
   last_upload      TIMESTAMP,
   date_installed   TIMESTAMP,
   orion_device_id  INT64,
   pulled_at        TIMESTAMP
-)
-OPTIONS(description="Orion Data device catalog (EWS Switch MKII etc.)");
+);
 
--- ---------------------------------------------------------------------------
--- Sensor / soft-sensor dictionary
--- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `climaticsystem.efc_clima.orion_sensors` (
   orion_device_id  INT64,
+  location_id      STRING,
   station_id       STRING,
-  kind             STRING OPTIONS(description="raw|soft"),
+  kind             STRING,
   sensor_id        INT64,
   soft_sensor_id   INT64,
   sensor_type      STRING,
@@ -44,14 +32,12 @@ CREATE TABLE IF NOT EXISTS `climaticsystem.efc_clima.orion_sensors` (
   channel_number   INT64,
   custom_name      STRING,
   scada_tag        STRING,
-  mapped_variable  STRING OPTIONS(description="clima_series.variable if mapped"),
+  mapped_variable  STRING,
   pulled_at        TIMESTAMP
 );
 
--- ---------------------------------------------------------------------------
--- Staging readings (full fidelity; optional)
--- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `climaticsystem.efc_clima.orion_readings_staging` (
+  location_id      STRING,
   station_id       STRING,
   orion_device_id  INT64,
   sensor_id        INT64,
@@ -59,7 +45,7 @@ CREATE TABLE IF NOT EXISTS `climaticsystem.efc_clima.orion_readings_staging` (
   sensor_type      STRING,
   uom              STRING,
   kind             STRING,
-  reading_date     TIMESTAMP OPTIONS(description="Device local standard time (Orion)"),
+  reading_date     TIMESTAMP,
   sensor_value     FLOAT64,
   quality_approval STRING,
   quality_code     STRING,
@@ -67,32 +53,14 @@ CREATE TABLE IF NOT EXISTS `climaticsystem.efc_clima.orion_readings_staging` (
   ingested_at      TIMESTAMP
 )
 PARTITION BY DATE(reading_date)
-CLUSTER BY station_id, sensor_type;
+CLUSTER BY location_id, sensor_type;
 
--- ---------------------------------------------------------------------------
--- clima_series append contract (table already exists — document columns used)
--- ---------------------------------------------------------------------------
--- Expected long schema (align with existing ana/estacoes loaders):
---   source     STRING   -- 'orion'  (monitor may also accept alias 'ews')
---   station_id STRING   -- e.g. EWS6536
---   variable   STRING   -- nivel_m | precip_mm | vazao_m3s | temp_c | …
---   value      FLOAT64
---   obs_time   TIMESTAMP
--- Optional extras already seen in ops notes: date, precip_mm wide forms, etc.
--- If the live table uses `date` instead of `obs_time`, adapt the loader.
-
--- Example MERGE into locations (map layer):
+-- Optional: expose Orion devices on the monitor map catalog
 -- MERGE `climaticsystem.efc_clima.locations` T
 -- USING (
---   SELECT source, station_id, name, lat, lon
+--   SELECT source, location_id AS station_id, name, lat, lon
 --   FROM `climaticsystem.efc_clima.orion_devices`
 -- ) S
 -- ON T.source = S.source AND T.station_id = S.station_id
--- WHEN MATCHED THEN UPDATE SET name=S.name, lat=S.lat, lon=S.lon
--- WHEN NOT MATCHED THEN INSERT (source, station_id, name, lat, lon)
---   VALUES (S.source, S.station_id, S.name, S.lat, S.lon);
-
--- Secret (do NOT store in git):
---   gcloud secrets create orion-user-key --project=climaticsystem
---   echo -n 'USER_KEY' | gcloud secrets versions add orion-user-key --data-file=-
--- Cloud Run / Cloud Build: ORION_USER_KEY=secrets:orion-user-key
+-- WHEN MATCHED THEN UPDATE SET name = S.name, lat = S.lat, lon = S.lon
+-- WHEN NOT MATCHED THEN INSERT ROW;
