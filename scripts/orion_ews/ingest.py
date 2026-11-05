@@ -205,7 +205,9 @@ def cmd_readings(args: argparse.Namespace) -> int:
         ]
         print(f"[readings] precip-only filter → {len(flat)} rainfall/soft-precip sensors", flush=True)
 
-    # Prefer soft sensors when both exist for same type on a device.
+    # precip-only: prefer RAW Rainfall tips (sub-hourly → hourly buckets).
+    # Soft "mm/dia" / 24h aggregates are daily stamps — skip them for the panel clock.
+    # Other modes: keep previous behavior (prefer soft twin over raw).
     soft_keys = {
         (r["device_id"], (r.get("sensor_type") or "").lower())
         for r in flat
@@ -217,6 +219,11 @@ def cmd_readings(args: argparse.Namespace) -> int:
         if args.raw_only and r["kind"] != "raw":
             continue
         if args.soft_only and r["kind"] != "soft":
+            continue
+        if precip_only:
+            if r["kind"] != "raw":
+                continue  # only raw tips for hourly panel
+            selected.append(r)
             continue
         if (
             not args.raw_only
