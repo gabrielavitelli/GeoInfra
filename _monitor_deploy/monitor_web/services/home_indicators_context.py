@@ -19,13 +19,15 @@ def _peak_tone(mm, th: float) -> str:
 
 
 def _station_lookup_tables(dataset: str | None) -> tuple[dict, dict, dict]:
+    """Lookups de nome de estação — sempre via cache Redis (TTL 1h)."""
     try:
-        from lib_efc import load_ana_estacoes, load_bndmet_estacoes, load_orion_estacoes
+        from monitor_web.services.home import _cached_station_catalog
         from monitor_web.services.home_impact_enrich import _build_station_lookup
 
-        bnd = _build_station_lookup(load_bndmet_estacoes(bq_dataset=dataset or None))
-        ana = _build_station_lookup(load_ana_estacoes(bq_dataset=dataset or None))
-        ews = _build_station_lookup(load_orion_estacoes(bq_dataset=dataset or None))
+        ds = dataset or ""
+        bnd = _build_station_lookup(_cached_station_catalog("bndmet", ds))
+        ana = _build_station_lookup(_cached_station_catalog("ana", ds))
+        ews = _build_station_lookup(_cached_station_catalog("orion", ds))
         return bnd, ana, ews
     except Exception:
         return {}, {}, {}
