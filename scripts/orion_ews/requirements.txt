@@ -1,0 +1,3 @@
+# Core ingest uses Python stdlib only.
+# Optional BQ load:
+google-cloud-bigquery>=3.11.0
