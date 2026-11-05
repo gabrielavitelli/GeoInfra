@@ -60,9 +60,14 @@ def station_code_from_device(device: Mapping[str, Any]) -> str:
         or device.get("name")
         or ""
     ).strip()
-    m = re.search(r"\b(EWS\d+|BS\d+\w*)\b", name, re.I)
+    # EWS6536, EWSBC07495S, BS08687S, BC07507S, …
+    m = re.search(r"\b((?:EWS|BS|BC)[A-Z]*\d+\w*)\b", name, re.I)
     if m:
         return m.group(1).upper()
+    # Leading token before " - " when it looks like a code
+    head = re.split(r"\s*[-–—]\s*", name, maxsplit=1)[0].strip()
+    if head and re.fullmatch(r"[A-Z]{2,}\d+\w*", head, re.I):
+        return head.upper()
     serial = device.get("serialNumber") or device.get("serial_number")
     if serial:
         return f"IMEI_{serial}"
@@ -80,6 +85,33 @@ def location_id_from_device(device: Mapping[str, Any]) -> str:
     """clima_series.location_id / locations key — prefix ews_."""
     return f"ews_{station_code_from_device(device)}"
 
+
+def clean_device_display_name(raw: Optional[str], *, station_code: Optional[str] = None) -> str:
+    """``EWS6536  - Abrigo km 149`` → ``Abrigo km 149`` (fallback: código)."""
+    text = " ".join(str(raw or "").split()).strip()
+    if not text:
+        return (station_code or "").strip() or "EWS"
+    # Drop leading station code + separators
+    text2 = re.sub(r"^(EWS\d+|BS\d+\w*)\s*[-–—:/]*\s*", "", text, flags=re.I).strip()
+    if text2:
+        return text2
+    return text
+
+
+def km_efc_from_device_name(raw: Optional[str]) -> Optional[float]:
+    """Parse ``Abrigo km 149`` / ``km 734`` → 149.0."""
+    m = re.search(r"\bkm\s*(\d+(?:[.,]\d+)?)\b", str(raw or ""), re.I)
+    if not m:
+        return None
+    try:
+        return float(m.group(1).replace(",", "."))
+    except ValueError:
+        return None
+
+
+def is_precip_sensor(sensor_type: Optional[str], uom: Optional[str] = None) -> bool:
+    """True when sensor maps to precip_mm (Rainfall / soft precip)."""
+    return map_sensor_type(sensor_type, uom) == "precip_mm"
 
 def reading_to_clima_row(
     *,
@@ -145,11 +177,15 @@ def clima_series_payload(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def device_to_location_row(device: Mapping[str, Any], source: str = SOURCE_ORION) -> dict[str, Any]:
     """Row for efc_clima.locations / orion_devices catalog."""
     code = station_code_from_device(device)
+    raw_name = device.get("deviceName")
+    display = clean_device_display_name(raw_name, station_code=code)
     return {
         "source": source,
         "location_id": location_id_from_device(device),
         "station_id": code,
-        "name": device.get("deviceName"),
+        "name": display,
+        "name_raw": raw_name,
+        "km_efc": km_efc_from_device_name(raw_name),
         "lat": device.get("latitude"),
         "lon": device.get("longitude"),
         "extra": {
@@ -160,5 +196,6 @@ def device_to_location_row(device: Mapping[str, Any], source: str = SOURCE_ORION
             "battery_pct": device.get("batteryPercentage"),
             "last_upload": device.get("lastUpload"),
             "date_installed": device.get("dateInstalled"),
+            "display_name": display,
         },
     }

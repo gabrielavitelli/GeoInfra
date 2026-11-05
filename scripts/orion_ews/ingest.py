@@ -40,6 +40,7 @@ from scripts.orion_ews.mapping import (  # noqa: E402
     SOURCE_ORION,
     clima_series_payload,
     device_to_location_row,
+    is_precip_sensor,
     map_sensor_type,
     reading_to_clima_row,
     station_id_from_device,
@@ -195,6 +196,15 @@ def cmd_readings(args: argparse.Namespace) -> int:
     by_device_id = {d.get("deviceId"): d for d in devices}
     flat = flatten_device_sensors(devices)
 
+    precip_only = bool(getattr(args, "precip_only", False))
+    if precip_only:
+        flat = [
+            r
+            for r in flat
+            if is_precip_sensor(r.get("sensor_type"), r.get("uom"))
+        ]
+        print(f"[readings] precip-only filter → {len(flat)} rainfall/soft-precip sensors", flush=True)
+
     # Prefer soft sensors when both exist for same type on a device.
     soft_keys = {
         (r["device_id"], (r.get("sensor_type") or "").lower())
@@ -326,6 +336,8 @@ def cmd_readings(args: argparse.Namespace) -> int:
             source=source,
         )
         if row:
+            if precip_only and row.get("variable") != "precip_mm":
+                continue
             clima.append(row)
 
     out = Path(args.out)
@@ -424,20 +436,48 @@ def _maybe_load_bq(
     dataset = args.bq_dataset
     client = bigquery.Client(project=project)
     series_table = f"{project}.{dataset}.clima_series"
+    source = getattr(args, "source", SOURCE_ORION) or SOURCE_ORION
 
-    series_payload = clima_series_payload(clima_rows)
-    print(f"[bq] loading {len(series_payload)} rows → {series_table} (append)")
+    # Hourly buckets (date DATE + valid_time TIMESTAMP) — matches BNDMET shape; no daily-only.
+    from scripts.orion_ews.load_gcs_to_bq_hourly import to_hourly_precip
+
+    series_payload = to_hourly_precip(clima_series_payload(clima_rows), source=source)
+    print(f"[bq] loading {len(series_payload)} hourly rows → {series_table}")
     if series_payload:
+        dates = sorted({str(r.get("date") or "")[:10] for r in series_payload if r.get("date")})
+        variables = sorted({str(r.get("variable") or "") for r in series_payload if r.get("variable")})
+        if dates and variables:
+            d0, d1 = dates[0], dates[-1]
+            var_list = ", ".join(f"'{v}'" for v in variables)
+            del_sql = f"""
+            DELETE FROM `{series_table}`
+            WHERE source = @source
+              AND variable IN ({var_list})
+              AND date BETWEEN @d0 AND @d1
+            """
+            job_del = client.query(
+                del_sql,
+                job_config=bigquery.QueryJobConfig(
+                    query_parameters=[
+                        bigquery.ScalarQueryParameter("source", "STRING", source),
+                        bigquery.ScalarQueryParameter("d0", "DATE", d0),
+                        bigquery.ScalarQueryParameter("d1", "DATE", d1),
+                    ]
+                ),
+            )
+            job_del.result()
+            print(f"[bq] deleted prior {source}/{variables} window {d0}→{d1}", flush=True)
+
         job = client.load_table_from_json(
             series_payload,
             series_table,
             job_config=bigquery.LoadJobConfig(
                 write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
-                source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+                ignore_unknown_values=True,
             ),
         )
         job.result()
-        print(f"[bq] clima_series append ok ({job.output_rows} rows)")
+        print(f"[bq] clima_series append ok ({job.output_rows} hourly rows)")
 
     loc_payload = []
     for loc in locations:
@@ -447,6 +487,7 @@ def _maybe_load_bq(
                 "location_id": loc.get("location_id"),
                 "station_id": loc["station_id"],
                 "name": loc["name"],
+                "km_efc": loc.get("km_efc"),
                 "lat": loc["lat"],
                 "lon": loc["lon"],
                 "status": (loc.get("extra") or {}).get("status"),
@@ -458,17 +499,78 @@ def _maybe_load_bq(
             }
         )
     devices_table = f"{project}.{dataset}.orion_devices"
+    # Ensure table exists with stable schema (avoid autodetect drift).
+    client.query(
+        f"""
+        CREATE TABLE IF NOT EXISTS `{devices_table}` (
+          source STRING,
+          location_id STRING,
+          station_id STRING,
+          name STRING,
+          km_efc FLOAT64,
+          lat FLOAT64,
+          lon FLOAT64,
+          status STRING,
+          battery_pct INT64,
+          serial_number STRING,
+          last_upload STRING,
+          orion_device_id INT64,
+          pulled_at TIMESTAMP
+        )
+        """
+    ).result()
     job2 = client.load_table_from_json(
         loc_payload,
         devices_table,
         job_config=bigquery.LoadJobConfig(
             write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
-            autodetect=True,
         ),
     )
     job2.result()
     print(f"[bq] {devices_table} replaced ({job2.output_rows} rows)")
 
+    # Upsert map catalog: locations.source=orion, location_id=ews_*
+    # Note: locations.extra is INT64 in prod — leave NULL; names live in orion_devices.
+    if loc_payload:
+        locs_table = f"{project}.{dataset}.locations"
+        staging = f"{project}.{dataset}._orion_locations_staging"
+        stage_rows = [
+            {
+                "location_id": r["location_id"],
+                "km_efc": r.get("km_efc"),
+                "lat": r.get("lat"),
+                "lon": r.get("lon"),
+                "source": r["source"],
+            }
+            for r in loc_payload
+            if r.get("location_id") and r.get("lat") is not None and r.get("lon") is not None
+        ]
+        if stage_rows:
+            client.query(f"DROP TABLE IF EXISTS `{staging}`").result()
+            job3 = client.load_table_from_json(
+                stage_rows,
+                staging,
+                job_config=bigquery.LoadJobConfig(
+                    write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+                    autodetect=True,
+                ),
+            )
+            job3.result()
+            merge_sql = f"""
+            MERGE `{locs_table}` T
+            USING `{staging}` S
+            ON T.location_id = S.location_id
+            WHEN MATCHED THEN UPDATE SET
+              lat = S.lat,
+              lon = S.lon,
+              source = S.source,
+              km_efc = COALESCE(S.km_efc, T.km_efc)
+            WHEN NOT MATCHED THEN INSERT (location_id, km_efc, lat, lon, source)
+              VALUES (S.location_id, S.km_efc, S.lat, S.lon, S.source)
+            """
+            client.query(merge_sql).result()
+            client.query(f"DROP TABLE IF EXISTS `{staging}`").result()
+            print(f"[bq] locations MERGE ok ({len(stage_rows)} Orion/EWS sites)", flush=True)
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     print("Orion EWS ingest doctor")
@@ -551,6 +653,7 @@ def cmd_smoke(args: argparse.Namespace) -> int:
         validated=False,
         soft_only=False,
         raw_only=False,
+        precip_only=bool(getattr(args, "precip_only", True)),
         dry_run=False,
         bq_project=args.bq_project,
         bq_dataset=args.bq_dataset,
@@ -602,6 +705,11 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--validated", action="store_true", help="Use /validatedSensorData")
     r.add_argument("--soft-only", action="store_true")
     r.add_argument("--raw-only", action="store_true")
+    r.add_argument(
+        "--precip-only",
+        action="store_true",
+        help="Pull only Rainfall / soft precip sensors (fewer API calls, avoid WL zeros)",
+    )
     r.add_argument("--dry-run", action="store_true")
     r.add_argument("--fixture-devices", default=None)
     r.add_argument("--fixture-readings", default=None)
@@ -623,6 +731,18 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--bq-project", default=None)
     s.add_argument("--bq-dataset", default="efc_clima")
     s.add_argument("--gcs-prefix", default=None)
+    s.add_argument(
+        "--precip-only",
+        action="store_true",
+        default=True,
+        help="Default on for smoke: rainfall sensors only",
+    )
+    s.add_argument(
+        "--all-variables",
+        dest="precip_only",
+        action="store_false",
+        help="Disable precip-only filter (pull all mapped sensors)",
+    )
     s.add_argument("--source", default=SOURCE_ORION, choices=["orion", "ews"])
     _add_secret_args(s)
     s.set_defaults(func=cmd_smoke)

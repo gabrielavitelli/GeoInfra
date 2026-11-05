@@ -3,48 +3,63 @@
 API: [Orion Data v1.3](https://docs.oriondata.io/api/orion-data/v1-3/)  
 Auth: **User Key** (Secret Manager `orion-user-key` @ `climaticsystem`) → `/token` → Bearer JWT. Login/senha = só portal.
 
-## Endpoints
+## Destino EFC (horário, sem agregar só por dia)
 
-| Call | Uso |
+`clima_series`:
+
+| col | uso Orion |
 |---|---|
-| `GET /token?apiKey=` | JWT |
-| `GET /userDevices` | Catálogo (nome, IMEI, battery%, status, lat/lon, sensores) |
-| `GET /sensorData` | Séries (`readingDate`, `sensorValue`) |
-| `GET /validatedSensorData` | Séries + qualidade |
+| `date` | DATE do dia UTC |
+| `valid_time` | TIMESTAMP na **hora** (soma dos tips 15‑min daquela hora) |
+| `location_id` | `ews_EWS6536` |
+| `source` | `orion` |
+| `variable` | `precip_mm` |
+| `value` | mm na hora |
 
-## Destino EFC
+Também: `orion_devices` (nomes) + `locations` (`source=orion`).
 
-`clima_series` (colunas reais): `date`, `location_id`, `source`, `ingested_at`, `variable`, `value`
+GCS: `gs://efc-clima-data/obs/ews/orion_*_latest.*`
 
-- `source`: `orion` (ou `ews`)
-- `location_id`: `ews_EWS6536` (cf. `estacao_A044`)
-- Catálogo: tabela `orion_devices` + opcional MERGE em `locations`
-- GCS: `gs://efc-clima-data/obs/ews/orion_*_latest.*`
+## Custo / frequência
+
+| Frequência | Lookback | Estimativa* | Quando usar |
+|---|---|---|---|
+| **24×/dia** (`15 * * * *`) | `_DAYS=1`, precip-only | **~$2–8/mês** | **Recomendado** (painel “quase ao vivo”) |
+| 8×/dia (`0 */3 * * *`) | `_DAYS=1` | ~⅓ do acima | Se precisar apertar orçamento |
+| 1×/dia | `_DAYS=2` | mínimo | Só histórico |
+
+\*Cloud Build `E2_MEDIUM` ~2–5 min + BQ load de ~0,5–5k linhas/hora + API Orion (sem custo GCP). Dominante = minutos de build, não BigQuery.
+
+**24×/dia é barato o bastante** para este volume (~21 pluviômetros). Não use lookback de 7 dias no horário.
 
 ## Comandos
 
 ```bash
-# Lê secret via gcloud (não imprime o valor) + ping API
+# Ping
 python3 -m scripts.orion_ews.ingest doctor --ping
 
-# Smoke completo (3 dias). Com BQ/GCS:
-python3 -m scripts.orion_ews.ingest smoke --days 3 \
+# Precip-only 1 dia → GCS + BQ horário
+python3 -m scripts.orion_ews.ingest readings --precip-only --days 1 \
   --bq-project climaticsystem \
   --gcs-prefix gs://efc-clima-data/obs/ews/
 
-# IAM para Cloud Run / compute SA ler o secret
-bash scripts/orion_ews/grant_secret_access.sh
+# Só recarregar NDJSON já no GCS (zero chamada Orion)
+python3 -m scripts.orion_ews.load_gcs_to_bq_hourly
 ```
 
-Fixture (sem rede Orion):
+## Scheduler horário (24×)
 
 ```bash
-python3 -m scripts.orion_ews.ingest catalog \
-  --fixture scripts/orion_ews/fixtures/user_devices_sample.json
+gcloud builds submit --config=scripts/orion_ews/cloudbuild-orion-ingest.yaml \
+  --project=climaticsystem --substitutions=_DAYS=1
+
+gcloud scheduler jobs create http orion-ews-precip-hourly \
+  --project=climaticsystem --location=us-central1 \
+  --schedule='15 * * * *' --time-zone=America/Sao_Paulo \
+  --uri='https://cloudbuild.googleapis.com/v1/projects/climaticsystem/builds' \
+  --message-body-from-file=scripts/orion_ews/scheduler_build_body.json \
+  --oauth-service-account-email=894301304159-compute@developer.gserviceaccount.com \
+  --oauth-token-scope=https://www.googleapis.com/auth/cloud-platform
 ```
 
-## Refresh
-
-1. Secret já em `orion-user-key` v1.  
-2. Job: Cloud Build `cloudbuild-orion-ingest.yaml` ou `ingest smoke` no Scheduler.  
-3. Monitor mapa: incluir `source IN ('orion','ews')` / `location_id LIKE 'ews_%'` no catálogo.
+IAM: compute SA precisa `roles/cloudbuild.builds.editor` (+ secret accessor no Cloud Build SA, já concedido).

@@ -1,0 +1,14 @@
+{
+  "source": {
+    "repoSource": {
+      "projectId": "climaticsystem",
+      "repoName": "github_gabrielavitelli_geoinfra",
+      "branchName": "cursor/orion-pluvio-monitor-9ef8"
+    }
+  },
+  "substitutions": {
+    "_DAYS": "1",
+    "_BQ_DATASET": "efc_clima",
+    "_GCS_PREFIX": "gs://efc-clima-data/obs/ews/"
+  }
+}
