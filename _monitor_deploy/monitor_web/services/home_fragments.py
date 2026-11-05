@@ -61,8 +61,8 @@ MAP_KM_STEP = max(2, int(os.environ.get("MONITOR_MAP_KM_STEP", "10") or "10"))
 # Bump when Folium render format changes (e.g. inline vs Jupyter srcdoc iframe).
 # v53: suscetibilidade raster 4096px (pixels GeoTIFF); inclui bust via env.
 _susc_bust = (os.environ.get("SUSCETIBILIDADE_CACHE_BUST") or "").strip()
-# v55: MapLibre 3D lazy (sem CDN no first paint) + stations parallel cache.
-MAP_CACHE_VER = (os.environ.get("MONITOR_MAP_CACHE_VER") or "folium_v55_lazy3d").strip()
+# v56: lazy 3D + parallel catalogs + clima_series-only map accum (fast cold).
+MAP_CACHE_VER = (os.environ.get("MONITOR_MAP_CACHE_VER") or "folium_v56_mapfast").strip()
 if _susc_bust:
     MAP_CACHE_VER = f"{MAP_CACHE_VER}_{_susc_bust}"
 
