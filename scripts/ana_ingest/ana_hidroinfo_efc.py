@@ -53,8 +53,10 @@ ANA_ADOTADA_CSV = DATA_DIR / "ana_telemetrica_adotada_efc.csv"
 ANA_DETALHADA_CSV = DATA_DIR / "ana_telemetrica_detalhada_efc.csv"
 
 BASE_URL = (os.environ.get("ANA_HIDROINFO_BASE_URL") or "https://www.ana.gov.br/hidrowebservice").rstrip("/")
+# Preferir HTTP no GET legado: HTTPS costuma 504 sob carga; o force-load
+# operacional usa http://telemetriaws1.../DadosHidrometeorologicos.
 LEGACY_URL = (
-    os.environ.get("ANA_HIDROINFO_LEGACY_URL") or "https://telemetriaws1.ana.gov.br/ServiceANA.asmx"
+    os.environ.get("ANA_HIDROINFO_LEGACY_URL") or "http://telemetriaws1.ana.gov.br/ServiceANA.asmx"
 ).rstrip("/")
 
 DEFAULT_FILTER_TYPE = (os.environ.get("ANA_HIDROINFO_FILTER_TYPE") or "DATA_ULTIMA_ATUALIZACAO").strip()
@@ -695,8 +697,10 @@ def download_ana_series_for_stations(
             except Exception as exc:
                 print(f"[ANA] HidroInfo falhou em {cod}@{win_date}: {exc}")
                 if not legacy_ok:
-                    raise
-                start = (pd.Timestamp(win_date) - pd.Timedelta(days=29)).date()
+                    print(f"[ANA] ANA_LEGACY_FALLBACK desligado; pulando {cod}@{win_date}")
+                    continue
+                # Janela menor no legado evita 504 em ranges longos.
+                start = (pd.Timestamp(win_date) - pd.Timedelta(days=min(14, days_back) - 1)).date()
                 try:
                     legacy_raw = fetch_legacy_dados_hidrometeorologicos(
                         cod, start=start, end=win_date
@@ -709,15 +713,14 @@ def download_ana_series_for_stations(
                     adopted_rows.extend(legacy_series)
                     _pause()
                 except Exception as leg_exc:
-                    print(f"[ANA] fallback legado também falhou em {cod}: {leg_exc}")
-                    if not station_got_hidroinfo and win_date == window_end_dates[-1]:
-                        # última janela e nada obtido — propaga para o step falhar
-                        # de forma visível em vez de reutilizar CSV antigo silenciosamente
-                        raise
-        if legacy_ok and not station_got_hidroinfo:
-            # Garante ao menos uma tentativa de janela completa se todas as janelas
-            # caíram no fallback parcial sem linhas.
-            pass
+                    # Não abortar o download inteiro por 1 estação — BNDMET/restante
+                    # das estações devem seguir; step_ana falha só se CSV ficar vazio.
+                    print(f"[ANA] fallback legado também falhou em {cod}: {leg_exc} (continua)")
+                    continue
+    if not adopted_rows and not detailed_rows:
+        raise RuntimeError(
+            "ANA: nenhuma série obtida (HidroInfo e legado falharam em todas as estações)."
+        )
     return _dedupe_rows(pd.DataFrame(adopted_rows)), _dedupe_rows(pd.DataFrame(detailed_rows))
 
 

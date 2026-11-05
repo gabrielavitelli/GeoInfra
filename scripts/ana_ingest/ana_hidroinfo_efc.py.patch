@@ -1,5 +1,5 @@
 --- /tmp/ana_hidroinfo_efc.py.bak	2026-11-05 13:44:21.845941720 +0000
-+++ /tmp/cb-geotec/downloads/ana_hidroinfo_efc.py	2026-11-05 13:45:11.757908268 +0000
++++ /tmp/cb-geotec/downloads/ana_hidroinfo_efc.py	2026-11-05 14:40:20.341137000 +0000
 @@ -4,6 +4,8 @@
  Fluxo:
  - Lista legada `ListaEstacoesTelemetricas` para descobrir coordenadas/metadata.
@@ -18,7 +18,19 @@
  """
  from __future__ import annotations
  
-@@ -58,14 +62,29 @@
+@@ -49,8 +53,10 @@
+ ANA_DETALHADA_CSV = DATA_DIR / "ana_telemetrica_detalhada_efc.csv"
+ 
+ BASE_URL = (os.environ.get("ANA_HIDROINFO_BASE_URL") or "https://www.ana.gov.br/hidrowebservice").rstrip("/")
++# Preferir HTTP no GET legado: HTTPS costuma 504 sob carga; o force-load
++# operacional usa http://telemetriaws1.../DadosHidrometeorologicos.
+ LEGACY_URL = (
+-    os.environ.get("ANA_HIDROINFO_LEGACY_URL") or "https://telemetriaws1.ana.gov.br/ServiceANA.asmx"
++    os.environ.get("ANA_HIDROINFO_LEGACY_URL") or "http://telemetriaws1.ana.gov.br/ServiceANA.asmx"
+ ).rstrip("/")
+ 
+ DEFAULT_FILTER_TYPE = (os.environ.get("ANA_HIDROINFO_FILTER_TYPE") or "DATA_ULTIMA_ATUALIZACAO").strip()
+@@ -58,14 +64,29 @@
  DEFAULT_DETALHADA_RANGE = (os.environ.get("ANA_HIDROINFO_DETALHADA_RANGE") or "DIAS_30").strip()
  
  SESSION = requests.Session()
@@ -49,7 +61,7 @@
          )
      ),
  )
-@@ -132,7 +151,7 @@
+@@ -132,7 +153,7 @@
              last_exc = exc
              if att >= attempts - 1:
                  break
@@ -58,7 +70,7 @@
              print(f"[ANA] retry {att + 1}/{attempts - 1} após erro em {url}: {exc}. Aguardando {wait_s:.1f}s...")
              time.sleep(wait_s)
      assert last_exc is not None
-@@ -448,6 +467,9 @@
+@@ -448,6 +469,9 @@
      key = _slug(raw_key)
      if not key:
          return None, "desconhecido"
@@ -68,7 +80,7 @@
      if "adot" in key:
          origem = "adotado"
      elif "brut" in key:
-@@ -463,6 +485,13 @@
+@@ -463,6 +487,13 @@
      return None, origem
  
  
@@ -82,7 +94,7 @@
  def _response_to_series_rows(
      payload: dict[str, Any],
      cod_estacao: str,
-@@ -492,7 +521,7 @@
+@@ -492,7 +523,7 @@
                      "dataHora": ts.isoformat(sep=" "),
                      "codEstacao": str(cod_estacao).strip(),
                      "variavel": var_name,
@@ -91,7 +103,7 @@
                      "origemValor": origem,
                      "fonteApi": endpoint_label,
                      "payloadChave": _slug(raw_key),
-@@ -501,6 +530,96 @@
+@@ -501,6 +532,96 @@
      return rows
  
  
@@ -188,7 +200,7 @@
  def _dedupe_rows(df: pd.DataFrame) -> pd.DataFrame:
      if df is None or df.empty:
          return pd.DataFrame(columns=["dataHora", "codEstacao", "variavel", "valor", "origemValor", "fonteApi", "payloadChave"])
-@@ -543,28 +662,62 @@
+@@ -543,28 +664,63 @@
      adopted_rows: list[dict[str, Any]] = []
      detailed_rows: list[dict[str, Any]] = []
      window_end_dates = _iter_window_end_dates(end_date, days_back, chunk_days=30)
@@ -217,11 +229,11 @@
                      tipo_filtro_data=filter_type,
 -                    range_intervalo=detailed_range,
 +                    range_intervalo=adopted_range,
-+                )
-+                adopted_rows.extend(
-+                    _response_to_series_rows(payload_ad, str(cod), endpoint_label="adotada")
                  )
 -                detailed_rows.extend(_response_to_series_rows(payload_det, str(cod), endpoint_label="detalhada"))
++                adopted_rows.extend(
++                    _response_to_series_rows(payload_ad, str(cod), endpoint_label="adotada")
++                )
 +                station_got_hidroinfo = True
                  _pause()
 +                if fetch_detailed:
@@ -239,8 +251,10 @@
 +            except Exception as exc:
 +                print(f"[ANA] HidroInfo falhou em {cod}@{win_date}: {exc}")
 +                if not legacy_ok:
-+                    raise
-+                start = (pd.Timestamp(win_date) - pd.Timedelta(days=29)).date()
++                    print(f"[ANA] ANA_LEGACY_FALLBACK desligado; pulando {cod}@{win_date}")
++                    continue
++                # Janela menor no legado evita 504 em ranges longos.
++                start = (pd.Timestamp(win_date) - pd.Timedelta(days=min(14, days_back) - 1)).date()
 +                try:
 +                    legacy_raw = fetch_legacy_dados_hidrometeorologicos(
 +                        cod, start=start, end=win_date
@@ -253,15 +267,14 @@
 +                    adopted_rows.extend(legacy_series)
 +                    _pause()
 +                except Exception as leg_exc:
-+                    print(f"[ANA] fallback legado também falhou em {cod}: {leg_exc}")
-+                    if not station_got_hidroinfo and win_date == window_end_dates[-1]:
-+                        # última janela e nada obtido — propaga para o step falhar
-+                        # de forma visível em vez de reutilizar CSV antigo silenciosamente
-+                        raise
-+        if legacy_ok and not station_got_hidroinfo:
-+            # Garante ao menos uma tentativa de janela completa se todas as janelas
-+            # caíram no fallback parcial sem linhas.
-+            pass
++                    # Não abortar o download inteiro por 1 estação — BNDMET/restante
++                    # das estações devem seguir; step_ana falha só se CSV ficar vazio.
++                    print(f"[ANA] fallback legado também falhou em {cod}: {leg_exc} (continua)")
++                    continue
++    if not adopted_rows and not detailed_rows:
++        raise RuntimeError(
++            "ANA: nenhuma série obtida (HidroInfo e legado falharam em todas as estações)."
++        )
      return _dedupe_rows(pd.DataFrame(adopted_rows)), _dedupe_rows(pd.DataFrame(detailed_rows))
  
  
