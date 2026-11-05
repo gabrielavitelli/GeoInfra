@@ -34,6 +34,7 @@ from monitor_web.services.cache_keys import (
 )
 from monitor_web.services.home import (
     _cached_station_accum,
+    _cached_station_catalog,
     _csv_mtime,
     _map_load_timeout_message,
     _map_unavailable_message,
@@ -1640,27 +1641,41 @@ def _map_html_for_day_uncached(
     if map_html:
         return map_html, None
 
-    df_day, _, _, _, pts = (
-        day_exceed_for_request(request, dataset, sel, light=False)
-        if request
-        else _day_exceed_and_points(dataset, sel, alerts_source="merge", light=False)
-    )
+    from monitor_web.template_paths import is_portal_request
+
+    # Portal: path leve (24h/5d / daily_exceed) — mapa não precisa da janela 30d.
+    use_light = bool(request and is_portal_request(request))
+    src = alerts_source_for_request(request) if request else "merge"
+
+    def _load_exceed():
+        if request:
+            return day_exceed_for_request(request, dataset, sel, light=use_light)
+        return _day_exceed_and_points(dataset, sel, alerts_source="merge", light=use_light)
+
+    # Prefetch catálogos em paralelo com day_exceed (aquece Redis para o build Folium).
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        fut_ex = pool.submit(_load_exceed)
+        f_b = pool.submit(_cached_station_catalog, "bndmet", dataset)
+        f_a = pool.submit(_cached_station_catalog, "ana", dataset)
+        f_o = pool.submit(_cached_station_catalog, "orion", dataset)
+        df_day, _, _, _, pts = fut_ex.result()
+        for f in (f_b, f_a, f_o):
+            try:
+                f.result()
+            except Exception:
+                pass
+
     if pts is None:
         return "", _map_unavailable_message(lang_pt, hint="sem localizações")
     pts_24, pts_120 = pts
     # Mesma fonte do painel lateral (Raijin ou MERGE) — evita contagem divergente.
-    src = alerts_source_for_request(request) if request else "merge"
     if src == "raijin":
         alert_mk = alert_markers_from_df(df_day, raijin_only=True, tp_only=True)
         # Com fonte Raijin: só TP no mapa (sem FP/pending e sem fallback MERGE).
         pts_24, pts_120 = (), ()
     else:
-        merge_tuple = _day_exceed_and_points(dataset, sel, alerts_source="merge", light=False)
-        df_merge = merge_tuple[0] if merge_tuple else None
-        if df_merge is not None and not df_merge.empty:
-            alert_mk = operational_day_alert_markers_from_df(df_merge)
-        else:
-            alert_mk = operational_day_alert_markers_from_df(df_day)
+        # Reusa o mesmo day_exceed (já light/merge) — evita 2º scan BQ full.
+        alert_mk = operational_day_alert_markers_from_df(df_day)
     main_line, _, _, _ = _railway()
     if main_line is None:
         return "", _map_unavailable_message(

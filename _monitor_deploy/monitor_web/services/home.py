@@ -437,6 +437,32 @@ def _cached_station_accum(kind: str, ref_date: str, hours: int, dataset: str):
     return cached_call(key, ttl, _load)
 
 
+def _cached_station_accum_map_fast(kind: str, ref_date: str, hours: int, dataset: str):
+    """Acumulado leve só via clima_series (1 BQ/rede) — first paint do mapa.
+
+    Evita o caminho horário+CSV+merge (2–3 BQ por rede) que somava 20–40s.
+    """
+    from lib_efc import _station_accum_stale_from_clima_series
+
+    fp = bq_fingerprint()
+    day = str(ref_date)[:10]
+    h = int(hours)
+    ttl = int(os.environ.get("MONITOR_STATION_ACCUM_TTL", "900") or "900")
+    key = f"station_accum_mapfast_v1_{kind}_{dataset}_{day}_{h}_{fp}"
+    sources = {
+        "bndmet": ("estacoes", "bndmet"),
+        "ana": ("ana",),
+        "orion": ("orion",),
+    }.get(kind, (kind,))
+
+    def _load():
+        return _station_accum_stale_from_clima_series(
+            day, hours=h, sources=sources, dataset=dataset
+        )
+
+    return cached_call(key, ttl, _load)
+
+
 def _operational_map_html(
     ref_date: str,
     dataset: str,
@@ -466,8 +492,14 @@ def _operational_map_html(
         return out
 
     hours = parse_accum_hours(accum_hours)
-    # Sempre 24h + 120h no popup; se a janela ativa for outra, busca também.
+    # Popup: 24h + 5d; cor segue janela ativa. Path leve (clima_series only).
     need_hours = {24, 120, int(hours)}
+    map_fast = os.environ.get("MONITOR_MAP_ACCUM_FAST", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+    accum_fn = _cached_station_accum_map_fast if map_fast else _cached_station_accum
 
     # Catálogos + acumulados em paralelo (antes: 10–15 BQ seriais → 20–40s).
     jobs: dict[str, concurrent.futures.Future] = {}
@@ -477,9 +509,7 @@ def _operational_map_html(
         jobs["orion_cat"] = pool.submit(_cached_station_catalog, "orion", dataset)
         for h in sorted(need_hours):
             for kind in ("bndmet", "orion", "ana"):
-                jobs[f"{kind}_{h}"] = pool.submit(
-                    _cached_station_accum, kind, ref_date, h, dataset
-                )
+                jobs[f"{kind}_{h}"] = pool.submit(accum_fn, kind, ref_date, h, dataset)
         results = {k: f.result() for k, f in jobs.items()}
 
     estacoes = results["bndmet_cat"]
