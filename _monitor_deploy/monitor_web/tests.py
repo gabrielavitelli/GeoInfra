@@ -185,6 +185,44 @@ class SuscetibilidadeTests(SimpleTestCase):
         self.assertEqual(seg["risk_class"], "R3")
         self.assertEqual(susc_micro_hint(seg, lang_pt=True), "susc. alta")
 
+    def test_align_indicators_portal_fast_loads_station_panel_sync(self):
+        """portal_fast não pode só peek+thread: miss de cache deixava Estação 0 mm em prod."""
+        from django.test import RequestFactory
+
+        from monitor_web.services.home_fragments import _align_indicators_impact
+
+        rf = RequestFactory()
+        req = rf.get("/portal/?accum=720")
+        panel = {
+            "station_panel_peaks": {
+                "24h": {"mm": 12.0, "station_id": "A044", "source": "bndmet", "n_above": 0, "n_total": 10},
+                "5d": {"mm": 20.0, "station_id": "A044", "source": "bndmet", "n_above": 0, "n_total": 10},
+                "7d": {"mm": 25.0, "station_id": "A044", "source": "bndmet", "n_above": 0, "n_total": 10},
+                "30d": {"mm": 36.0, "station_id": "A044", "source": "bndmet", "n_above": 0, "n_total": 10},
+            },
+            "station_panel_entorno_peaks": {
+                "30d": {"mm": 32.0, "station_id": "EWS6737", "source": "ews", "station_name": "Abrigo"},
+            },
+        }
+        with patch(
+            "monitor_web.services.home_fragments._station_panel_windows",
+            return_value=panel,
+        ) as mock_panel:
+            out, _n = _align_indicators_impact(
+                {"available": True, "lite": True},
+                request=req,
+                dataset="efc_clima",
+                sel="2026-11-06",
+                lang_pt=True,
+                km_max=877,
+                accum_hours=720,
+                portal_fast=True,
+            )
+        mock_panel.assert_called_once()
+        self.assertEqual(out["station_panel_peaks"]["30d"]["mm"], 36.0)
+        self.assertEqual(out["station_panel_peaks"]["30d"]["station_id"], "A044")
+        self.assertEqual(out["station_panel_entorno_peaks"]["30d"]["mm"], 32.0)
+
     def test_indicators_severity_uses_stations_not_merge_km(self):
         """Painel (exceto Raijin) conta estações; susc. de trecho MERGE não aparece."""
         impact = {

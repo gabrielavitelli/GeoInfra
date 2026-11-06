@@ -1029,9 +1029,10 @@ def _align_indicators_impact(
 ) -> tuple[dict, int]:
     """Mesmo período do mapa + TPs do dia (hero/tabela) nos envelopes do painel.
 
-    ``portal_fast=True``: evita BQ bloqueante (Raijin envelopes / backfill peaks /
-    station panel miss). Serve cache se houver; caso contrário zera e deixa o
-    warmup / próximo request preencher.
+    ``portal_fast=True``: evita BQ bloqueante de Raijin/envelopes/backfill MERGE.
+    O painel de estações (Estação/Entorno mm) **carrega em sync** via cache SWR —
+    background-only no Cloud Run morria com o request e deixava 0 mm / "—" permanentes
+    após bump de fingerprint/cache.
     """
     from monitor_web.services.home_accumulated_alerts import (
         apply_raijin_period_envelopes,
@@ -1094,37 +1095,24 @@ def _align_indicators_impact(
     out = coerce_missing_peaks_to_zero(out)
 
     if use_portal_fast:
-        # Peek cache do painel de estações; se frio, segue sem bloquear first paint.
-        fp = bq_fingerprint()
-        focus_tag = f"km{int(focus_km)}" if has_km_focus and focus_km is not None else "corridor"
-        panel_key = f"station_panel_v5_{dataset}_{str(sel)[:10]}_{focus_tag}_{fp}"
-        panel = cached_peek(panel_key)
-        if panel:
-            out = dict(out)
-            out.update(panel)
-            # Não chama enrich_home_impact aqui: ele carrega catálogos BQ (~segundos)
-            # e bloqueava o first paint mesmo com painel em cache.
-        else:
-            # Dispara warm em background (não espera).
-            def _warm_panel():
-                try:
-                    _station_panel_windows(
-                        dataset,
-                        sel,
-                        focus_km=focus_km,
-                        main_line=main_line,
-                        cum_km=cum_km,
-                        has_km_focus=has_km_focus,
-                    )
-                except Exception as exc:
-                    logger.warning("station_panel warm failed: %s", exc)
-
-            try:
-                import threading
-
-                threading.Thread(target=_warm_panel, name="warm-station-panel", daemon=True).start()
-            except Exception:
-                pass
+        # Sync SWR: hit fresco/stale devolve na hora; miss calcula (1× BQ) e cacheia.
+        # Não usar só cached_peek + thread — no Cloud Run o warm morre e o painel
+        # fica 0 mm / Estação — até o próximo warmup cron.
+        try:
+            panel = _station_panel_windows(
+                dataset,
+                sel,
+                focus_km=focus_km,
+                main_line=main_line,
+                cum_km=cum_km,
+                has_km_focus=has_km_focus,
+            )
+            if panel:
+                out = dict(out)
+                out.update(panel)
+        except Exception as exc:
+            logger.warning("station_panel portal_fast failed: %s", exc)
+        # Skip enrich_home_impact (catálogos BQ) — nomes vêm de _station_lookup_tables.
     else:
         out = _attach_station_obs(
             out,
@@ -1385,26 +1373,28 @@ def build_indicators_fragment_portal_fast(request) -> dict:
 
     if impact is None or not impact.get("available"):
         df_day = cached[0] if cached is not None else None
-        # Portal fast: NÃO dispara BQ bloqueante no first paint.
-        # Se o cache day_exceed estiver frio, devolve lite vazio e aquece em background.
+        # Prefer tabela pré-agregada (rápida). Evita thread background no Cloud Run
+        # (morre com o request → envelopes 0% permanentes após miss de cache).
         if df_day is None or (hasattr(df_day, "empty") and df_day.empty):
-
-            def _warm_day_exceed():
-                try:
-                    _day_exceed_and_points(dataset, sel, alerts_source="merge", light=False)
-                    _day_merge_light_impl(dataset, sel)
-                except Exception as exc:
-                    logger.warning("indicators day_exceed warm failed: %s", exc)
-
             try:
-                import threading
-
-                threading.Thread(
-                    target=_warm_day_exceed, name="warm-day-exceed", daemon=True
-                ).start()
-            except Exception:
-                pass
-            df_day = None
+                fast = _try_day_exceed_fast_table(dataset, sel, alerts_source="merge")
+                if fast is not None:
+                    df_day = fast[0]
+                    cached = fast
+            except Exception as exc:
+                logger.warning("indicators day_exceed fast table failed: %s", exc)
+                df_day = None
+            if df_day is None or (hasattr(df_day, "empty") and df_day.empty):
+                try:
+                    # light=True: 1 query / tabela; ainda sync para não deixar 0% fantasma.
+                    tup = _day_exceed_and_points(
+                        dataset, sel, alerts_source="merge", light=True
+                    )
+                    df_day = tup[0] if tup is not None else None
+                    cached = tup
+                except Exception as exc:
+                    logger.warning("indicators day_exceed light failed: %s", exc)
+                    df_day = None
         impact = impact_lite_from_day_exceed(
             df_day,
             km_max=p["km_max"],
