@@ -1,0 +1,52 @@
+# Build + push Orion ingest image, then update Cloud Run Job.
+#   gcloud builds submit --config=scripts/orion_ews/cloudbuild-orion-job-image.yaml \
+#     --project=climaticsystem scripts/orion_ews
+
+substitutions:
+  _TAG: latest
+  # Manual `gcloud builds submit` leaves SHORT_SHA empty — default a safe tag.
+  _SHA_TAG: manual
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - gcr.io/$PROJECT_ID/orion-ews-ingest:${_TAG}
+      - -t
+      - gcr.io/$PROJECT_ID/orion-ews-ingest:${_SHA_TAG}
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    args: ["push", "gcr.io/$PROJECT_ID/orion-ews-ingest:${_TAG}"]
+
+  - name: gcr.io/cloud-builders/docker
+    args: ["push", "gcr.io/$PROJECT_ID/orion-ews-ingest:${_SHA_TAG}"]
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        gcloud run jobs deploy orion-ews-precip \
+          --project="$PROJECT_ID" \
+          --region=us-central1 \
+          --image="gcr.io/$PROJECT_ID/orion-ews-ingest:${_TAG}" \
+          --tasks=1 \
+          --max-retries=1 \
+          --task-timeout=15m \
+          --cpu=1 \
+          --memory=512Mi \
+          --service-account="894301304159-compute@developer.gserviceaccount.com" \
+          --set-secrets="ORION_USER_KEY=orion-user-key:latest" \
+          --set-env-vars="GCP_PROJECT=$PROJECT_ID,BQ_DATASET=efc_clima" \
+          --command=python \
+          --args="-m,scripts.orion_ews.ingest,readings,--precip-only,--days,1,--bq-project,$PROJECT_ID,--bq-dataset,efc_clima,--gcs-prefix,gs://efc-clima-data/obs/ews/,--no-from-secret"
+
+images:
+  - gcr.io/$PROJECT_ID/orion-ews-ingest:${_TAG}
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_MEDIUM
