@@ -25,6 +25,7 @@ PORTAL_VIEW_MIN_LEVEL: dict[str, int] = {
     "home_climate_gfs": 1,
     "home_goto_km": 1,
     "home_charts_api": 1,
+    "home_sensor_series": 1,
     "previsao": 1,
     "previsao_heatmap_api": 1,
     "previsao_charts_api": 1,

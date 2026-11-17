@@ -228,6 +228,11 @@ def build_map_3d_payload(
             continue
         if not (math.isfinite(lat) and math.isfinite(lon)):
             continue
+        km = row.get("km")
+        try:
+            km_f = float(km) if km is not None else None
+        except (TypeError, ValueError):
+            km_f = None
         zentra_feats.append(
             {
                 "type": "Feature",
@@ -235,8 +240,10 @@ def build_map_3d_payload(
                 "properties": {
                     "net": "Zentra",
                     "code": str(row.get("location_id") or ""),
+                    "location_id": str(row.get("location_id") or ""),
                     "name": str(row.get("name") or row.get("location_id") or "Zentra"),
                     "color": "#f97316",
+                    "km": km_f,
                     "popup": _zentra_popup_prop(row),
                 },
             }

@@ -3561,17 +3561,22 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
   }
 }
 
-/* Sensores aba — inspection list (Zentra / geotech) */
+/* Sensores aba — dense inspection (list + series) */
 .efc-sensores {
-  padding: 1rem 1.25rem 2rem;
-  max-width: 1100px;
+  padding: 0.75rem 1rem 1.25rem;
+  max-width: none;
+}
+.efc-sensores--inspect {
+  min-height: calc(100vh - 4rem);
+  display: flex;
+  flex-direction: column;
 }
 .efc-sensores__head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.65rem;
 }
 .efc-sensores__crumb {
   display: flex;
@@ -3580,27 +3585,93 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
   color: #64748b;
 }
 .efc-sensores__crumb strong { color: #0f172a; }
+.efc-ui-graphite .efc-sensores__crumb strong { color: #e2e8f0; }
 .efc-sensores__count {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   color: #94a3b8;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.efc-sensores__table-wrap { overflow-x: auto; }
-.efc-sensores__table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-.efc-sensores__table th {
-  text-align: left;
-  font-weight: 650;
-  color: #64748b;
-  border-bottom: 1px solid #e2e8f0;
-  padding: 0.55rem 0.5rem;
-  white-space: nowrap;
+.efc-sensores__layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 0.75rem;
+  flex: 1;
+  min-height: 0;
 }
-.efc-sensores__table td {
-  padding: 0.65rem 0.5rem;
+.efc-sensores__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  max-height: calc(100vh - 7rem);
+  border: 1px solid #e2e8f0;
+  background: #fff;
+}
+.efc-ui-graphite .efc-sensores__list {
+  background: #0f172a;
+  border-color: #1e293b;
+}
+.efc-sensores__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
   border-bottom: 1px solid #f1f5f9;
-  vertical-align: top;
+  background: transparent;
+  padding: 0.7rem 0.75rem;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.efc-ui-graphite .efc-sensores__item { border-bottom-color: #1e293b; }
+.efc-sensores__item:hover { background: #fff7ed; }
+.efc-ui-graphite .efc-sensores__item:hover { background: rgba(249, 115, 22, 0.08); }
+.efc-sensores__item.is-active {
+  background: #fff7ed;
+  box-shadow: inset 3px 0 0 #f97316;
+}
+.efc-ui-graphite .efc-sensores__item.is-active {
+  background: rgba(249, 115, 22, 0.12);
+}
+.efc-sensores__item-top {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.92rem;
+}
+.efc-sensores__km {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+.efc-sensores__item-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.55rem;
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  color: #64748b;
+}
+.efc-sensores__spark b { color: #0f172a; font-weight: 650; }
+.efc-ui-graphite .efc-sensores__spark b { color: #f8fafc; }
+.efc-sensores__detail {
+  min-width: 0;
+  min-height: 420px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  padding: 0.65rem;
+}
+.efc-ui-graphite .efc-sensores__detail {
+  background: #0b1220;
+  border-color: #1e293b;
+}
+.efc-sensores__empty {
+  padding: 1rem;
+  color: #94a3b8;
+  font-size: 0.85rem;
 }
 .efc-sensores__dot {
   display: inline-block;
@@ -3609,35 +3680,185 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
   border-radius: 50%;
   background: #f97316;
   border: 1.5px solid #9a3412;
-  margin-right: 0.4rem;
+  margin-right: 0.15rem;
   vertical-align: middle;
+  flex-shrink: 0;
 }
 .efc-sensores__meta {
-  font-size: 0.75rem;
+  display: block;
+  font-size: 0.72rem;
   color: #94a3b8;
   margin-top: 0.15rem;
 }
-.efc-sensores__coords {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  color: #475569;
-  font-size: 0.82rem;
-}
-.efc-sensores__series {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  font-size: 0.82rem;
-}
 .efc-sensores__fresh {
   color: #94a3b8;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
 }
 .efc-sensores__status {
   display: inline-block;
-  font-size: 0.75rem;
+  font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: #64748b;
 }
 .efc-sensores__status--active { color: #15803d; }
+.efc-ui-graphite .efc-sensores__status--active { color: #4ade80; }
+
+/* Sensor inspect panel (shared) */
+.efc-sensor-inspect { height: 100%; }
+.efc-sensor-inspect__grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: 0.75rem;
+  height: 100%;
+  min-height: 400px;
+}
+.efc-sensor-inspect__map-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-width: 0;
+}
+.efc-sensor-inspect__mini-map {
+  height: 180px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: #0b1220;
+  border: 1px solid #1e293b;
+}
+.efc-sensor-inspect__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #0f172a;
+}
+.efc-ui-graphite .efc-sensor-inspect__title { color: #f8fafc; }
+.efc-sensor-inspect__sub {
+  margin: 0.2rem 0 0;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+.efc-sensor-inspect__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+.efc-sensor-inspect__chip {
+  font-size: 0.7rem;
+  padding: 0.22rem 0.4rem;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #334155;
+  font-variant-numeric: tabular-nums;
+}
+.efc-ui-graphite .efc-sensor-inspect__chip {
+  background: #111827;
+  border-color: #334155;
+  color: #cbd5e1;
+}
+.efc-sensor-inspect__chip b { color: #0f172a; font-weight: 700; }
+.efc-ui-graphite .efc-sensor-inspect__chip b { color: #f8fafc; }
+.efc-sensor-inspect__chart-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.efc-sensor-inspect__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.55rem 0.75rem;
+  margin-bottom: 0.45rem;
+}
+.efc-sensor-inspect__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+.efc-sensor-inspect__field select {
+  min-width: 8.5rem;
+  font: 650 0.82rem/1.2 "IBM Plex Sans", "Segoe UI", sans-serif;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #0f172a;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  padding: 0.35rem 0.45rem;
+}
+.efc-ui-graphite .efc-sensor-inspect__field select {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-color: #334155;
+}
+.efc-sensor-inspect__windows {
+  display: inline-flex;
+  border: 1px solid #cbd5e1;
+}
+.efc-ui-graphite .efc-sensor-inspect__windows { border-color: #334155; }
+.efc-sensor-inspect__win {
+  border: 0;
+  background: transparent;
+  padding: 0.38rem 0.65rem;
+  font: 650 0.75rem/1 "IBM Plex Sans", sans-serif;
+  color: #64748b;
+  cursor: pointer;
+}
+.efc-sensor-inspect__win + .efc-sensor-inspect__win {
+  border-left: 1px solid #cbd5e1;
+}
+.efc-ui-graphite .efc-sensor-inspect__win + .efc-sensor-inspect__win {
+  border-left-color: #334155;
+}
+.efc-sensor-inspect__win.is-active {
+  background: #f97316;
+  color: #fff;
+}
+.efc-sensor-inspect__fresh {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+.efc-sensor-inspect__chart {
+  flex: 1;
+  min-height: 320px;
+  height: min(52vh, 460px);
+}
+.efc-sensor-inspect__hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+/* Map → sensor detail modal */
+.efc-modal--sensor .efc-modal__panel {
+  width: min(1080px, 96vw);
+  background: #fff;
+}
+.efc-ui-graphite .efc-modal--sensor .efc-modal__panel {
+  background: #0b1220;
+  border-color: #1e293b;
+}
+.efc-modal--sensor .efc-modal__body { padding: 0.65rem 0.85rem 0.9rem; }
+.efc-modal--sensor .efc-sensor-inspect__grid {
+  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+}
+.efc-modal--sensor .efc-sensor-inspect__mini-map { height: 210px; }
+.efc-modal--sensor .efc-sensor-inspect__chart { height: 360px; }
+
+@media (max-width: 900px) {
+  .efc-sensores__layout,
+  .efc-sensor-inspect__grid,
+  .efc-modal--sensor .efc-sensor-inspect__grid {
+    grid-template-columns: 1fr;
+  }
+  .efc-sensores__list { max-height: 220px; }
+  .efc-sensor-inspect__mini-map { height: 150px; }
+}

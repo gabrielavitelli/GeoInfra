@@ -330,6 +330,8 @@ def zentra_popup_html(row: dict[str, Any], *, lang_pt: bool = True) -> str:
 
 def add_zentra_markers_to_map(m, rows: list[dict[str, Any]], *, lang_pt: bool = True):
     """Distinct coral circles on a dedicated FeatureGroup (toggleable)."""
+    import json
+
     import folium
     from jinja2 import Template
 
@@ -337,13 +339,21 @@ def add_zentra_markers_to_map(m, rows: list[dict[str, Any]], *, lang_pt: bool = 
         return None
     fg = folium.FeatureGroup(name="Zentra", show=True, control=False)
     color = "#f97316"  # coral/orange — distinct from BNDMET green / ANA blue / EWS amber fill
+    click_payloads: list[tuple[str, str]] = []
     for row in rows:
         lat, lon = row.get("lat"), row.get("lon")
         if lat is None or lon is None:
             continue
         body = zentra_popup_html(row, lang_pt=lang_pt)
         tip = f"Zentra — {row.get('name') or row.get('location_id')}"
-        folium.CircleMarker(
+        loc = str(row.get("location_id") or "")
+        name = str(row.get("name") or loc)
+        km = row.get("km")
+        try:
+            km_f = float(km) if km is not None else None
+        except (TypeError, ValueError):
+            km_f = None
+        marker = folium.CircleMarker(
             location=[float(lat), float(lon)],
             radius=7,
             color="#9a3412",
@@ -353,8 +363,24 @@ def add_zentra_markers_to_map(m, rows: list[dict[str, Any]], *, lang_pt: bool = 
             weight=2.0,
             popup=folium.Popup(body, max_width=240),
             tooltip=tip,
-        ).add_to(fg)
+        )
+        marker.add_to(fg)
+        payload = {
+            "type": "efc-sensor-open",
+            "source": "zentra",
+            "location_id": loc,
+            "name": name,
+            "lat": float(lat),
+            "lon": float(lon),
+            "km": km_f,
+        }
+        click_payloads.append((marker.get_name(), json.dumps(payload, ensure_ascii=False)))
     fg.add_to(m)
+
+    binds_js = "\n".join(
+        f"try{{{mname}.on('click',function(){{window.parent.postMessage({pj},'*');}});}}catch(eZ){{}}"
+        for mname, pj in click_payloads
+    )
 
     class _Bind(folium.MacroElement):
         _template = Template(
@@ -362,15 +388,17 @@ def add_zentra_markers_to_map(m, rows: list[dict[str, Any]], *, lang_pt: bool = 
             {% macro script(this, kwargs) %}
             window.__efcLayerGroups = window.__efcLayerGroups || {};
             window.__efcLayerGroups.zentra = {{this.fg}};
+            {{this.binds}}
             {% endmacro %}
             """
         )
 
-        def __init__(self, fg_obj):
+        def __init__(self, fg_obj, binds: str):
             super().__init__()
             self.fg = fg_obj.get_name()
+            self.binds = binds
 
-    _Bind(fg).add_to(m)
+    _Bind(fg, binds_js).add_to(m)
     return fg
 
 

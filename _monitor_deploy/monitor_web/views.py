@@ -326,9 +326,52 @@ def boletim_dia_distribuicao_api(request):
 
 
 @require_GET
+def sensor_series_api(request):
+    """Série temporal Zentra/Orion (clima_series) — JSON para o painel de inspeção."""
+    from monitor_web.services.sensor_series import build_sensor_series_payload
+
+    lang = get_lang(request)
+    lang_pt = lang == "pt"
+    location_id = (request.GET.get("location_id") or request.GET.get("zid") or "").strip()
+    source = (request.GET.get("source") or "zentra").strip().lower()
+    variable = (request.GET.get("variable") or "").strip() or None
+    family = (request.GET.get("family") or request.GET.get("port") or "").strip() or None
+    days = request.GET.get("days") or request.GET.get("window") or "7"
+    if not location_id:
+        return JsonResponse(
+            {"available": False, "error": "location_id required", "points": []},
+            status=400,
+        )
+    try:
+        from gcp.monitor_bq_context import monitor_active_bq_dataset
+
+        dataset = monitor_active_bq_dataset()
+    except Exception:
+        dataset = os.environ.get("BQ_DATASET", "efc_clima")
+    try:
+        payload = build_sensor_series_payload(
+            location_id=location_id,
+            source=source,
+            variable=variable,
+            family=family,
+            days=days,
+            bq_dataset=dataset,
+            lang_pt=lang_pt,
+        )
+        return JsonResponse(sanitize_for_json(payload))
+    except Exception as exc:
+        logger.exception("sensor_series_api")
+        return JsonResponse(
+            {"available": False, "error": str(exc), "points": []},
+            status=500,
+        )
+
+
+@require_GET
 def sensores_view(request):
-    """Lista Zentra / geotech — inspeção para gestores (km, status, últimos valores)."""
+    """Lista Zentra / geotech — inspeção para gestores (lista + série temporal)."""
     from monitor_web.services.zentra_sensors import build_zentra_sensor_rows
+    from monitor_web.services.sensor_series import ports_for_device
 
     lang = get_lang(request)
     lang_pt = lang == "pt"
@@ -360,6 +403,21 @@ def sensores_view(request):
     for row in rows:
         qs = row.get("map_url_qs") or ""
         row["map_href"] = f"{home_prefix}?{qs}" if qs else home_prefix
+        row["ports"] = ports_for_device(row.get("sensors"), None)
+    series_api = (
+        f"{home_prefix}api/home/sensor-series/"
+        if home_prefix != "/"
+        else "/api/home/sensor-series/"
+    )
+    # Prefer portal/internal reverse when available
+    try:
+        from django.urls import reverse
+
+        series_api = reverse(
+            "portal:home_sensor_series" if path.startswith(portal_base_path()) else "monitor:home_sensor_series"
+        )
+    except Exception:
+        pass
     return render(
         request,
         monitor_template(request, "sensores.html"),
@@ -368,6 +426,8 @@ def sensores_view(request):
             "lang_pt": lang_pt,
             "sensor_rows": rows,
             "sensor_count": len(rows),
+            "sensor_series_api": series_api,
+            "initial_sensor_id": (request.GET.get("zid") or request.GET.get("location_id") or "").strip(),
         },
     )
 

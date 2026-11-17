@@ -1,0 +1,39 @@
+{# Shared Zentra/Orion inspection panel — map modal + Sensores aba #}
+<div class="efc-sensor-inspect"
+     data-sensor-inspect
+     data-series-api="{{ sensor_series_api }}"
+     data-lang="{% if lang_pt %}pt{% else %}en{% endif %}"
+     {% if initial_sensor_id %}data-initial-id="{{ initial_sensor_id }}"{% endif %}>
+  <div class="efc-sensor-inspect__grid">
+    <aside class="efc-sensor-inspect__map-col">
+      <div class="efc-sensor-inspect__mini-map" data-sensor-mini-map role="img"
+           aria-label="{% if lang_pt %}Mapa 3D do sensor{% else %}Sensor 3D map{% endif %}"></div>
+      <div class="efc-sensor-inspect__identity">
+        <h2 class="efc-sensor-inspect__title" data-sensor-title>—</h2>
+        <p class="efc-sensor-inspect__sub" data-sensor-sub></p>
+        <div class="efc-sensor-inspect__chips" data-sensor-latest></div>
+      </div>
+    </aside>
+    <div class="efc-sensor-inspect__chart-col">
+      <div class="efc-sensor-inspect__controls">
+        <label class="efc-sensor-inspect__field">
+          <span>{% if lang_pt %}Porta / série{% else %}Port / series{% endif %}</span>
+          <select data-sensor-family></select>
+        </label>
+        <label class="efc-sensor-inspect__field">
+          <span>{% if lang_pt %}Variável{% else %}Variable{% endif %}</span>
+          <select data-sensor-variable></select>
+        </label>
+        <div class="efc-sensor-inspect__windows" role="group"
+             aria-label="{% if lang_pt %}Janela{% else %}Window{% endif %}">
+          <button type="button" data-sensor-days="1" class="efc-sensor-inspect__win">24h</button>
+          <button type="button" data-sensor-days="7" class="efc-sensor-inspect__win is-active">7d</button>
+          <button type="button" data-sensor-days="30" class="efc-sensor-inspect__win">30d</button>
+        </div>
+        <span class="efc-sensor-inspect__fresh" data-sensor-fresh></span>
+      </div>
+      <div class="efc-sensor-inspect__chart" data-sensor-chart></div>
+      <p class="efc-sensor-inspect__hint" data-sensor-hint hidden></p>
+    </div>
+  </div>
+</div>

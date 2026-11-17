@@ -4499,14 +4499,23 @@
         var lat = Number(u.searchParams.get("lat"));
         var lon = Number(u.searchParams.get("lon"));
         if (!isFinite(lat) || !isFinite(lon)) return;
-        setBasemap("sat");
+        setBasemap("3d");
         setOverlayLayer("zentra", true);
+        var zid = u.searchParams.get("zid") || "";
         postToMap({
           type: "efc-map-focus-zentra",
           lat: lat,
           lon: lon,
-          zid: u.searchParams.get("zid") || "",
+          zid: zid,
         });
+        if (typeof openSensorDetail === "function") {
+          openSensorDetail({
+            location_id: zid,
+            source: "zentra",
+            lat: lat,
+            lon: lon,
+          });
+        }
       } catch (eF) {}
     }
 
@@ -4531,6 +4540,469 @@
     });
   }
 
+  function sensorSeriesApiUrl(root) {
+    var fromRoot = root && root.getAttribute("data-series-api");
+    if (fromRoot) return fromRoot;
+    var portal = document.body.classList.contains("efc-ui-graphite");
+    return portal ? "/portal/api/home/sensor-series/" : "/api/home/sensor-series/";
+  }
+
+  function ensureMapLibre() {
+    if (window.maplibregl) return Promise.resolve();
+    if (window.__efcMapLibrePromise) return window.__efcMapLibrePromise;
+    window.__efcMapLibrePromise = new Promise(function (resolve, reject) {
+      if (!document.querySelector('link[data-efc-maplibre-inspect="1"]')) {
+        var l = document.createElement("link");
+        l.rel = "stylesheet";
+        l.href = "https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css";
+        l.setAttribute("data-efc-maplibre-inspect", "1");
+        document.head.appendChild(l);
+      }
+      var s = document.createElement("script");
+      s.src = "https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js";
+      s.async = true;
+      s.onload = function () {
+        resolve();
+      };
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+    return window.__efcMapLibrePromise;
+  }
+
+  function renderSensorMiniMap(host, lat, lon) {
+    if (!host || lat == null || lon == null || !isFinite(Number(lat)) || !isFinite(Number(lon))) {
+      return;
+    }
+    var la = Number(lat);
+    var lo = Number(lon);
+    ensureMapLibre()
+      .then(function () {
+        if (host.__efcMiniMap) {
+          try {
+            host.__efcMiniMap.setCenter([lo, la]);
+            host.__efcMiniMap.setZoom(15.5);
+            if (host.__efcMiniMarker) host.__efcMiniMarker.setLngLat([lo, la]);
+            host.__efcMiniMap.resize();
+          } catch (e0) {}
+          return;
+        }
+        var sat =
+          "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+        var style = {
+          version: 8,
+          sources: { esri: { type: "raster", tiles: [sat], tileSize: 256, maxzoom: 17 } },
+          layers: [{ id: "sat", type: "raster", source: "esri" }],
+        };
+        var map = new maplibregl.Map({
+          container: host,
+          style: style,
+          center: [lo, la],
+          zoom: 15.5,
+          pitch: 42,
+          bearing: -18,
+          attributionControl: false,
+          interactive: true,
+        });
+        // Flat terrain (exaggeration 0) — no DEM needed for inspection zoom.
+        map.dragRotate.disable();
+        var el = document.createElement("div");
+        el.style.cssText =
+          "width:12px;height:12px;border-radius:50%;background:#f97316;border:2px solid #9a3412;box-shadow:0 0 0 3px rgba(249,115,22,.35)";
+        var marker = new maplibregl.Marker({ element: el }).setLngLat([lo, la]).addTo(map);
+        host.__efcMiniMap = map;
+        host.__efcMiniMarker = marker;
+        map.on("load", function () {
+          try {
+            map.resize();
+          } catch (e1) {}
+        });
+      })
+      .catch(function () {
+        host.innerHTML =
+          '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font:650 0.75rem sans-serif">' +
+          la.toFixed(4) +
+          ", " +
+          lo.toFixed(4) +
+          "</div>";
+      });
+  }
+
+  function plotSensorSeries(chartEl, payload, langPt) {
+    if (!chartEl) return;
+    var pts = (payload && payload.points) || [];
+    var label = (payload && payload.variable_label) || (payload && payload.variable) || "";
+    var unit = (payload && payload.unit) || "";
+    ensurePlotlyLoaded()
+      .then(function () {
+        if (!pts.length) {
+          chartEl.innerHTML =
+            '<p class="efc-muted" style="padding:1.5rem 0.5rem;font-size:0.85rem">' +
+            (langPt ? "Sem pontos nesta janela." : "No points in this window.") +
+            "</p>";
+          return;
+        }
+        var xs = pts.map(function (p) {
+          return p.t;
+        });
+        var ys = pts.map(function (p) {
+          return p.v;
+        });
+        var dark = document.body.classList.contains("efc-ui-graphite");
+        var fig = {
+          data: [
+            {
+              type: "scatter",
+              mode: "lines+markers",
+              x: xs,
+              y: ys,
+              name: label,
+              line: { color: "#f97316", width: 2 },
+              marker: { size: 5, color: "#ea580c" },
+              hovertemplate: "%{x}<br><b>%{y}</b> " + unit + "<extra></extra>",
+            },
+          ],
+          layout: {
+            margin: { t: 12, r: 16, b: 36, l: 48 },
+            paper_bgcolor: "rgba(0,0,0,0)",
+            plot_bgcolor: "rgba(0,0,0,0)",
+            font: { color: dark ? "#cbd5e1" : "#334155", size: 11 },
+            xaxis: {
+              showgrid: true,
+              gridcolor: dark ? "rgba(148,163,184,.15)" : "rgba(148,163,184,.25)",
+              zeroline: false,
+            },
+            yaxis: {
+              title: unit ? label + " (" + unit + ")" : label,
+              showgrid: true,
+              gridcolor: dark ? "rgba(148,163,184,.15)" : "rgba(148,163,184,.25)",
+              zeroline: false,
+              titlefont: { size: 11 },
+            },
+            showlegend: false,
+          },
+        };
+        Plotly.newPlot(chartEl, fig.data, fig.layout, plotlyConfig(chartEl));
+      })
+      .catch(function () {
+        chartEl.textContent = langPt ? "Gráfico indisponível." : "Chart unavailable.";
+      });
+  }
+
+  function fillSelect(sel, items, selectedId) {
+    if (!sel) return;
+    sel.innerHTML = "";
+    (items || []).forEach(function (it) {
+      var opt = document.createElement("option");
+      opt.value = it.id;
+      opt.textContent = it.label || it.id;
+      if (String(it.id) === String(selectedId)) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }
+
+  function bindSensorInspect(root) {
+    if (!root || root.__efcSensorBound) return null;
+    root.__efcSensorBound = 1;
+    var apiBase = sensorSeriesApiUrl(root);
+    var langPt = (root.getAttribute("data-lang") || "pt") !== "en";
+    var familySel = root.querySelector("[data-sensor-family]");
+    var varSel = root.querySelector("[data-sensor-variable]");
+    var chartEl = root.querySelector("[data-sensor-chart]");
+    var titleEl = root.querySelector("[data-sensor-title]");
+    var subEl = root.querySelector("[data-sensor-sub]");
+    var latestEl = root.querySelector("[data-sensor-latest]");
+    var freshEl = root.querySelector("[data-sensor-fresh]");
+    var hintEl = root.querySelector("[data-sensor-hint]");
+    var miniMap = root.querySelector("[data-sensor-mini-map]");
+    var state = {
+      location_id: "",
+      source: "zentra",
+      family: "",
+      variable: "",
+      days: 7,
+      lat: null,
+      lon: null,
+      name: "",
+      km: null,
+    };
+
+    function setWindowsActive() {
+      root.querySelectorAll("[data-sensor-days]").forEach(function (btn) {
+        btn.classList.toggle("is-active", String(btn.getAttribute("data-sensor-days")) === String(state.days));
+      });
+    }
+
+    function applyMeta(payload) {
+      if (!payload) return;
+      if (titleEl) titleEl.textContent = payload.name || payload.location_id || "—";
+      var bits = [];
+      if (payload.source) bits.push(String(payload.source).toUpperCase());
+      if (state.km != null && state.km !== "" && isFinite(Number(state.km))) {
+        bits.push("km " + Math.round(Number(state.km)));
+      }
+      if (payload.sensors && payload.sensors.length) bits.push(payload.sensors.join(" · "));
+      if (payload.status) bits.push(payload.status);
+      if (subEl) subEl.textContent = bits.join("  ·  ");
+      if (freshEl) {
+        freshEl.textContent =
+          (langPt ? "Atualizado " : "Updated ") + (payload.freshness || "—");
+      }
+      if (latestEl) {
+        latestEl.innerHTML = "";
+        (payload.latest || []).slice(0, 6).forEach(function (c) {
+          if (c.value == null) return;
+          var span = document.createElement("span");
+          span.className = "efc-sensor-inspect__chip";
+          var txt =
+            (c.label || c.variable) +
+            " <b>" +
+            (typeof c.value === "number"
+              ? c.variable === "soil_vwc"
+                ? c.value.toFixed(3)
+                : c.value.toFixed(1)
+              : c.value) +
+            "</b>";
+          if (c.unit) txt += " " + c.unit;
+          span.innerHTML = txt;
+          latestEl.appendChild(span);
+        });
+      }
+      if (hintEl) {
+        hintEl.hidden = false;
+        hintEl.textContent = langPt
+          ? "Média diária · portas do mesmo tipo agregadas (clima_series)."
+          : "Daily mean · same-type ports aggregated (clima_series).";
+      }
+      fillSelect(familySel, payload.ports || [], payload.family);
+      var fam = (payload.ports || []).find(function (p) {
+        return p.id === payload.family;
+      });
+      fillSelect(varSel, (fam && fam.variables) || [], payload.variable);
+      state.family = payload.family || state.family;
+      state.variable = payload.variable || state.variable;
+      if (payload.lat != null) state.lat = payload.lat;
+      if (payload.lon != null) state.lon = payload.lon;
+      renderSensorMiniMap(miniMap, state.lat, state.lon);
+      plotSensorSeries(chartEl, payload, langPt);
+    }
+
+    function load() {
+      if (!state.location_id) return;
+      var url = new URL(apiBase, window.location.origin);
+      url.searchParams.set("location_id", state.location_id);
+      url.searchParams.set("source", state.source || "zentra");
+      url.searchParams.set("days", String(state.days || 7));
+      if (state.variable) url.searchParams.set("variable", state.variable);
+      if (state.family) url.searchParams.set("family", state.family);
+      if (chartEl) {
+        chartEl.innerHTML =
+          '<p class="efc-muted" style="padding:1rem;font-size:0.8rem">' +
+          (langPt ? "Carregando série…" : "Loading series…") +
+          "</p>";
+      }
+      fetch(url.toString(), { credentials: "same-origin" })
+        .then(function (r) {
+          return r.json();
+        })
+        .then(applyMeta)
+        .catch(function () {
+          if (chartEl) {
+            chartEl.innerHTML =
+              '<p class="efc-muted" style="padding:1rem;font-size:0.8rem">' +
+              (langPt ? "Falha ao carregar série." : "Failed to load series.") +
+              "</p>";
+          }
+        });
+    }
+
+    if (familySel) {
+      familySel.addEventListener("change", function () {
+        state.family = familySel.value;
+        state.variable = "";
+        load();
+      });
+    }
+    if (varSel) {
+      varSel.addEventListener("change", function () {
+        state.variable = varSel.value;
+        load();
+      });
+    }
+    root.querySelectorAll("[data-sensor-days]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        state.days = parseInt(btn.getAttribute("data-sensor-days") || "7", 10) || 7;
+        setWindowsActive();
+        load();
+      });
+    });
+
+    return {
+      open: function (opts) {
+        opts = opts || {};
+        state.location_id = opts.location_id || opts.zid || "";
+        state.source = opts.source || "zentra";
+        state.family = opts.family || "";
+        state.variable = opts.variable || "";
+        state.days = opts.days || state.days || 7;
+        state.lat = opts.lat != null ? Number(opts.lat) : state.lat;
+        state.lon = opts.lon != null ? Number(opts.lon) : state.lon;
+        state.name = opts.name || "";
+        state.km = opts.km;
+        if (titleEl && state.name) titleEl.textContent = state.name;
+        setWindowsActive();
+        renderSensorMiniMap(miniMap, state.lat, state.lon);
+        load();
+      },
+      reload: load,
+    };
+  }
+
+  function ensureSensorModal() {
+    var existing = document.getElementById("efc-sensor-modal");
+    if (existing) return existing;
+    var modal = document.createElement("div");
+    modal.id = "efc-sensor-modal";
+    modal.className = "efc-modal efc-modal--sensor";
+    modal.hidden = true;
+    modal.innerHTML =
+      '<div class="efc-modal__backdrop" data-sensor-modal-close></div>' +
+      '<div class="efc-modal__panel" role="dialog" aria-modal="true" aria-labelledby="efc-sensor-modal-title">' +
+      '<div class="efc-modal__head">' +
+      '<strong id="efc-sensor-modal-title">Sensor</strong>' +
+      '<button type="button" class="efc-btn efc-btn--ghost efc-btn--sm" data-sensor-modal-close aria-label="Close">×</button>' +
+      "</div>" +
+      '<div class="efc-modal__body">' +
+      '<div class="efc-sensor-inspect" data-sensor-inspect data-lang="' +
+      (document.documentElement.lang === "en" ? "en" : "pt") +
+      '">' +
+      '<div class="efc-sensor-inspect__grid">' +
+      '<aside class="efc-sensor-inspect__map-col">' +
+      '<div class="efc-sensor-inspect__mini-map" data-sensor-mini-map></div>' +
+      '<div class="efc-sensor-inspect__identity">' +
+      '<h2 class="efc-sensor-inspect__title" data-sensor-title>—</h2>' +
+      '<p class="efc-sensor-inspect__sub" data-sensor-sub></p>' +
+      '<div class="efc-sensor-inspect__chips" data-sensor-latest></div>' +
+      "</div></aside>" +
+      '<div class="efc-sensor-inspect__chart-col">' +
+      '<div class="efc-sensor-inspect__controls">' +
+      '<label class="efc-sensor-inspect__field"><span>Porta / série</span><select data-sensor-family></select></label>' +
+      '<label class="efc-sensor-inspect__field"><span>Variável</span><select data-sensor-variable></select></label>' +
+      '<div class="efc-sensor-inspect__windows" role="group">' +
+      '<button type="button" data-sensor-days="1" class="efc-sensor-inspect__win">24h</button>' +
+      '<button type="button" data-sensor-days="7" class="efc-sensor-inspect__win is-active">7d</button>' +
+      '<button type="button" data-sensor-days="30" class="efc-sensor-inspect__win">30d</button>' +
+      "</div>" +
+      '<span class="efc-sensor-inspect__fresh" data-sensor-fresh></span>' +
+      "</div>" +
+      '<div class="efc-sensor-inspect__chart" data-sensor-chart></div>' +
+      '<p class="efc-sensor-inspect__hint" data-sensor-hint hidden></p>' +
+      "</div></div></div></div></div>";
+    document.body.appendChild(modal);
+    modal.querySelectorAll("[data-sensor-modal-close]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        modal.hidden = true;
+      });
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape" && !modal.hidden) modal.hidden = true;
+    });
+    return modal;
+  }
+
+  function openSensorDetail(opts) {
+    opts = opts || {};
+    var page = document.querySelector("[data-sensor-page] [data-sensor-inspect]");
+    if (page) {
+      var api = bindSensorInspect(page);
+      if (api) api.open(opts);
+      // highlight list
+      document.querySelectorAll("[data-sensor-pick]").forEach(function (btn) {
+        var on = btn.getAttribute("data-location-id") === opts.location_id;
+        btn.classList.toggle("is-active", on);
+        btn.setAttribute("aria-selected", on ? "true" : "false");
+      });
+      return;
+    }
+    var modal = ensureSensorModal();
+    var inspect = modal.querySelector("[data-sensor-inspect]");
+    var api2 = bindSensorInspect(inspect);
+    var title = modal.querySelector("#efc-sensor-modal-title");
+    if (title) title.textContent = opts.name || opts.location_id || "Sensor";
+    modal.hidden = false;
+    if (api2) api2.open(opts);
+    window.setTimeout(function () {
+      var mapHost = inspect && inspect.querySelector("[data-sensor-mini-map]");
+      if (mapHost && mapHost.__efcMiniMap) {
+        try {
+          mapHost.__efcMiniMap.resize();
+        } catch (eR) {}
+      }
+    }, 80);
+  }
+
+  function initSensorInspectPage() {
+    var page = document.querySelector("[data-sensor-page]");
+    if (!page) return;
+    var inspect = page.querySelector("[data-sensor-inspect]");
+    var api = bindSensorInspect(inspect);
+    page.querySelectorAll("[data-sensor-pick]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        openSensorDetail({
+          location_id: btn.getAttribute("data-location-id"),
+          source: btn.getAttribute("data-source") || "zentra",
+          lat: btn.getAttribute("data-lat"),
+          lon: btn.getAttribute("data-lon"),
+          name: btn.getAttribute("data-name"),
+          km: btn.getAttribute("data-km"),
+        });
+      });
+    });
+    var initial =
+      (inspect && inspect.getAttribute("data-initial-id")) ||
+      page.querySelector("[data-sensor-pick].is-active") ||
+      page.querySelector("[data-sensor-pick]");
+    if (typeof initial === "string" && initial) {
+      var btn0 = page.querySelector('[data-sensor-pick][data-location-id="' + initial + '"]');
+      if (btn0) btn0.click();
+    } else if (initial && initial.click) {
+      initial.click();
+    }
+    void api;
+  }
+
+  function initSensorMapBridge() {
+    window.addEventListener("message", function (ev) {
+      var p = ev.data;
+      if (!p || !p.type) return;
+      if (p.type === "efc-sensor-open") {
+        openSensorDetail({
+          location_id: p.location_id || p.zid || p.code || "",
+          source: p.source || "zentra",
+          lat: p.lat,
+          lon: p.lon,
+          name: p.name || "",
+          km: p.km,
+        });
+        // Also fly map to sensor in 3D sat
+        try {
+          var iframe = document.querySelector("#home-map-panel iframe, .efc-map-frame iframe");
+          if (iframe && iframe.contentWindow && p.lat != null) {
+            iframe.contentWindow.postMessage(
+              {
+                type: "efc-map-focus-zentra",
+                lat: Number(p.lat),
+                lon: Number(p.lon),
+                zid: p.location_id || "",
+              },
+              "*"
+            );
+          }
+        } catch (eF) {}
+      }
+    });
+  }
+
   function boot() {
     function reloadMapOnDateChange() {
       if (accAlertsMapApi && accAlertsMapApi.invalidateCache) {
@@ -4550,6 +5022,7 @@
       buildPrevisaoChartsDom: buildPrevisaoChartsDom,
       buildPrevisaoVerificationDom: buildPrevisaoVerificationDom,
       buildPrevisaoKmVerificationDom: buildPrevisaoKmVerificationDom,
+      openSensorDetail: openSensorDetail,
     };
     renderPlotsWithRetry(document, 0);
     initIngestionCountdown();
@@ -4563,6 +5036,8 @@
       initAccumulatedAlerts();
     }
     initChartsModal();
+    initSensorInspectPage();
+    initSensorMapBridge();
     initPrevisaoPage();
     initPrevisaoAtivos();
     initSidebarDrawer();
