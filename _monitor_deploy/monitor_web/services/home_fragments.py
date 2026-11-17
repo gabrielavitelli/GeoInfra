@@ -1724,7 +1724,9 @@ def _map_html_for_day_uncached(
             return "", _map_unavailable_message(lang_pt, folium_missing=True)
         return "", _map_unavailable_message(lang_pt, hint="build_folium_railway_map retornou vazio")
     except Exception as exc:
-        return "", _map_unavailable_message(lang_pt, hint=str(exc))
+        logger.exception("home map build failed: %s", exc)
+        # Surface hint even in prod so deploy smoke can diagnose (short).
+        return "", (f"Mapa indisponível: {exc}" if lang_pt else f"Map unavailable: {exc}")
 
 
 def _map_html_for_day(
