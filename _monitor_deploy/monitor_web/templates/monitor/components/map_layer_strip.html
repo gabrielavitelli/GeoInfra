@@ -1,16 +1,18 @@
-{# Compact map layer strip — visão geral. Sem OSM; km sempre on. #}
+{# Compact map layer strip — visão geral. Estações | Zentra | Clima | 3D #}
 {% load monitor_tags %}
 <div class="efc-layer-strip" id="efc-layer-strip" role="toolbar" aria-label="{% if lang_pt %}Camadas do mapa{% else %}Map layers{% endif %}"
      data-climate-url="{% murl 'home_climate_gfs' %}"
      data-goto-km-url="{% murl 'home_goto_km' %}">
-  <div class="efc-layer-strip__group" role="group" aria-label="Basemap">
-    <button type="button" class="efc-layer-strip__btn" data-basemap="3d" title="{% if lang_pt %}3D · imagem ~2 m (sob demanda){% else %}3D · ~2 m imagery (on demand){% endif %}">🧊 3D</button>
-    <button type="button" class="efc-layer-strip__btn is-active" data-basemap="sat" title="{% if lang_pt %}Satélite 2D{% else %}Satellite 2D{% endif %}">2D</button>
+  <div class="efc-layer-strip__group" role="group" aria-label="Overlays">
+    <button type="button" class="efc-layer-strip__btn is-active" data-overlay="stations" aria-pressed="true" title="{% if lang_pt %}Estações (BNDMET · ANA · EWS){% else %}Stations{% endif %}">Estações</button>
+    <button type="button" class="efc-layer-strip__btn is-active" data-overlay="zentra" aria-pressed="true" title="{% if lang_pt %}Sensores Zentra (TEROS · ATMOS){% else %}Zentra sensors{% endif %}">Zentra</button>
+    <button type="button" class="efc-layer-strip__btn" data-overlay="clima" aria-pressed="false" title="{% if lang_pt %}Clima GFS{% else %}GFS climate{% endif %}">Clima</button>
+    <button type="button" class="efc-layer-strip__btn" data-overlay="susc" aria-pressed="false" title="{% if lang_pt %}Suscetibilidade{% else %}Susceptibility{% endif %}">Susc</button>
   </div>
   <span class="efc-layer-strip__sep" aria-hidden="true"></span>
-  <div class="efc-layer-strip__group" role="group" aria-label="Overlays">
-    <button type="button" class="efc-layer-strip__btn" data-overlay="susc" aria-pressed="false" title="{% if lang_pt %}Suscetibilidade{% else %}Susceptibility{% endif %}">Susc</button>
-    <button type="button" class="efc-layer-strip__btn" data-overlay="clima" aria-pressed="false" title="{% if lang_pt %}Clima GFS · nuvem, chuva, vento (replay){% else %}GFS · cloud, rain, wind (replay){% endif %}">🌧️ Clima</button>
+  <div class="efc-layer-strip__group" role="group" aria-label="Basemap">
+    <button type="button" class="efc-layer-strip__btn is-active" data-basemap="sat" title="{% if lang_pt %}Satélite 2D{% else %}Satellite 2D{% endif %}">2D</button>
+    <button type="button" class="efc-layer-strip__btn" data-basemap="3d" title="{% if lang_pt %}3D · terreno sem exagero{% else %}3D · flat terrain{% endif %}">3D</button>
   </div>
   <span class="efc-layer-strip__sep" aria-hidden="true"></span>
   <form class="efc-layer-strip__goto" id="efc-goto-km-form" autocomplete="off">

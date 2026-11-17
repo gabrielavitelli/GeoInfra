@@ -234,9 +234,24 @@ def folium_map_standalone_html(m, *, height: str = "390px", map3d_payload: dict 
         'function setClima(on,payload){'
         'if(window.EfcClimaLayer){window.EfcClimaLayer.set(!!on,payload||{});return;}'
         'var m=f();if(!on){if(climaG&&m){try{m.removeLayer(climaG);}catch(eC0){}}climaG=null;}}'
+        'function setLayer(name,on){var m=f();if(!m)return;var g=(window.__efcLayerGroups||{})[name];'
+        'if(!g)return;try{if(on){if(!m.hasLayer(g))g.addTo(m);}else if(m.hasLayer(g))m.removeLayer(g);}catch(eL){}}'
+        'function ensureHiRes(z){var m=f();if(!m)return;var zz=z!=null?z:m.getZoom();'
+        'if(zz>=15.5){try{m.eachLayer(function(ly){if(ly&&ly.options&&ly.options.maxNativeZoom){'
+        'ly.options.maxNativeZoom=Math.max(ly.options.maxNativeZoom||17,17);}});'
+        'm.invalidateSize();}catch(eH){}}}'
+        'function focusZentra(p){var m=f();if(!m||p.lat==null||p.lon==null)return;'
+        'var lat=Number(p.lat),lon=Number(p.lon);setLayer("zentra",true);'
+        'm.setView([lat,lon],Math.max(m.getZoom(),16),{animate:true});ensureHiRes(16);'
+        'showGotoLabel(m,lat,lon,p.km);}'
+        '(function bindZoom(){var m=f();if(!m||m.__efcZoomBound)return;m.__efcZoomBound=1;'
+        'm.on("zoomend",function(){ensureHiRes(m.getZoom());'
+        'window.parent.postMessage({type:"efc-map-zoom",zoom:m.getZoom()},"*");});})();'
         'window.addEventListener("message",function(ev){var p=ev.data;if(!p||!p.type)return;'
         'if(p.type==="efc-map-susc")setSusc(!!p.on);'
         'if(p.type==="efc-map-goto-km")gotoKm(p);'
+        'if(p.type==="efc-map-layer")setLayer(String(p.layer||""),!!p.on);'
+        'if(p.type==="efc-map-focus-zentra")focusZentra(p);'
         'if(p.type==="efc-map-clima"){'
         'var climate=p.climate||{points:p.points||[],grid:p.grid||null,frames:p.frames||null,frame_i:p.frame_i};'
         'setClima(!!p.on,climate);}'
@@ -300,7 +315,16 @@ def folium_map_standalone_html(m, *, height: str = "390px", map3d_payload: dict 
         'var p=f.properties||{};new maplibregl.Popup({offset:10}).setLngLat(e.lngLat)'
         '.setHTML("<b>"+(p.name||p.code||"")+"</b><br>"+(p.net||"")+(p.code?" · "+p.code:"")).addTo(m);});'
         'm.on("mouseenter","efc-stations",function(){m.getCanvas().style.cursor="pointer";});'
-        'm.on("mouseleave","efc-stations",function(){m.getCanvas().style.cursor="";});}}'
+        'm.on("mouseleave","efc-stations",function(){m.getCanvas().style.cursor="";});}'
+        'if(OVERLAY.zentra){m.addSource("efc-zentra",{type:"geojson",data:OVERLAY.zentra});'
+        'm.addLayer({id:"efc-zentra",type:"circle",source:"efc-zentra",paint:{'
+        '"circle-radius":7,"circle-color":"#f97316","circle-stroke-width":2,'
+        '"circle-stroke-color":"#9a3412","circle-opacity":0.95}});'
+        'm.on("click","efc-zentra",function(e){var f=e.features&&e.features[0];if(!f)return;'
+        'var p=f.properties||{};new maplibregl.Popup({offset:12}).setLngLat(e.lngLat)'
+        '.setHTML(p.popup||("<b>"+(p.name||"")+"</b><br>Zentra")).addTo(m);});'
+        'm.on("mouseenter","efc-zentra",function(){m.getCanvas().style.cursor="pointer";});'
+        'm.on("mouseleave","efc-zentra",function(){m.getCanvas().style.cursor="";});}}'
         'function cinematicEntry(m){'
         'if(OVERLAY&&OVERLAY.camera){var cam=OVERLAY.camera;'
         'm.jumpTo({center:[cam.lon,cam.lat],zoom:cam.zoom||6.4,pitch:cam.pitch||70,bearing:cam.bearing||-38});return;}'
@@ -323,7 +347,7 @@ def folium_map_standalone_html(m, *, height: str = "390px", map3d_payload: dict 
         'var style={version:8,sources:{esri:{type:"raster",tiles:[satTiles],tileSize:256,maxzoom:17,'
         'attribution:"Esri · ~2 m"},terrainSource:{type:"raster-dem",tiles:[demTiles],tileSize:256,'
         'maxzoom:15,encoding:"terrarium"}},layers:[{id:"sat",type:"raster",source:"esri"}],'
-        'terrain:{source:"terrainSource",exaggeration:2.85}};'
+        'terrain:{source:"terrainSource",exaggeration:0}};'
         'var c={lat:-5.05,lon:-48.35,zoom:6.15};'
         'try{for(var k in window){if(k.indexOf("map_")==0&&window[k]&&window[k].getCenter){'
         'var cc=window[k].getCenter();c.lat=cc.lat;c.lon=cc.lng;c.zoom=window[k].getZoom()||6.15;break;}}}catch(e0){}'
@@ -336,12 +360,18 @@ def folium_map_standalone_html(m, *, height: str = "390px", map3d_payload: dict 
         'window.parent.postMessage({type:"efc-map-3d-ready"},"*");});'
         'return map3d;}).catch(function(err){loading=null;host.style.display="none";throw err;});'
         'return loading;}'
+        'function set3dLayer(name,on){if(!map3d)return;var id=name==="zentra"?"efc-zentra":(name==="stations"?"efc-stations":null);'
+        'if(!id||!map3d.getLayer(id))return;try{map3d.setLayoutProperty(id,"visibility",on?"visible":"none");}catch(eV){}}'
+        'function focusZentra3d(p){if(!map3d||p.lat==null||p.lon==null)return;set3dLayer("zentra",true);'
+        'map3d.easeTo({center:[Number(p.lon),Number(p.lat)],zoom:16,pitch:45,bearing:-20,duration:900});}'
         'window.addEventListener("message",function(ev){var p=ev.data;if(!p||!p.type)return;'
         'if(p.type==="efc-map-basemap"){'
         'var want3d=String(p.mode||"")==="3d";'
         'if(want3d){init3d();}else{host.style.display="none";}'
         '}'
         'if(p.type==="efc-map-goto-km"){if(map3d)showGotoKm(p);else pendingGoto=p;}'
+        'if(p.type==="efc-map-layer")set3dLayer(String(p.layer||""),!!p.on);'
+        'if(p.type==="efc-map-focus-zentra"){if(map3d)focusZentra3d(p);}'
         '});'
         '})();</script>'
     )
@@ -597,6 +627,22 @@ def _operational_map_html(
     )
     if not m:
         return ""
+    zentra_rows: list = []
+    try:
+        from monitor_web.services.zentra_sensors import (
+            add_zentra_markers_to_map,
+            build_zentra_sensor_rows,
+        )
+
+        zentra_rows = build_zentra_sensor_rows(
+            bq_dataset=dataset,
+            lang_pt=lang_pt,
+            main_line=main_line,
+            cum_km=cum_km,
+        )
+        add_zentra_markers_to_map(m, zentra_rows, lang_pt=lang_pt)
+    except Exception:
+        zentra_rows = []
     if alert_markers:
         from monitor_web.services.map_alert_markers import add_alert_exclamation_markers
         from monitor_web.services.suscetibilidade import cached_rail_segment_lookup
@@ -619,6 +665,7 @@ def _operational_map_html(
             estacoes_df=estacoes,
             ana_estacoes_df=ana_est,
             orion_estacoes_df=orion_est,
+            zentra_rows=zentra_rows,
         )
         return folium_map_standalone_html(m, height="420px", map3d_payload=overlay)
     return folium_map_inline_html(m, height="420px")

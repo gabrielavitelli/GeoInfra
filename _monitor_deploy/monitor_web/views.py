@@ -326,6 +326,53 @@ def boletim_dia_distribuicao_api(request):
 
 
 @require_GET
+def sensores_view(request):
+    """Lista Zentra / geotech — inspeção para gestores (km, status, últimos valores)."""
+    from monitor_web.services.zentra_sensors import build_zentra_sensor_rows
+
+    lang = get_lang(request)
+    lang_pt = lang == "pt"
+    try:
+        from gcp.monitor_bq_context import monitor_active_bq_dataset
+
+        dataset = monitor_active_bq_dataset()
+    except Exception:
+        dataset = os.environ.get("BQ_DATASET", "efc_clima")
+    main_line = cum_km = None
+    try:
+        from monitor_web.services.home import _railway
+
+        main_line, cum_km, _, _ = _railway()
+    except Exception:
+        pass
+    rows = build_zentra_sensor_rows(
+        bq_dataset=dataset,
+        lang_pt=lang_pt,
+        main_line=main_line,
+        cum_km=cum_km,
+    )
+    from monitor_web.middleware import portal_base_path
+
+    path = getattr(request, "path", "") or ""
+    home_prefix = portal_base_path() if path.startswith(portal_base_path()) else "/"
+    if not home_prefix.endswith("/"):
+        home_prefix += "/"
+    for row in rows:
+        qs = row.get("map_url_qs") or ""
+        row["map_href"] = f"{home_prefix}?{qs}" if qs else home_prefix
+    return render(
+        request,
+        monitor_template(request, "sensores.html"),
+        {
+            "page_title": "Sensores" if lang_pt else "Sensors",
+            "lang_pt": lang_pt,
+            "sensor_rows": rows,
+            "sensor_count": len(rows),
+        },
+    )
+
+
+@require_GET
 def sobre_view(request):
     lang = get_lang(request)
     return render(

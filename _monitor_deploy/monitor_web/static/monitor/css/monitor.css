@@ -3560,3 +3560,84 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
     transition: none;
   }
 }
+
+/* Sensores aba — inspection list (Zentra / geotech) */
+.efc-sensores {
+  padding: 1rem 1.25rem 2rem;
+  max-width: 1100px;
+}
+.efc-sensores__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.efc-sensores__crumb {
+  display: flex;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+.efc-sensores__crumb strong { color: #0f172a; }
+.efc-sensores__count {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.efc-sensores__table-wrap { overflow-x: auto; }
+.efc-sensores__table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.efc-sensores__table th {
+  text-align: left;
+  font-weight: 650;
+  color: #64748b;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 0.55rem 0.5rem;
+  white-space: nowrap;
+}
+.efc-sensores__table td {
+  padding: 0.65rem 0.5rem;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: top;
+}
+.efc-sensores__dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: #f97316;
+  border: 1.5px solid #9a3412;
+  margin-right: 0.4rem;
+  vertical-align: middle;
+}
+.efc-sensores__meta {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-top: 0.15rem;
+}
+.efc-sensores__coords {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #475569;
+  font-size: 0.82rem;
+}
+.efc-sensores__series {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.82rem;
+}
+.efc-sensores__fresh {
+  color: #94a3b8;
+  font-size: 0.75rem;
+}
+.efc-sensores__status {
+  display: inline-block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #64748b;
+}
+.efc-sensores__status--active { color: #15803d; }

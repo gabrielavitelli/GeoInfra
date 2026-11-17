@@ -181,6 +181,7 @@ def build_map_3d_payload(
     estacoes_df=None,
     ana_estacoes_df=None,
     orion_estacoes_df=None,
+    zentra_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     rail_coords = _downsample_line(main_line or [], max_pts=900)
     bounds = None
@@ -196,6 +197,28 @@ def build_map_3d_payload(
     stations.extend(_station_features([estacoes_df], net="BNDMET", color="#34d399"))
     stations.extend(_station_features([ana_estacoes_df], net="ANA", color="#38bdf8"))
     stations.extend(_station_features([orion_estacoes_df], net="EWS", color="#fbbf24"))
+    zentra_feats: list[dict[str, Any]] = []
+    for row in zentra_rows or []:
+        try:
+            lat = float(row.get("lat"))
+            lon = float(row.get("lon"))
+        except (TypeError, ValueError):
+            continue
+        if not (math.isfinite(lat) and math.isfinite(lon)):
+            continue
+        zentra_feats.append(
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                "properties": {
+                    "net": "Zentra",
+                    "code": str(row.get("location_id") or ""),
+                    "name": str(row.get("name") or row.get("location_id") or "Zentra"),
+                    "color": "#f97316",
+                    "popup": _zentra_popup_prop(row),
+                },
+            }
+        )
     tunnels = _tunnel_features(main_line, cum_km)
     km_labels = _km_label_features(main_line, cum_km, step_km=50)
     camera = _cinematic_camera(main_line, cum_km)
@@ -213,6 +236,7 @@ def build_map_3d_payload(
             else [],
         },
         "stations": {"type": "FeatureCollection", "features": stations},
+        "zentra": {"type": "FeatureCollection", "features": zentra_feats},
         "tunnels": {"type": "FeatureCollection", "features": tunnels},
         "kmLabels": {"type": "FeatureCollection", "features": km_labels},
         "bounds": bounds,

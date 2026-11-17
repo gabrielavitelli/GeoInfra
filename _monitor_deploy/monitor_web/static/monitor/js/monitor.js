@@ -4310,6 +4310,8 @@
     strip.dataset.bound = "1";
     var SUSC_KEY = "efc_map_suscetibilidade_on";
     var BASE_KEY = "efc_map_basemap";
+    var STATIONS_KEY = "efc_map_stations_on";
+    var ZENTRA_KEY = "efc_map_zentra_on";
     var climaOn = false;
     var climaPoints = null;
 
@@ -4322,6 +4324,21 @@
         btn.classList.toggle("is-active", btn.getAttribute("data-basemap") === mode);
       });
       postToMap({ type: "efc-map-basemap", mode: mode });
+    }
+
+    function setOverlayLayer(name, on) {
+      var key = name === "zentra" ? ZENTRA_KEY : name === "stations" ? STATIONS_KEY : null;
+      if (key) {
+        try {
+          localStorage.setItem(key, on ? "1" : "0");
+        } catch (eL) {}
+      }
+      var btn = strip.querySelector('[data-overlay="' + name + '"]');
+      if (btn) {
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+        btn.classList.toggle("is-active", !!on);
+      }
+      postToMap({ type: "efc-map-layer", layer: name, on: !!on });
     }
 
     function setSusc(on) {
@@ -4421,6 +4438,13 @@
         loadClima(climaBtn.getAttribute("aria-pressed") !== "true");
       });
     }
+    ["stations", "zentra"].forEach(function (name) {
+      var b = strip.querySelector('[data-overlay="' + name + '"]');
+      if (!b) return;
+      b.addEventListener("click", function () {
+        setOverlayLayer(name, b.getAttribute("aria-pressed") !== "true");
+      });
+    });
     var form = document.getElementById("efc-goto-km-form");
     if (form) {
       form.addEventListener("submit", function (ev) {
@@ -4458,6 +4482,33 @@
       prefSusc = localStorage.getItem(SUSC_KEY) === "1";
     } catch (e6) {}
     if (suscBtn) suscBtn.setAttribute("aria-pressed", prefSusc ? "true" : "false");
+    var prefStations = true;
+    var prefZentra = true;
+    try {
+      prefStations = localStorage.getItem(STATIONS_KEY) !== "0";
+      prefZentra = localStorage.getItem(ZENTRA_KEY) !== "0";
+    } catch (e8) {}
+    setOverlayLayer("stations", prefStations);
+    setOverlayLayer("zentra", prefZentra);
+
+    function applyFocusFromUrl() {
+      try {
+        var u = new URL(window.location.href);
+        var focus = u.searchParams.get("focus");
+        if (focus !== "zentra") return;
+        var lat = Number(u.searchParams.get("lat"));
+        var lon = Number(u.searchParams.get("lon"));
+        if (!isFinite(lat) || !isFinite(lon)) return;
+        setBasemap("sat");
+        setOverlayLayer("zentra", true);
+        postToMap({
+          type: "efc-map-focus-zentra",
+          lat: lat,
+          lon: lon,
+          zid: u.searchParams.get("zid") || "",
+        });
+      } catch (eF) {}
+    }
 
     window.addEventListener("message", function (ev) {
       if (!ev.data) return;
@@ -4469,6 +4520,13 @@
         setBasemap(mode);
         if (climaOn) loadClima(true);
         postToMap({ type: "efc-map-susc", on: prefSusc });
+        setOverlayLayer("stations", prefStations);
+        setOverlayLayer("zentra", prefZentra);
+        applyFocusFromUrl();
+      }
+      if (ev.data.type === "efc-map-zoom" && Number(ev.data.zoom) >= 15.5) {
+        // Hi-res Esri tiles already active; keep 2D sat when inspecting sensors.
+        if (prefBase !== "3d") setBasemap("sat");
       }
     });
   }
