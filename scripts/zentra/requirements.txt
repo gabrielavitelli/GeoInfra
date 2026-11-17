@@ -1,0 +1,4 @@
+# Core ingest uses Python stdlib only (+ gcloud CLI for Secret Manager).
+# Optional GCP landing (also baked into the Cloud Run Job image):
+google-cloud-bigquery>=3.11.0
+google-cloud-storage>=2.14.0

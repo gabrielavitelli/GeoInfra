@@ -1,0 +1,20 @@
+# One-shot image bake for Cloud Run Job (NOT on the 6h schedule).
+#   gcloud builds submit --config=scripts/zentra/cloudbuild.yaml --project=climaticsystem
+substitutions:
+  _IMAGE: "gcr.io/climaticsystem/zentra-ingest"
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - scripts/zentra/Dockerfile.repo
+      - -t
+      - ${_IMAGE}
+      - .
+
+images:
+  - ${_IMAGE}
+
+options:
+  logging: CLOUD_LOGGING_ONLY
