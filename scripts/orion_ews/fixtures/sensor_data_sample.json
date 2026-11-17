@@ -1,0 +1,26 @@
+[
+  {
+    "sensorId": 1001,
+    "softSensorId": null,
+    "readingDate": "2026-11-04T12:00:00",
+    "sensorValue": 2.15
+  },
+  {
+    "sensorId": 1001,
+    "softSensorId": 2001,
+    "readingDate": "2026-11-04T12:00:00",
+    "sensorValue": 2.18
+  },
+  {
+    "sensorId": 1002,
+    "softSensorId": null,
+    "readingDate": "2026-11-04T12:00:00",
+    "sensorValue": 0.4
+  },
+  {
+    "sensorId": 1003,
+    "softSensorId": null,
+    "readingDate": "2026-11-04T12:00:00",
+    "sensorValue": 3.95
+  }
+]

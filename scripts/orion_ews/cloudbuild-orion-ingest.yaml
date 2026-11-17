@@ -1,0 +1,38 @@
+# Skeleton Cloud Build job for Orion → efc_clima.
+# Wire secret `orion-user-key` before enabling on a schedule.
+# Does NOT run until ORION_USER_KEY is bound and DDL applied.
+#
+# Example trigger (manual):
+#   gcloud builds submit --config=scripts/orion_ews/cloudbuild-orion-ingest.yaml \
+#     --project=climaticsystem --substitutions=_DAYS=3
+
+substitutions:
+  _DAYS: "3"
+  _BQ_DATASET: "efc_clima"
+
+steps:
+  - name: python:3.11-slim
+    id: ingest
+    entrypoint: bash
+    secretEnv: ["ORION_USER_KEY"]
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        pip install -q -r scripts/orion_ews/requirements.txt
+        python -m scripts.orion_ews.ingest doctor --ping
+        python -m scripts.orion_ews.ingest catalog --out /workspace/orion_devices.json
+        python -m scripts.orion_ews.ingest readings --days ${_DAYS} \
+          --out /workspace/orion_readings.ndjson \
+          --bq-project $PROJECT_ID \
+          --bq-dataset ${_BQ_DATASET}
+    env:
+      - "PROJECT_ID=$PROJECT_ID"
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/orion-user-key/versions/latest
+      env: ORION_USER_KEY
+
+options:
+  logging: CLOUD_LOGGING_ONLY
