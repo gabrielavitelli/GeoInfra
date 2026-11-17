@@ -369,7 +369,7 @@ def sensor_series_api(request):
 
 @require_GET
 def sensores_view(request):
-    """Lista Zentra / geotech — inspeção para gestores (lista + série temporal)."""
+    """Lista Zentra / geotech — tabela (layout prod) + série temporal sob demanda."""
     from monitor_web.services.zentra_sensors import build_zentra_sensor_rows
     from monitor_web.services.sensor_series import ports_for_device
 

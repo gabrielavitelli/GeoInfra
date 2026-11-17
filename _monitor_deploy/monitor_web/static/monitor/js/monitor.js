@@ -4912,16 +4912,34 @@
 
   function openSensorDetail(opts) {
     opts = opts || {};
-    var page = document.querySelector("[data-sensor-page] [data-sensor-inspect]");
+    var pageRoot = document.querySelector("[data-sensor-page]");
+    var page = pageRoot && pageRoot.querySelector("[data-sensor-inspect]");
     if (page) {
+      var detail = pageRoot.querySelector("[data-sensor-detail]");
+      if (detail) detail.hidden = false;
       var api = bindSensorInspect(page);
       if (api) api.open(opts);
-      // highlight list
-      document.querySelectorAll("[data-sensor-pick]").forEach(function (btn) {
+      pageRoot.querySelectorAll("[data-sensor-pick]").forEach(function (btn) {
         var on = btn.getAttribute("data-location-id") === opts.location_id;
         btn.classList.toggle("is-active", on);
-        btn.setAttribute("aria-selected", on ? "true" : "false");
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
       });
+      pageRoot.querySelectorAll(".efc-sensores__row").forEach(function (tr) {
+        tr.classList.toggle("is-active", tr.getAttribute("data-location-id") === opts.location_id);
+      });
+      if (detail && typeof detail.scrollIntoView === "function") {
+        try {
+          detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        } catch (eScroll) {}
+      }
+      window.setTimeout(function () {
+        var mapHost = page.querySelector("[data-sensor-mini-map]");
+        if (mapHost && mapHost.__efcMiniMap) {
+          try {
+            mapHost.__efcMiniMap.resize();
+          } catch (eR0) {}
+        }
+      }, 80);
       return;
     }
     var modal = ensureSensorModal();
@@ -4945,7 +4963,7 @@
     var page = document.querySelector("[data-sensor-page]");
     if (!page) return;
     var inspect = page.querySelector("[data-sensor-inspect]");
-    var api = bindSensorInspect(inspect);
+    bindSensorInspect(inspect);
     page.querySelectorAll("[data-sensor-pick]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         openSensorDetail({
@@ -4958,17 +4976,15 @@
         });
       });
     });
+    // Only auto-open when deep-linked (?zid=) — keep prod table as first paint.
     var initial =
+      page.getAttribute("data-initial-id") ||
       (inspect && inspect.getAttribute("data-initial-id")) ||
-      page.querySelector("[data-sensor-pick].is-active") ||
-      page.querySelector("[data-sensor-pick]");
-    if (typeof initial === "string" && initial) {
+      "";
+    if (initial) {
       var btn0 = page.querySelector('[data-sensor-pick][data-location-id="' + initial + '"]');
       if (btn0) btn0.click();
-    } else if (initial && initial.click) {
-      initial.click();
     }
-    void api;
   }
 
   function initSensorMapBridge() {

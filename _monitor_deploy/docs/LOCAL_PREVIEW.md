@@ -17,7 +17,7 @@ export DJANGO_DEBUG=1
 export DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
 # Bypass login local (settings lê EFC_MONITOR_DISABLE_AUTH, não MONITOR_AUTH_DISABLED)
 export EFC_MONITOR_DISABLE_AUTH=1
-export MONITOR_STATIC_BUST=20261117sensorux1
+export MONITOR_STATIC_BUST=20261117sensoresRestore
 # ADC: gcloud auth application-default login  (gabrielavitelli@gmail.com / climaticsystem)
 
 cd /tmp/zentra_monitor_work   # tree Django completo (não só _monitor_deploy/)
@@ -36,7 +36,8 @@ Atalho equivalente (depois de `export EFC_MONITOR_DISABLE_AUTH=1`):
 ## URLs
 
 - Visão geral (mapa): http://127.0.0.1:8000/portal/
-- Sensores (lista + série): http://127.0.0.1:8000/portal/sensores/
+- Sensores (tabela prod + Série): http://127.0.0.1:8000/portal/sensores/
+- Sensores interno: http://127.0.0.1:8000/sensores/
 - Login (se auth ligado): http://127.0.0.1:8000/portal/login/ → `gestor.demo` / `Demo2026!`
 
 ## Smoke rápido
