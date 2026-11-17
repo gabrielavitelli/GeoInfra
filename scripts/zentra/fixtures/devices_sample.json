@@ -1,0 +1,31 @@
+{
+  "pulled_at_utc": "2026-11-17T18:00:00+00:00",
+  "devices": [
+    {
+      "device_id": "z6-35938",
+      "name": "z6-35938",
+      "organization_name": "USP",
+      "device_type": 192,
+      "model": "ZL6",
+      "can_read_data": true,
+      "data_range": {"first_measurement": 1793193300, "last_measurement": 1794938400},
+      "ports": [
+        {"port_num": 1, "sensor_short_name": "ATMOS 41 G2"},
+        {"port_num": 2, "sensor_short_name": "TEROS 12"},
+        {"port_num": 3, "sensor_short_name": "TEROS 21"}
+      ],
+      "location": {"latitude": -4.26011, "longitude": -46.53419, "elevation": 93.0, "elevation_unit": "m"}
+    },
+    {
+      "device_id": "z6-35947",
+      "name": "z6-35947",
+      "organization_name": "USP",
+      "device_type": 192,
+      "model": "ZL6",
+      "can_read_data": true,
+      "data_range": null,
+      "ports": [],
+      "location": {"latitude": 0.0, "longitude": 0.0, "elevation": null, "elevation_unit": "m"}
+    }
+  ]
+}

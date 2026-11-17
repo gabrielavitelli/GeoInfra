@@ -1,0 +1,19 @@
+# Preferred: build from GeoInfra repo root so `scripts.*` imports resolve cleanly.
+#   gcloud builds submit --config=scripts/zentra/cloudbuild.yaml --project=climaticsystem
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONPATH=/app
+
+WORKDIR /app
+
+COPY scripts/zentra/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+COPY scripts/__init__.py /app/scripts/__init__.py
+COPY scripts/zentra /app/scripts/zentra
+
+ENTRYPOINT ["python", "-m", "scripts.zentra.ingest"]
+CMD ["run", "--skip-stale"]
