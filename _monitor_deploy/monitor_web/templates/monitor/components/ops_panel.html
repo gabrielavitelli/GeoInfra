@@ -1,0 +1,100 @@
+{% load humanize %}
+<div class="dj-module dj-module--metrics dj-module--compact efc-stitch-side-panel" data-tour-anchor="ops-panel">
+  <div class="p-4 grid grid-cols-2 gap-3 efc-stitch-side-panel__kpi-grid">
+    {% for peak in ctx.peaks %}
+    <div class="efc-stitch-side-card bg-surface-container p-2.5 border border-outline-variant rounded-lg hover:border-primary transition-colors cursor-default{% if peak.active %} efc-stitch-side-card--accum-active{% endif %}"{% if peak.active %} data-accum-active="1"{% endif %}>
+      <p class="efc-stitch-side-card__label">{{ peak.metric }}</p>
+      {% if peak.mm is not None %}
+      <div class="efc-stitch-side-card__value">
+        <span class="efc-stitch-side-card__num {% if peak.tone == 'crit' %}stitch-kpi-num--crit{% elif peak.tone == 'warn' %}stitch-kpi-num--warn{% else %}stitch-kpi-num--primary{% endif %}">{{ peak.mm|floatformat:0 }}</span>
+        <span class="efc-stitch-side-card__unit">mm</span>
+      </div>
+      {% if peak.station %}
+      <p class="efc-stitch-side-card__sub">{{ peak.station }}</p>
+      {% elif peak.km is not None %}
+      <p class="efc-stitch-side-card__sub">km {{ peak.km }}</p>
+      {% endif %}
+      {% else %}
+      <div class="efc-stitch-side-card__value">
+        <span class="efc-stitch-side-card__num stitch-kpi-num--primary">0</span>
+        <span class="efc-stitch-side-card__unit">mm</span>
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    <div class="efc-stitch-side-card bg-surface-container p-2.5 border border-outline-variant rounded-lg hover:border-primary transition-colors cursor-default efc-stitch-kpi-card--obs efc-stitch-side-card--accum-active" data-accum-active="1">
+      <p class="efc-stitch-side-card__label">{{ ctx.labels.station|default:"Estação" }}</p>
+      {% if ctx.obs.mm is not None %}
+      <div class="efc-stitch-side-card__value">
+        <span class="efc-stitch-side-card__num stitch-kpi-num--primary efc-stitch-kpi-card__num">{{ ctx.obs.mm|floatformat:0 }}</span>
+        <span class="efc-stitch-side-card__unit">mm</span>
+      </div>
+      <p class="efc-stitch-side-card__sub">{{ ctx.obs.name }}</p>
+      {% else %}
+      <p class="efc-stitch-side-card__sub">{{ ctx.labels.empty }}</p>
+      {% endif %}
+    </div>
+    {% if ctx.entorno %}
+    <div class="efc-stitch-side-card bg-surface-container p-2.5 border border-outline-variant rounded-lg hover:border-primary transition-colors cursor-default efc-stitch-kpi-card--entorno efc-stitch-side-card--accum-active" data-accum-active="1" data-tour-anchor="entorno-max"
+         title="{{ ctx.entorno.focus_label }}">
+      <p class="efc-stitch-side-card__label">{{ ctx.labels.entorno }}</p>
+      {% if ctx.entorno.mm is not None %}
+      <div class="efc-stitch-side-card__value">
+        <span class="efc-stitch-side-card__num {% if ctx.entorno.tone == 'crit' %}stitch-kpi-num--crit{% else %}stitch-kpi-num--primary{% endif %}">{{ ctx.entorno.mm|floatformat:0 }}</span>
+        <span class="efc-stitch-side-card__unit">mm</span>
+      </div>
+      {% if ctx.entorno.name %}
+      <p class="efc-stitch-side-card__sub">{{ ctx.entorno.name }}</p>
+      {% endif %}
+      {% else %}
+      <p class="efc-stitch-side-card__sub">{{ ctx.labels.empty }}</p>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if ctx.raijin %}
+    <div class="efc-stitch-side-card bg-surface-container p-2.5 border border-outline-variant rounded-lg cursor-default efc-stitch-kpi-card--raijin"
+         data-tour-anchor="raijin-kpi"
+         title="{% if ctx.lang_pt %}km com TP Raijin no dia{% else %}km with Raijin TP today{% endif %}">
+      <p class="efc-stitch-side-card__label">{{ ctx.raijin.metric }}</p>
+      {% if ctx.raijin.n_km or ctx.raijin.n_km == 0 %}
+      <div class="efc-stitch-side-card__value">
+        <span class="efc-stitch-side-card__num {% if ctx.raijin.tone == 'crit' %}stitch-kpi-num--raijin{% else %}stitch-kpi-num--primary{% endif %}">{{ ctx.raijin.n_km }}</span>
+        <span class="efc-stitch-side-card__unit">{{ ctx.raijin.unit }}</span>
+      </div>
+      {% else %}
+      <p class="efc-stitch-side-card__sub">{{ ctx.labels.empty }}</p>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% include "monitor/components/ia_insight.html" with ctx=ctx %}
+
+  <div class="p-4 efc-stitch-side-panel__sev">
+    <h3 class="efc-stitch-side-panel__heading">{{ ctx.labels.sev_group }}</h3>
+    <div class="space-y-3.5" role="group" aria-label="{{ ctx.labels.sev_group }}">
+      {% for s in ctx.severity %}
+      <div class="efc-stitch-side-panel__sev-row{% if s.active %} efc-stitch-side-panel__sev-row--accum-active{% endif %}"{% if s.active %} data-accum-active="1"{% endif %}>
+        <div class="efc-stitch-side-panel__sev-labels">
+          <span>{{ s.label }}</span>
+          <span class="font-bold">{{ s.pct|floatformat:0 }}% ({{ s.n }} {{ s.unit|default:ctx.labels.unit_stations }})</span>
+        </div>
+        <div class="stitch-bar-track">
+          <div class="stitch-bar-fill stitch-bar-fill--{% if s.tone == 'crit' %}error{% elif s.tone == 'warn' %}tertiary{% else %}primary{% endif %}" style="width:{{ s.pct|floatformat:0 }}%;"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if ctx.period_label %}
+  <p class="efc-stitch-side-panel__period">{{ ctx.period_label }}</p>
+  {% endif %}
+
+  <div class="dj-compact-peaks" hidden aria-hidden="true">
+    {% for peak in ctx.peaks %}
+    <div class="dj-compact-stat dj-compact-stat--{{ peak.tone }}"></div>
+    {% endfor %}
+  </div>
+  <div class="dj-compact-sev" hidden aria-hidden="true"></div>
+</div>

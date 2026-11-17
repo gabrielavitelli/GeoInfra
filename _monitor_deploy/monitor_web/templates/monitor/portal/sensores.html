@@ -1,0 +1,58 @@
+{% extends "monitor/base.html" %}
+{% load monitor_tags %}
+{% block title %}{% if lang_pt %}Sensores{% else %}Sensors{% endif %}{% endblock %}
+{% block content %}
+<div class="efc-stitch-scope efc-stitch-main efc-stitch-page efc-sensores">
+  <header class="efc-sensores__head">
+    <nav class="efc-sensores__crumb" aria-label="{% if lang_pt %}Navegação{% else %}Breadcrumb{% endif %}">
+      <span>EFC</span><span aria-hidden="true">/</span>
+      <strong>{% if lang_pt %}Sensores{% else %}Sensors{% endif %}</strong>
+    </nav>
+    <p class="efc-sensores__count">{{ sensor_count }} Zentra</p>
+  </header>
+
+  <div class="efc-sensores__table-wrap">
+    <table class="efc-table efc-sensores__table">
+      <thead>
+        <tr>
+          <th>{% if lang_pt %}Sensor{% else %}Sensor{% endif %}</th>
+          <th>km</th>
+          <th>{% if lang_pt %}Coords{% else %}Coords{% endif %}</th>
+          <th>Status</th>
+          <th>{% if lang_pt %}Últimos{% else %}Latest{% endif %}</th>
+          <th>Health</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in sensor_rows %}
+        <tr>
+          <td>
+            <span class="efc-sensores__dot" aria-hidden="true"></span>
+            <strong>{{ row.name }}</strong>
+            <div class="efc-sensores__meta">{{ row.sensors|join:" · " }}</div>
+          </td>
+          <td>{% if row.km is not None %}{{ row.km|floatformat:0 }}{% else %}—{% endif %}</td>
+          <td class="efc-sensores__coords">{{ row.lat|floatformat:4 }}, {{ row.lon|floatformat:4 }}</td>
+          <td><span class="efc-sensores__status efc-sensores__status--{{ row.status }}">{{ row.status }}</span></td>
+          <td class="efc-sensores__series">
+            {% for s in row.series %}
+              {% if s.variable == "soil_vwc" or s.variable == "water_potential_kpa" or s.variable == "precip_mm" %}
+              <span>{{ s.label }} <b>{{ s.value_txt }}</b>{% if s.unit %} {{ s.unit }}{% endif %}</span>
+              {% endif %}
+            {% empty %}
+              —
+            {% endfor %}
+            <div class="efc-sensores__fresh">{{ row.freshness }}</div>
+          </td>
+          <td>{{ row.health }}</td>
+          <td><a class="efc-btn efc-btn--ghost efc-btn--sm" href="{{ row.map_href }}">{% if lang_pt %}Mapa{% else %}Map{% endif %} →</a></td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7">{% if lang_pt %}Nenhum sensor Zentra ativo.{% else %}No active Zentra sensors.{% endif %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

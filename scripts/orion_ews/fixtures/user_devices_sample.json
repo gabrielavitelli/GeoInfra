@@ -1,0 +1,49 @@
+[
+  {
+    "deviceId": 6536,
+    "deviceName": "EWS6536 - Abrigo km 149",
+    "reference": null,
+    "serialNumber": "301434060465170",
+    "dateInstalled": "2024-09-12T00:00:00",
+    "status": "Online",
+    "lastUpload": "2026-11-05T00:00:00",
+    "latitude": -3.5438,
+    "longitude": -44.8911,
+    "batteryPercentage": 95,
+    "sensors": [
+      {
+        "sensorId": 1001,
+        "sensorType": "Water Level",
+        "uom": "m",
+        "channelNumber": 1,
+        "customName": null,
+        "scadaTag": null
+      },
+      {
+        "sensorId": 1002,
+        "sensorType": "Rainfall",
+        "uom": "mm",
+        "channelNumber": 2,
+        "customName": null,
+        "scadaTag": null
+      },
+      {
+        "sensorId": 1003,
+        "sensorType": "Battery Voltage",
+        "uom": "V",
+        "channelNumber": 3,
+        "customName": null,
+        "scadaTag": null
+      }
+    ],
+    "softSensors": [
+      {
+        "softSensorId": 2001,
+        "sensorType": "Water Level",
+        "uom": "m",
+        "customName": "Nivel calibrado",
+        "scadaTag": null
+      }
+    ]
+  }
+]
