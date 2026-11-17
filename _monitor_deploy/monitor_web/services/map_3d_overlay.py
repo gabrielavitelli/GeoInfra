@@ -174,6 +174,28 @@ def _cinematic_camera(main_line, cum_km) -> dict[str, float] | None:
     }
 
 
+def _zentra_popup_prop(row: dict[str, Any]) -> str:
+    """Compact HTML for MapLibre popup (series + freshness)."""
+    try:
+        from monitor_web.services.zentra_sensors import zentra_popup_html
+
+        return zentra_popup_html(row, lang_pt=True)
+    except Exception:
+        parts = [f"<b>Zentra {row.get('name') or row.get('location_id') or ''}</b>"]
+        km = row.get("km")
+        if km is not None:
+            parts.append(f"km {float(km):.0f}")
+        for s in row.get("series") or []:
+            unit = s.get("unit") or ""
+            parts.append(
+                f"{s.get('label')}: <b>{s.get('value_txt')}</b>"
+                + (f" {unit}" if unit else "")
+            )
+        fresh = row.get("freshness") or "—"
+        parts.append(f"<span style=\"color:#94a3b8\">atualizado {fresh}</span>")
+        return "<br>".join(parts)
+
+
 def build_map_3d_payload(
     *,
     main_line,

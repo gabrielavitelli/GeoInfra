@@ -659,14 +659,24 @@ def _operational_map_html(
     if embed_document:
         from monitor_web.services.map_3d_overlay import build_map_3d_payload
 
-        overlay = build_map_3d_payload(
-            main_line=main_line,
-            cum_km=cum_km,
-            estacoes_df=estacoes,
-            ana_estacoes_df=ana_est,
-            orion_estacoes_df=orion_est,
-            zentra_rows=zentra_rows,
-        )
+        try:
+            overlay = build_map_3d_payload(
+                main_line=main_line,
+                cum_km=cum_km,
+                estacoes_df=estacoes,
+                ana_estacoes_df=ana_est,
+                orion_estacoes_df=orion_est,
+                zentra_rows=zentra_rows,
+            )
+        except Exception:
+            overlay = build_map_3d_payload(
+                main_line=main_line,
+                cum_km=cum_km,
+                estacoes_df=estacoes,
+                ana_estacoes_df=ana_est,
+                orion_estacoes_df=orion_est,
+                zentra_rows=[],
+            )
         return folium_map_standalone_html(m, height="420px", map3d_payload=overlay)
     return folium_map_inline_html(m, height="420px")
 
