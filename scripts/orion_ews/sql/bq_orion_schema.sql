@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS `climaticsystem.efc_clima.orion_devices` (
   last_upload      TIMESTAMP,
   date_installed   TIMESTAMP,
   orion_device_id  INT64,
+  asset_class      STRING,
   pulled_at        TIMESTAMP
 );
 
@@ -33,6 +34,7 @@ CREATE TABLE IF NOT EXISTS `climaticsystem.efc_clima.orion_sensors` (
   custom_name      STRING,
   scada_tag        STRING,
   mapped_variable  STRING,
+  family           STRING,
   pulled_at        TIMESTAMP
 );
 

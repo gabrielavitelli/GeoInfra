@@ -36,9 +36,11 @@ from scripts.orion_ews.client import (  # noqa: E402
     flatten_device_sensors,
     redact_secret,
 )
+from scripts.orion_ews.map_assets import build_map_catalog  # noqa: E402
 from scripts.orion_ews.mapping import (  # noqa: E402
     SOURCE_ORION,
     clima_series_payload,
+    device_asset_class,
     device_to_location_row,
     map_sensor_type,
     reading_to_clima_row,
@@ -140,8 +142,10 @@ def cmd_catalog(args: argparse.Namespace) -> int:
                         if (v := map_sensor_type(s.get("sensorType"), s.get("uom")))
                     }
                 ),
+                "asset_class": device_asset_class(d),
             }
         )
+    map_catalog = build_map_catalog(devices)
 
     out = Path(args.out)
     if out.suffix.lower() == ".csv":
@@ -156,15 +160,19 @@ def cmd_catalog(args: argparse.Namespace) -> int:
                 "sensors_flat": sensors,
                 "locations": locations,
                 "summary": summary,
+                "map_catalog": map_catalog,
             },
         )
+        map_out = out.with_name(out.stem + "_map_assets.json")
+        _write_json(map_out, map_catalog)
+        print(f"wrote {map_out}")
     sensors_out = Path(args.sensors_out) if args.sensors_out else out.with_name(out.stem + "_sensors.csv")
     _write_csv(sensors_out, sensors)
     print(f"wrote {out} and {sensors_out}")
     for s in summary:
         print(
             f"  - {s['station_id']}: {s['device_name']} "
-            f"[{s['status']}] bat={s['battery_pct']}% "
+            f"[{s['status']}] {s.get('asset_class')} bat={s['battery_pct']}% "
             f"vars={s['mapped_variables']}"
         )
     return 0
@@ -376,6 +384,9 @@ def _upload_gcs(
             default=str,
         ),
         f"{path}orion_locations_latest.json": json.dumps(locations, ensure_ascii=False, default=str),
+        f"{path}orion_map_assets_latest.json": json.dumps(
+            build_map_catalog(devices), ensure_ascii=False, default=str
+        ),
         f"{path}orion_readings_latest.ndjson": "\n".join(
             json.dumps(r, ensure_ascii=False, default=str) for r in staging
         )
@@ -454,6 +465,7 @@ def _maybe_load_bq(
                 "serial_number": (loc.get("extra") or {}).get("serial_number"),
                 "last_upload": (loc.get("extra") or {}).get("last_upload"),
                 "orion_device_id": (loc.get("extra") or {}).get("orion_device_id"),
+                "asset_class": (loc.get("extra") or {}).get("asset_class"),
                 "pulled_at": datetime.now(timezone.utc).isoformat(),
             }
         )

@@ -45,5 +45,44 @@
         "scadaTag": null
       }
     ]
+  },
+  {
+    "deviceId": 8801,
+    "deviceName": "EWS8801 - Piezo km 380",
+    "reference": null,
+    "serialNumber": "301434061880111",
+    "dateInstalled": "2026-06-01T00:00:00",
+    "status": "Online",
+    "lastUpload": "2026-11-16T12:00:00",
+    "latitude": -4.2101,
+    "longitude": -49.4012,
+    "batteryPercentage": 71,
+    "sensors": [
+      {
+        "sensorId": 3101,
+        "sensorType": "Piezometer",
+        "uom": "kPa",
+        "channelNumber": 1,
+        "customName": "PZ-01",
+        "scadaTag": null
+      },
+      {
+        "sensorId": 3102,
+        "sensorType": "Inclinometer",
+        "uom": "deg",
+        "channelNumber": 2,
+        "customName": "INC-A",
+        "scadaTag": null
+      },
+      {
+        "sensorId": 3103,
+        "sensorType": "Battery Voltage",
+        "uom": "V",
+        "channelNumber": 3,
+        "customName": null,
+        "scadaTag": null
+      }
+    ],
+    "softSensors": []
   }
 ]

@@ -12,6 +12,18 @@ Auth: **User Key** (Secret Manager `orion-user-key` @ `climaticsystem`) → `/to
 | `GET /sensorData` | Séries (`readingDate`, `sensorValue`) |
 | `GET /validatedSensorData` | Séries + qualidade |
 
+## Onde ficam os loggers (siting)
+
+Não é um único pátio. Os nomes Orion no EFC são **abrigos ao longo da ferrovia** (`Abrigo km 149`, `km 629`, `km 663`, `km 807`…): dezenas a centenas de km de chainage. O catálogo `build_map_catalog` inclui `siting.pattern = corridor | cluster | point` (envelope da EFC Carajás).
+
+Painel operacional (visão geral):
+- **bolinha azul** = só clima/chuva
+- **bolinha laranja** = geotécnico (nível, piezo, inclinômetro…)
+- **bolinha roxa** = misto (chuva + geotécnico no mesmo logger — comum nos abrigos EWS)
+- clique: km, status (online/atrasado/parado), bateria, **portas** (ch / soft), **séries** disponíveis, copiar linha p/ inspeção
+
+Geotécnico **não** entra no KPI de chuva. Artefato GCS: `gs://efc-clima-data/obs/ews/orion_map_assets_latest.json`
+
 ## Destino EFC
 
 `clima_series` (colunas reais): `date`, `location_id`, `source`, `ingested_at`, `variable`, `value`
