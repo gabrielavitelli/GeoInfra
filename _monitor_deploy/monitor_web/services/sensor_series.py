@@ -36,6 +36,33 @@ VAR_LABELS_PT: dict[str, str] = {
     "signal_pct": "Sinal",
 }
 
+# Chart card titles (reference-style long labels).
+VAR_CHART_TITLES_PT: dict[str, str] = {
+    "soil_vwc": "Umidade do solo (VWC)",
+    "water_potential_kpa": "Potencial de água no solo",
+    "soil_temp_c": "Temperatura do solo",
+    "precip_mm": "Precipitação",
+    "temp_c": "Temperatura do ar",
+    "rh_pct": "Umidade relativa",
+    "pressure_hpa": "Pressão atmosférica",
+    "battery_pct": "Bateria",
+    "battery_v": "Tensão da bateria",
+    "signal_pct": "Sinal",
+}
+
+VAR_CHART_TITLES_EN: dict[str, str] = {
+    "soil_vwc": "Soil moisture (VWC)",
+    "water_potential_kpa": "Soil water potential",
+    "soil_temp_c": "Soil temperature",
+    "precip_mm": "Precipitation",
+    "temp_c": "Air temperature",
+    "rh_pct": "Relative humidity",
+    "pressure_hpa": "Atmospheric pressure",
+    "battery_pct": "Battery",
+    "battery_v": "Battery voltage",
+    "signal_pct": "Signal",
+}
+
 VAR_UNITS: dict[str, str] = {
     "soil_vwc": "m³/m³",
     "water_potential_kpa": "kPa",
@@ -49,25 +76,30 @@ VAR_UNITS: dict[str, str] = {
     "signal_pct": "%",
 }
 
-# Plotly accent palette aligned with stitch dark (cyan / coral / amber / mint).
+# Plotly default-ish palette for light cream card gallery.
 VAR_COLORS: dict[str, str] = {
-    "soil_vwc": "#38bdf8",
-    "water_potential_kpa": "#f97316",
-    "precip_mm": "#67e8f9",
-    "soil_temp_c": "#a78bfa",
-    "temp_c": "#fbbf24",
-    "rh_pct": "#34d399",
-    "pressure_hpa": "#94a3b8",
-    "battery_pct": "#4ade80",
-    "battery_v": "#86efac",
-    "signal_pct": "#60a5fa",
+    "soil_vwc": "#1f77b4",
+    "water_potential_kpa": "#ff7f0e",
+    "precip_mm": "#2ca02c",
+    "soil_temp_c": "#9467bd",
+    "temp_c": "#d62728",
+    "rh_pct": "#17becf",
+    "pressure_hpa": "#7f7f7f",
+    "battery_pct": "#bcbd22",
+    "battery_v": "#8c564b",
+    "signal_pct": "#e377c2",
 }
 
-# Default multi-series overview (estacao-like panel).
+# Default multi-series overview (gallery cards — prefer soil + precip).
 MULTI_OVERVIEW_VARS: tuple[str, ...] = (
     "soil_vwc",
     "water_potential_kpa",
     "precip_mm",
+    "soil_temp_c",
+    "temp_c",
+    "rh_pct",
+    "pressure_hpa",
+    "battery_pct",
 )
 
 # Sensor-family → variables (port/série menus).
@@ -902,9 +934,10 @@ def _build_traces(
             {
                 "variable": var,
                 "label": VAR_LABELS_PT.get(var, var),
+                "chart_title": VAR_CHART_TITLES_PT.get(var, VAR_LABELS_PT.get(var, var)),
                 "unit": VAR_UNITS.get(var, ""),
-                "color": VAR_COLORS.get(var, "#38bdf8"),
-                "axis": _trace_axis(var),
+                "color": VAR_COLORS.get(var, "#1f77b4"),
+                "axis": "y",
                 "points": pts,
                 "n_points": len(pts),
             }
@@ -1005,9 +1038,13 @@ def build_sensor_series_payload(
     if variables:
         active_vars = [v for v in variables if v]
     elif want_multi and fam_id == "__overview__":
-        active_vars = [v for v in MULTI_OVERVIEW_VARS if (not avail or v in avail)]
+        # Gallery: one card per available variable (priority order, capped).
+        ranked = [v for v in CHART_VARS_PRIORITY if (not avail or v in avail)]
+        if not ranked:
+            ranked = [v for v in MULTI_OVERVIEW_VARS if (not avail or v in avail)]
+        active_vars = ranked[:8] if ranked else ([var] if var else [])
         if not active_vars:
-            active_vars = list(avail[:3]) if avail else [var]
+            active_vars = list(avail[:6]) if avail else [var]
     elif want_multi and fam_id != "__overview__":
         fam = next((p for p in ports if p["id"] == fam_id), None)
         active_vars = [v["id"] for v in (fam.get("variables") if fam else []) or []]
@@ -1077,9 +1114,10 @@ def build_sensor_series_payload(
         "family": fam_id,
         "variable": var,
         "variable_label": VAR_LABELS_PT.get(var, var),
+        "chart_title": VAR_CHART_TITLES_PT.get(var, VAR_LABELS_PT.get(var, var)),
         "unit": VAR_UNITS.get(var, ""),
         "active_variables": active_vars,
-        "mode": "multi" if len(traces) > 1 or want_multi else "single",
+        "mode": "gallery" if want_multi or len(traces) > 1 else "single",
         "traces": traces,
         "days": days_i,
         "windows": [

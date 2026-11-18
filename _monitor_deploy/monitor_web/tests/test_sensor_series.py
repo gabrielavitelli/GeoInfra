@@ -106,7 +106,7 @@ def test_payload_multi_overview_from_gcs(tmp_path: Path, monkeypatch):
         days=7,
     )
     assert payload["available"] is True
-    assert payload["mode"] == "multi"
+    assert payload["mode"] == "gallery"
     assert len(payload["traces"]) >= 2
     assert payload["port_chips"][0]["id"] == "__overview__"
     assert payload["n_points"] >= 2

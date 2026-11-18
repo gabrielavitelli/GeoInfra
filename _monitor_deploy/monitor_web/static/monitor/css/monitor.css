@@ -3564,7 +3564,7 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
 /* Sensores aba — prod table layout + series panel below */
 .efc-sensores {
   padding: 1rem 1.25rem 2rem;
-  max-width: 1100px;
+  max-width: 1180px;
 }
 .efc-sensores__head {
   display: flex;
@@ -3659,19 +3659,23 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
   gap: 0.35rem;
   justify-content: flex-end;
 }
-.efc-sensores__detail {
+.efc-sensores__detail,
+.efc-sensores__detail--gallery {
   margin-top: 1.15rem;
   min-width: 0;
-  border: 1px solid #e2e8f0;
-  background: #fff;
-  padding: 0.85rem 0.95rem 1.05rem;
-  border-radius: 6px;
+  border: 1px solid #e7dfd2;
+  background: #f5f0e8;
+  padding: 0.95rem 1rem 1.15rem;
+  border-radius: 10px;
 }
 .efc-ui-graphite .efc-sensores__detail,
-.efc-stitch-page .efc-sensores__detail {
-  background: var(--stitch-surface-low, #151b2a);
-  border-color: var(--stitch-outline-variant, #3e484f);
-  box-shadow: inset 0 1px 0 rgba(56, 189, 248, 0.06);
+.efc-stitch-page .efc-sensores__detail,
+.efc-ui-graphite .efc-sensores__detail--gallery,
+.efc-stitch-page .efc-sensores__detail--gallery {
+  background: #f5f0e8;
+  border-color: #e7dfd2;
+  box-shadow: none;
+  color: #1e293b;
 }
 .efc-sensores__detail[hidden] { display: none !important; }
 .efc-sensores__detail-head {
@@ -3683,59 +3687,62 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  color: #0f172a;
+  color: #1e293b;
 }
 .efc-ui-graphite .efc-sensores__detail-title,
 .efc-stitch-page .efc-sensores__detail-title {
-  color: var(--stitch-on-surface, #dce2f6);
+  color: #1e293b;
 }
 .efc-sensores__detail-sub {
   margin: 0.2rem 0 0;
   font-size: 0.75rem;
-  color: #94a3b8;
+  color: #78716c;
 }
 .efc-ui-graphite .efc-sensores__row.is-active td,
 .efc-stitch-page .efc-sensores__row.is-active td {
-  background: rgba(56, 189, 248, 0.08);
+  background: rgba(31, 119, 180, 0.08);
 }
 
-/* Sensor inspect panel (shared) */
-.efc-sensor-inspect { height: 100%; }
-.efc-sensor-inspect__grid {
-  display: grid;
-  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
-  gap: 0.85rem;
+/* Sensor inspect — light Plotly card gallery */
+.efc-sensor-inspect,
+.efc-sensor-inspect--gallery {
   height: 100%;
-  min-height: 420px;
+  color: #1e293b;
 }
-.efc-sensor-inspect__map-col {
+.efc-sensor-inspect__top {
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
-  min-width: 0;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+.efc-sensor-inspect__identity-row {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
 }
 .efc-sensor-inspect__mini-map {
-  height: 180px;
-  border-radius: 4px;
+  height: 110px;
+  border-radius: 8px;
   overflow: hidden;
-  background: #070e1c;
-  border: 1px solid var(--stitch-outline-variant, #3e484f);
+  background: #e7e5e4;
+  border: 1px solid #d6d3d1;
 }
 .efc-sensor-inspect__title {
   margin: 0;
   font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: -0.01em;
-  color: #0f172a;
+  color: #1e293b;
 }
 .efc-ui-graphite .efc-sensor-inspect__title,
 .efc-stitch-page .efc-sensor-inspect__title {
-  color: var(--stitch-on-surface, #dce2f6);
+  color: #1e293b;
 }
 .efc-sensor-inspect__sub {
   margin: 0.2rem 0 0;
   font-size: 0.75rem;
-  color: #94a3b8;
+  color: #78716c;
   line-height: 1.35;
 }
 .efc-sensor-inspect__chips {
@@ -3747,35 +3754,28 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
 .efc-sensor-inspect__chip {
   font-size: 0.7rem;
   padding: 0.22rem 0.45rem;
-  border: 1px solid #e2e8f0;
-  background: #f8fafc;
-  color: #334155;
+  border: 1px solid #e7e5e4;
+  background: #fff;
+  color: #44403c;
   font-variant-numeric: tabular-nums;
-  border-radius: 3px;
+  border-radius: 4px;
 }
 .efc-ui-graphite .efc-sensor-inspect__chip,
 .efc-stitch-page .efc-sensor-inspect__chip {
-  background: var(--stitch-surface-container, #19202e);
-  border-color: var(--stitch-outline-variant, #3e484f);
-  color: var(--stitch-on-surface-variant, #bdc8d1);
+  background: #fff;
+  border-color: #e7e5e4;
+  color: #44403c;
 }
-.efc-sensor-inspect__chip b { color: #0f172a; font-weight: 700; }
+.efc-sensor-inspect__chip b { color: #1e293b; font-weight: 700; }
 .efc-ui-graphite .efc-sensor-inspect__chip b,
 .efc-stitch-page .efc-sensor-inspect__chip b {
-  color: var(--stitch-primary-container, #38bdf8);
-}
-.efc-sensor-inspect__chart-col {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
+  color: #1f77b4;
 }
 .efc-sensor-inspect__controls {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 0.55rem 0.85rem;
-  margin-bottom: 0.55rem;
 }
 .efc-sensor-inspect__field {
   display: flex;
@@ -3784,7 +3784,7 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
   font-size: 0.65rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #94a3b8;
+  color: #78716c;
   font-weight: 700;
 }
 .efc-sensor-inspect__field select,
@@ -3793,15 +3793,11 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
   font: 650 0.82rem/1.2 "IBM Plex Sans", "Segoe UI", sans-serif;
   text-transform: none;
   letter-spacing: 0;
-  color: #0f172a;
+  color: #1e293b;
   background: #fff;
-  border: 1px solid #cbd5e1;
+  border: 1px solid #d6d3d1;
   padding: 0.35rem 0.45rem;
-}
-.efc-ui-graphite .efc-sensor-inspect__field select {
-  background: #0f172a;
-  color: #e2e8f0;
-  border-color: #334155;
+  border-radius: 4px;
 }
 .efc-sensor-inspect__port-chips,
 .efc-sensor-inspect__var-chips {
@@ -3810,107 +3806,148 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
   gap: 0.3rem;
 }
 .efc-sensor-inspect__chip-btn {
-  border: 1px solid var(--stitch-outline-variant, #3e484f);
-  background: transparent;
-  color: var(--stitch-on-surface, #dce2f6);
+  border: 1px solid #d6d3d1;
+  background: #fff;
+  color: #44403c;
   padding: 0.32rem 0.62rem;
   font: 650 0.72rem/1 "IBM Plex Sans", "Segoe UI", sans-serif;
   letter-spacing: 0.02em;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: 999px;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 .efc-sensor-inspect__chip-btn:hover {
-  border-color: var(--stitch-primary-container, #38bdf8);
-  color: var(--stitch-primary-container, #38bdf8);
+  border-color: #1f77b4;
+  color: #1f77b4;
 }
 .efc-sensor-inspect__chip-btn.is-active {
-  background: var(--stitch-primary-container, #38bdf8);
-  border-color: var(--stitch-primary-container, #38bdf8);
-  color: var(--stitch-on-primary, #00354a);
+  background: #1f77b4;
+  border-color: #1f77b4;
+  color: #fff;
 }
 .efc-sensor-inspect__windows {
   display: inline-flex;
-  border: 1px solid var(--stitch-outline-variant, #cbd5e1);
-  border-radius: 3px;
+  border: 1px solid #d6d3d1;
+  border-radius: 999px;
   overflow: hidden;
+  background: #fff;
 }
 .efc-ui-graphite .efc-sensor-inspect__windows,
 .efc-stitch-page .efc-sensor-inspect__windows {
-  border-color: var(--stitch-outline-variant, #3e484f);
+  border-color: #d6d3d1;
+  background: #fff;
 }
 .efc-sensor-inspect__win {
   border: 0;
   background: transparent;
-  padding: 0.38rem 0.65rem;
+  padding: 0.38rem 0.75rem;
   font: 650 0.75rem/1 "IBM Plex Sans", sans-serif;
-  color: #64748b;
+  color: #78716c;
   cursor: pointer;
 }
 .efc-sensor-inspect__win + .efc-sensor-inspect__win {
-  border-left: 1px solid #cbd5e1;
+  border-left: 1px solid #e7e5e4;
 }
 .efc-ui-graphite .efc-sensor-inspect__win + .efc-sensor-inspect__win,
 .efc-stitch-page .efc-sensor-inspect__win + .efc-sensor-inspect__win {
-  border-left-color: var(--stitch-outline-variant, #3e484f);
+  border-left-color: #e7e5e4;
 }
 .efc-sensor-inspect__win.is-active {
-  background: var(--stitch-primary-container, #38bdf8);
-  color: var(--stitch-on-primary, #00354a);
+  background: #e8f1f8;
+  color: #1f77b4;
 }
 .efc-sensor-inspect__fresh {
   margin-left: auto;
   font-size: 0.72rem;
-  color: #94a3b8;
+  color: #78716c;
 }
-.efc-sensor-inspect__chart-card {
-  flex: 1;
-  min-height: 0;
-  border-radius: 4px;
-  border: 1px solid var(--stitch-outline-variant, #e2e8f0);
-  background: linear-gradient(180deg, rgba(56, 189, 248, 0.04), transparent 42%),
-    var(--stitch-surface-lowest, #070e1c);
+.efc-sensor-inspect__gallery {
+  min-width: 0;
+}
+.efc-sensor-gallery {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 1.1rem;
+}
+.efc-sensor-gallery__cell--wide {
+  grid-column: 1 / -1;
+}
+.efc-sensor-card {
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid #ebe6de;
+  box-shadow: 0 1px 2px rgba(28, 25, 23, 0.04);
   padding: 0.35rem 0.45rem 0.25rem;
+  overflow: hidden;
+}
+.efc-sensor-card__plot {
+  width: 100%;
+  height: 280px;
+  min-height: 240px;
+}
+.efc-sensor-gallery__cell--wide .efc-sensor-card__plot {
+  height: 320px;
+}
+.efc-sensor-card__csv {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: #57534e;
+  text-decoration: none;
+  font-weight: 560;
+}
+.efc-sensor-card__csv:hover {
+  color: #1f77b4;
+  text-decoration: underline;
+}
+.efc-sensor-card__csv-icon {
+  font-size: 0.9rem;
+  line-height: 1;
 }
 .efc-sensor-inspect__chart {
-  flex: 1;
-  min-height: 320px;
-  height: min(52vh, 460px);
+  display: none;
 }
 .efc-sensor-inspect__empty {
   padding: 1.5rem 0.75rem;
   font-size: 0.85rem;
   margin: 0;
+  color: #78716c;
 }
 .efc-sensor-inspect__hint {
-  margin: 0.4rem 0 0;
+  margin: 0.55rem 0 0;
   font-size: 0.72rem;
-  color: #64748b;
+  color: #78716c;
 }
 
-/* Map → sensor detail modal */
+/* Map → sensor detail modal (same light gallery) */
 .efc-modal--sensor .efc-modal__panel {
   width: min(1120px, 96vw);
-  background: #fff;
+  background: #f5f0e8;
+  border-color: #e7dfd2;
 }
 .efc-ui-graphite .efc-modal--sensor .efc-modal__panel,
 .efc-stitch-page ~ .efc-modal--sensor .efc-modal__panel,
 body.efc-ui-graphite .efc-modal--sensor .efc-modal__panel {
-  background: var(--stitch-surface, #0c1321);
-  border-color: var(--stitch-outline-variant, #3e484f);
+  background: #f5f0e8;
+  border-color: #e7dfd2;
+  color: #1e293b;
 }
 .efc-modal--sensor .efc-modal__body { padding: 0.65rem 0.85rem 0.9rem; }
-.efc-modal--sensor .efc-sensor-inspect__grid {
-  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
-}
-.efc-modal--sensor .efc-sensor-inspect__mini-map { height: 210px; }
-.efc-modal--sensor .efc-sensor-inspect__chart { height: 380px; }
+.efc-modal--sensor .efc-sensor-inspect__mini-map { height: 120px; }
+.efc-modal--sensor .efc-sensor-card__plot { height: 260px; }
 
 @media (max-width: 900px) {
-  .efc-sensor-inspect__grid,
-  .efc-modal--sensor .efc-sensor-inspect__grid {
+  .efc-sensor-inspect__identity-row {
     grid-template-columns: 1fr;
   }
-  .efc-sensor-inspect__mini-map { height: 150px; }
+  .efc-sensor-gallery {
+    grid-template-columns: 1fr;
+  }
+  .efc-sensor-gallery__cell--wide {
+    grid-column: auto;
+  }
+  .efc-sensor-inspect__mini-map { height: 140px; }
   .efc-sensores__actions { justify-content: flex-start; }
 }

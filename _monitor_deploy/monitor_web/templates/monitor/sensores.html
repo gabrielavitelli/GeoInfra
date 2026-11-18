@@ -73,10 +73,10 @@
     </table>
   </div>
 
-  <section class="efc-sensores__detail" data-sensor-detail hidden aria-live="polite">
+  <section class="efc-sensores__detail efc-sensores__detail--gallery" data-sensor-detail hidden aria-live="polite">
     <header class="efc-sensores__detail-head">
-      <h2 class="efc-sensores__detail-title">{% if lang_pt %}Série{% else %}Series{% endif %}</h2>
-      <p class="efc-sensores__detail-sub">{% if lang_pt %}VWC · pot. água · precip{% else %}VWC · water pot. · precip{% endif %}</p>
+      <h2 class="efc-sensores__detail-title">{% if lang_pt %}Séries temporais{% else %}Time series{% endif %}</h2>
+      <p class="efc-sensores__detail-sub">{% if lang_pt %}Uma carta por variável · baixar CSV{% else %}One card per variable · download CSV{% endif %}</p>
     </header>
     {% include "monitor/components/sensor_inspect.html" %}
   </section>

@@ -4628,151 +4628,280 @@
       });
   }
 
+  function ensureSensorGalleryCss() {
+    if (document.getElementById("efc-sensor-gallery-css")) return;
+    var s = document.createElement("style");
+    s.id = "efc-sensor-gallery-css";
+    s.textContent =
+      ".efc-sensores__detail--gallery,.efc-sensores__detail{background:#f5f0e8!important;border-color:#e7dfd2!important;border-radius:10px;color:#1e293b}" +
+      ".efc-sensores__detail-title{color:#1e293b!important}" +
+      ".efc-sensor-inspect--gallery,.efc-sensor-inspect{color:#1e293b}" +
+      ".efc-sensor-inspect__title{color:#1e293b!important}" +
+      ".efc-sensor-inspect__chip{background:#fff!important;border-color:#e7e5e4!important;color:#44403c!important}" +
+      ".efc-sensor-inspect__chip b{color:#1f77b4!important}" +
+      ".efc-sensor-inspect__chip-btn{background:#fff;border:1px solid #d6d3d1;color:#44403c;border-radius:999px}" +
+      ".efc-sensor-inspect__chip-btn.is-active{background:#1f77b4;border-color:#1f77b4;color:#fff}" +
+      ".efc-sensor-inspect__windows{background:#fff;border:1px solid #d6d3d1;border-radius:999px}" +
+      ".efc-sensor-inspect__win.is-active{background:#e8f1f8;color:#1f77b4}" +
+      ".efc-sensor-inspect__mini-map{height:110px;border-radius:8px;border:1px solid #d6d3d1;background:#e7e5e4}" +
+      ".efc-sensor-inspect__identity-row{display:grid;grid-template-columns:140px minmax(0,1fr);gap:.75rem}" +
+      ".efc-sensor-gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem 1.1rem}" +
+      ".efc-sensor-gallery__cell--wide{grid-column:1/-1}" +
+      ".efc-sensor-card{background:#fff;border-radius:10px;border:1px solid #ebe6de;box-shadow:0 1px 2px rgba(28,25,23,.04);padding:.35rem .45rem .25rem}" +
+      ".efc-sensor-card__plot{width:100%;height:280px;min-height:240px}" +
+      ".efc-sensor-gallery__cell--wide .efc-sensor-card__plot{height:320px}" +
+      ".efc-sensor-card__csv{display:inline-flex;align-items:center;gap:.3rem;margin-top:.35rem;font-size:.78rem;color:#57534e;text-decoration:none;font-weight:560}" +
+      ".efc-sensor-card__csv:hover{color:#1f77b4;text-decoration:underline}" +
+      "@media(max-width:900px){.efc-sensor-gallery{grid-template-columns:1fr}.efc-sensor-gallery__cell--wide{grid-column:auto}.efc-sensor-inspect__identity-row{grid-template-columns:1fr}}";
+    document.head.appendChild(s);
+  }
+
   function sensorChartColors() {
+    ensureSensorGalleryCss();
     return {
-      soil_vwc: "#38bdf8",
-      water_potential_kpa: "#f97316",
-      precip_mm: "#67e8f9",
-      soil_temp_c: "#a78bfa",
-      temp_c: "#fbbf24",
-      rh_pct: "#34d399",
-      pressure_hpa: "#94a3b8",
-      battery_pct: "#4ade80",
-      battery_v: "#86efac",
-      signal_pct: "#60a5fa",
+      soil_vwc: "#1f77b4",
+      water_potential_kpa: "#ff7f0e",
+      precip_mm: "#2ca02c",
+      soil_temp_c: "#9467bd",
+      temp_c: "#d62728",
+      rh_pct: "#17becf",
+      pressure_hpa: "#7f7f7f",
+      battery_pct: "#bcbd22",
+      battery_v: "#8c564b",
+      signal_pct: "#e377c2",
     };
   }
 
-  function plotSensorSeries(chartEl, payload, langPt) {
-    if (!chartEl) return;
-    var tracesIn = (payload && payload.traces) || [];
-    var pts = (payload && payload.points) || [];
-    var label = (payload && payload.variable_label) || (payload && payload.variable) || "";
-    var unit = (payload && payload.unit) || "";
+  function sensorChartTitle(variable, langPt, fallback) {
+    var pt = {
+      soil_vwc: "Umidade do solo (VWC)",
+      water_potential_kpa: "Potencial de água no solo",
+      soil_temp_c: "Temperatura do solo",
+      precip_mm: "Precipitação",
+      temp_c: "Temperatura do ar",
+      rh_pct: "Umidade relativa",
+      pressure_hpa: "Pressão atmosférica",
+      battery_pct: "Bateria",
+      battery_v: "Tensão da bateria",
+      signal_pct: "Sinal",
+    };
+    var en = {
+      soil_vwc: "Soil moisture (VWC)",
+      water_potential_kpa: "Soil water potential",
+      soil_temp_c: "Soil temperature",
+      precip_mm: "Precipitation",
+      temp_c: "Air temperature",
+      rh_pct: "Relative humidity",
+      pressure_hpa: "Atmospheric pressure",
+      battery_pct: "Battery",
+      battery_v: "Battery voltage",
+      signal_pct: "Signal",
+    };
+    var map = langPt ? pt : en;
+    return map[variable] || fallback || variable || "";
+  }
+
+  function sensorYAxisLabel(variable, unit, langPt) {
+    var title = sensorChartTitle(variable, langPt, "");
+    if (unit) return title + " (" + unit + ")";
+    return title;
+  }
+
+  function downloadSensorTraceCsv(tr, deviceName) {
+    var points = (tr && tr.points) || [];
+    var lines = ["timestamp,value,unit,variable,device"];
+    var unit = (tr && tr.unit) || "";
+    var variable = (tr && tr.variable) || "";
+    var device = deviceName || "";
+    points.forEach(function (p) {
+      lines.push(
+        [
+          p.t != null ? String(p.t) : "",
+          p.v != null ? String(p.v) : "",
+          unit,
+          variable,
+          device,
+        ].join(",")
+      );
+    });
+    var blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    var safeVar = String(variable || "serie").replace(/[^\w.-]+/g, "_");
+    var safeDev = String(device || "sensor").replace(/[^\w.-]+/g, "_");
+    a.href = url;
+    a.download = safeDev + "_" + safeVar + ".csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(function () {
+      try {
+        URL.revokeObjectURL(url);
+      } catch (e0) {}
+    }, 1500);
+  }
+
+  function plotOneSensorCard(plotEl, tr, deviceName, langPt) {
+    var points = (tr && tr.points) || [];
+    if (!plotEl || !points.length || !plotlyReady()) return;
+    var colors = sensorChartColors();
+    var v = (tr && tr.variable) || "";
+    var u = (tr && tr.unit) || "";
+    var nm = (tr && tr.label) || v;
+    var col = (tr && tr.color) || colors[v] || "#1f77b4";
+    var chartTitle =
+      (tr && tr.chart_title) ||
+      sensorChartTitle(v, langPt, nm);
+    if (deviceName) chartTitle = chartTitle + " — " + deviceName;
+    var isPrecip = v === "precip_mm";
+    var grid = "rgba(148,163,184,.28)";
+    var ink = "#1e293b";
+    var muted = "#64748b";
+    var data = [
+      {
+        type: isPrecip ? "bar" : "scatter",
+        mode: isPrecip ? undefined : "lines",
+        x: points.map(function (p) {
+          return p.t;
+        }),
+        y: points.map(function (p) {
+          return p.v;
+        }),
+        name: nm,
+        line: isPrecip ? undefined : { color: col, width: 2.2 },
+        marker: isPrecip
+          ? { color: col, line: { width: 0 } }
+          : { size: 3, color: col, opacity: 0.85 },
+        hovertemplate:
+          "<b>" +
+          nm +
+          "</b><br>%{x}<br><b>%{y:.3f}</b>" +
+          (u ? " " + u : "") +
+          "<extra></extra>",
+      },
+    ];
+    var layout = {
+      title: {
+        text: chartTitle,
+        font: { size: 14, color: ink, family: "IBM Plex Sans, Segoe UI, sans-serif" },
+        x: 0.01,
+        xanchor: "left",
+        pad: { t: 4, b: 2 },
+      },
+      margin: { t: 48, r: 18, b: 40, l: 58 },
+      paper_bgcolor: "#ffffff",
+      plot_bgcolor: "#ffffff",
+      font: { color: ink, size: 11, family: "IBM Plex Sans, Segoe UI, sans-serif" },
+      hovermode: "x unified",
+      showlegend: true,
+      legend: {
+        orientation: "h",
+        y: 1.02,
+        yanchor: "bottom",
+        x: 0,
+        xanchor: "left",
+        font: { size: 11, color: muted },
+        bgcolor: "rgba(0,0,0,0)",
+      },
+      xaxis: {
+        showgrid: true,
+        gridcolor: grid,
+        zeroline: false,
+        linecolor: "rgba(148,163,184,.45)",
+        tickfont: { size: 10, color: muted },
+      },
+      yaxis: {
+        showgrid: true,
+        gridcolor: grid,
+        zeroline: false,
+        tickfont: { size: 10, color: muted },
+        title: {
+          text: sensorYAxisLabel(v, u, langPt),
+          font: { size: 11, color: muted },
+        },
+      },
+      bargap: 0.28,
+    };
+    Plotly.newPlot(plotEl, data, layout, plotlyConfig(plotEl));
+  }
+
+  function plotSensorGallery(galleryEl, payload, langPt) {
+    if (!galleryEl) return;
+    var tracesIn = ((payload && payload.traces) || []).filter(function (t) {
+      return t && t.points && t.points.length;
+    });
+    if (!tracesIn.length && payload && payload.points && payload.points.length) {
+      tracesIn = [
+        {
+          variable: payload.variable,
+          label: payload.variable_label || payload.variable,
+          chart_title: payload.chart_title,
+          unit: payload.unit,
+          color: sensorChartColors()[payload.variable] || "#1f77b4",
+          points: payload.points,
+        },
+      ];
+    }
+    if (!tracesIn.length) {
+      galleryEl.innerHTML =
+        '<p class="efc-muted efc-sensor-inspect__empty">' +
+        (langPt ? "Sem pontos nesta janela." : "No points in this window.") +
+        "</p>";
+      return;
+    }
+    var deviceName = (payload && (payload.name || payload.location_id)) || "";
+    galleryEl.innerHTML = "";
+    var grid = document.createElement("div");
+    grid.className = "efc-sensor-gallery";
+    galleryEl.appendChild(grid);
+
     ensurePlotlyLoaded()
       .then(function () {
-        var hasMulti = tracesIn.some(function (t) {
-          return t && t.points && t.points.length;
+        tracesIn.forEach(function (tr, idx) {
+          var cell = document.createElement("div");
+          cell.className = "efc-sensor-gallery__cell";
+          if (tracesIn.length === 1 || (tracesIn.length % 2 === 1 && idx === tracesIn.length - 1)) {
+            cell.classList.add("efc-sensor-gallery__cell--wide");
+          }
+          var card = document.createElement("article");
+          card.className = "efc-sensor-card";
+          var plot = document.createElement("div");
+          plot.className = "efc-sensor-card__plot";
+          card.appendChild(plot);
+          cell.appendChild(card);
+          var csv = document.createElement("a");
+          csv.href = "#";
+          csv.className = "efc-sensor-card__csv";
+          csv.innerHTML =
+            '<span class="efc-sensor-card__csv-icon" aria-hidden="true">⇩</span> ' +
+            (langPt ? "Baixar CSV" : "Download CSV");
+          csv.addEventListener("click", function (ev) {
+            ev.preventDefault();
+            downloadSensorTraceCsv(tr, deviceName);
+          });
+          cell.appendChild(csv);
+          grid.appendChild(cell);
+          plotOneSensorCard(plot, tr, deviceName, langPt);
         });
-        if (!hasMulti && !pts.length) {
-          chartEl.innerHTML =
-            '<p class="efc-muted efc-sensor-inspect__empty">' +
-            (langPt ? "Sem pontos nesta janela." : "No points in this window.") +
-            "</p>";
-          return;
-        }
-        var dark =
-          document.body.classList.contains("efc-ui-graphite") ||
-          !!document.querySelector(".efc-stitch-page, .efc-stitch-home");
-        var grid = dark ? "rgba(148,163,184,.12)" : "rgba(148,163,184,.25)";
-        var ink = dark ? "#cbd5e1" : "#334155";
-        var muted = dark ? "#64748b" : "#94a3b8";
-        var colors = sensorChartColors();
-        var data = [];
-        var needY2 = false;
-
-        function pushTrace(tr) {
-          var points = (tr && tr.points) || [];
-          if (!points.length) return;
-          var v = tr.variable || "";
-          var axis = tr.axis || (v === "precip_mm" || v === "temp_c" || v === "rh_pct" ? "y2" : "y");
-          if (axis === "y2") needY2 = true;
-          var u = tr.unit || "";
-          var nm = tr.label || v;
-          var col = tr.color || colors[v] || "#38bdf8";
-          var isPrecip = v === "precip_mm";
-          data.push({
-            type: isPrecip ? "bar" : "scatter",
-            mode: isPrecip ? undefined : "lines",
-            x: points.map(function (p) {
-              return p.t;
-            }),
-            y: points.map(function (p) {
-              return p.v;
-            }),
-            name: nm,
-            yaxis: axis,
-            line: isPrecip
-              ? undefined
-              : { color: col, width: 2.4, shape: "spline" },
-            fill: isPrecip ? undefined : "tozeroy",
-            fillcolor: isPrecip ? undefined : hexToRgba(col, 0.12),
-            marker: isPrecip
-              ? { color: col, line: { width: 0 } }
-              : { size: 4, color: col, opacity: 0.9 },
-            hovertemplate:
-              "<b>" +
-              nm +
-              "</b><br>%{x}<br><b>%{y:.3f}</b>" +
-              (u ? " " + u : "") +
-              "<extra></extra>",
-          });
-        }
-
-        if (hasMulti) {
-          tracesIn.forEach(pushTrace);
-        } else {
-          pushTrace({
-            variable: payload && payload.variable,
-            label: label,
-            unit: unit,
-            color: colors[(payload && payload.variable) || ""] || "#38bdf8",
-            axis: "y",
-            points: pts,
-          });
-        }
-
-        var layout = {
-          margin: { t: 18, r: needY2 ? 52 : 18, b: 40, l: 52 },
-          paper_bgcolor: "rgba(0,0,0,0)",
-          plot_bgcolor: "rgba(0,0,0,0)",
-          font: { color: ink, size: 11, family: "IBM Plex Sans, Segoe UI, sans-serif" },
-          hovermode: "x unified",
-          legend: {
-            orientation: "h",
-            y: 1.12,
-            x: 0,
-            font: { size: 11, color: muted },
-            bgcolor: "rgba(0,0,0,0)",
-          },
-          xaxis: {
-            showgrid: true,
-            gridcolor: grid,
-            zeroline: false,
-            linecolor: dark ? "rgba(148,163,184,.25)" : "rgba(148,163,184,.4)",
-            tickfont: { size: 10, color: muted },
-          },
-          yaxis: {
-            showgrid: true,
-            gridcolor: grid,
-            zeroline: false,
-            tickfont: { size: 10, color: muted },
-            title: {
-              text: langPt ? "Solo" : "Soil",
-              font: { size: 10, color: muted },
-            },
-            separatethousands: false,
-          },
-          bargap: 0.35,
-        };
-        if (needY2) {
-          layout.yaxis2 = {
-            overlaying: "y",
-            side: "right",
-            showgrid: false,
-            zeroline: false,
-            tickfont: { size: 10, color: muted },
-            title: {
-              text: langPt ? "Clima" : "Climate",
-              font: { size: 10, color: muted },
-            },
-          };
-        }
-        Plotly.newPlot(chartEl, data, layout, plotlyConfig(chartEl));
       })
       .catch(function () {
-        chartEl.textContent = langPt ? "Gráfico indisponível." : "Chart unavailable.";
+        galleryEl.innerHTML =
+          '<p class="efc-muted efc-sensor-inspect__empty">' +
+          (langPt ? "Gráfico indisponível." : "Chart unavailable.") +
+          "</p>";
       });
+  }
+
+  function plotSensorSeries(chartEl, payload, langPt) {
+    // Legacy single-host: prefer gallery sibling when present.
+    var root = chartEl && chartEl.closest ? chartEl.closest("[data-sensor-inspect]") : null;
+    var gallery = root && root.querySelector("[data-sensor-gallery]");
+    if (gallery) {
+      plotSensorGallery(gallery, payload, langPt);
+      return;
+    }
+    if (!chartEl) return;
+    plotSensorGallery(chartEl, payload, langPt);
   }
 
   function hexToRgba(hex, alpha) {
@@ -4825,6 +4954,13 @@
     if (root.__efcSensorApi) return root.__efcSensorApi;
     if (root.__efcSensorBound) return null;
     root.__efcSensorBound = 1;
+    ensureSensorGalleryCss();
+    root.classList.add("efc-sensor-inspect--gallery");
+    var pageRoot = root.closest("[data-sensor-page]");
+    if (pageRoot) {
+      var detailSec = pageRoot.querySelector("[data-sensor-detail]");
+      if (detailSec) detailSec.classList.add("efc-sensores__detail--gallery");
+    }
     var apiBase = sensorSeriesApiUrl(root);
     var langPt = (root.getAttribute("data-lang") || "pt") !== "en";
     var familySel = root.querySelector("[data-sensor-family]");
@@ -4832,6 +4968,22 @@
     var portsHost = root.querySelector("[data-sensor-ports]");
     var varsHost = root.querySelector("[data-sensor-vars]");
     var chartEl = root.querySelector("[data-sensor-chart]");
+    var galleryEl = root.querySelector("[data-sensor-gallery]");
+    if (!galleryEl) {
+      galleryEl = document.createElement("div");
+      galleryEl.className = "efc-sensor-inspect__gallery";
+      galleryEl.setAttribute("data-sensor-gallery", "");
+      var chartCard = root.querySelector(".efc-sensor-inspect__chart-card");
+      if (chartCard && chartCard.parentNode) {
+        chartCard.parentNode.insertBefore(galleryEl, chartCard);
+        chartCard.hidden = true;
+      } else if (chartEl && chartEl.parentNode) {
+        chartEl.parentNode.insertBefore(galleryEl, chartEl);
+        chartEl.hidden = true;
+      } else {
+        root.appendChild(galleryEl);
+      }
+    }
     var titleEl = root.querySelector("[data-sensor-title]");
     var subEl = root.querySelector("[data-sensor-sub]");
     var latestEl = root.querySelector("[data-sensor-latest]");
@@ -4852,6 +5004,14 @@
       portsCache: [],
     };
 
+    function setGalleryStatus(html) {
+      if (galleryEl) {
+        galleryEl.innerHTML = html;
+        return;
+      }
+      if (chartEl) chartEl.innerHTML = html;
+    }
+
     function setWindowsActive() {
       root.querySelectorAll("[data-sensor-days]").forEach(function (btn) {
         btn.classList.toggle("is-active", String(btn.getAttribute("data-sensor-days")) === String(state.days));
@@ -4861,10 +5021,16 @@
     function currentFamilyVars(payload) {
       var famId = state.family || (payload && payload.family) || "__overview__";
       if (famId === "__overview__") {
+        var fromPayload = (payload && payload.active_variables) || state.variables || [];
+        if (fromPayload.length) {
+          return fromPayload.map(function (id) {
+            return { id: id, label: sensorChartTitle(id, langPt, id) };
+          });
+        }
         return [
-          { id: "soil_vwc", label: langPt ? "VWC solo" : "Soil VWC" },
+          { id: "soil_vwc", label: langPt ? "Umidade do solo (VWC)" : "Soil moisture (VWC)" },
           { id: "water_potential_kpa", label: langPt ? "Pot. água" : "Water pot." },
-          { id: "precip_mm", label: langPt ? "Precip" : "Precip" },
+          { id: "precip_mm", label: langPt ? "Precipitação" : "Precipitation" },
         ];
       }
       var fam = (payload.ports || state.portsCache || []).find(function (p) {
@@ -4986,7 +5152,7 @@
       });
       fillSelect(varSel, (fam && fam.variables) || varItems, payload.variable);
       renderSensorMiniMap(miniMap, state.lat, state.lon);
-      plotSensorSeries(chartEl, payload, langPt);
+      plotSensorGallery(galleryEl || chartEl, payload, langPt);
     }
 
     function load() {
@@ -4997,29 +5163,30 @@
       url.searchParams.set("days", String(state.days || 7));
       url.searchParams.set("multi", "1");
       if (state.family) url.searchParams.set("family", state.family);
-      if (state.variables && state.variables.length) {
+      // Overview / family gallery: let the API pick available variables.
+      // Only send an explicit variable list when the user toggled chips off overview.
+      if (state.family && state.family !== "__overview__" && state.variables && state.variables.length) {
         url.searchParams.set("variables", state.variables.join(","));
-      } else if (state.variable) {
+      } else if (state.family && state.family !== "__overview__" && state.variable) {
         url.searchParams.set("variable", state.variable);
+        url.searchParams.set("multi", "1");
       }
-      if (chartEl) {
-        chartEl.innerHTML =
-          '<p class="efc-muted efc-sensor-inspect__empty">' +
-          (langPt ? "Carregando série…" : "Loading series…") +
-          "</p>";
-      }
+      setGalleryStatus(
+        '<p class="efc-muted efc-sensor-inspect__empty">' +
+          (langPt ? "Carregando séries…" : "Loading series…") +
+          "</p>"
+      );
       fetch(url.toString(), { credentials: "same-origin" })
         .then(function (r) {
           return r.json();
         })
         .then(applyMeta)
         .catch(function () {
-          if (chartEl) {
-            chartEl.innerHTML =
-              '<p class="efc-muted efc-sensor-inspect__empty">' +
-              (langPt ? "Falha ao carregar série." : "Failed to load series.") +
-              "</p>";
-          }
+          setGalleryStatus(
+            '<p class="efc-muted efc-sensor-inspect__empty">' +
+              (langPt ? "Falha ao carregar séries." : "Failed to load series.") +
+              "</p>"
+          );
         });
     }
 
@@ -5085,35 +5252,34 @@
       '<button type="button" class="efc-btn efc-btn--ghost efc-btn--sm" data-sensor-modal-close aria-label="Close">×</button>' +
       "</div>" +
       '<div class="efc-modal__body">' +
-      '<div class="efc-sensor-inspect efc-sensor-inspect--premium" data-sensor-inspect data-lang="' +
+      '<div class="efc-sensor-inspect efc-sensor-inspect--gallery" data-sensor-inspect data-lang="' +
       (document.documentElement.lang === "en" ? "en" : "pt") +
       '">' +
-      '<div class="efc-sensor-inspect__grid">' +
-      '<aside class="efc-sensor-inspect__map-col">' +
+      '<div class="efc-sensor-inspect__top">' +
+      '<aside class="efc-sensor-inspect__identity-row">' +
       '<div class="efc-sensor-inspect__mini-map" data-sensor-mini-map></div>' +
       '<div class="efc-sensor-inspect__identity">' +
       '<h2 class="efc-sensor-inspect__title" data-sensor-title>—</h2>' +
       '<p class="efc-sensor-inspect__sub" data-sensor-sub></p>' +
       '<div class="efc-sensor-inspect__chips" data-sensor-latest></div>' +
       "</div></aside>" +
-      '<div class="efc-sensor-inspect__chart-col">' +
       '<div class="efc-sensor-inspect__controls">' +
       '<div class="efc-sensor-inspect__field efc-sensor-inspect__field--ports"><span>Porta</span>' +
       '<div class="efc-sensor-inspect__port-chips" data-sensor-ports role="group"></div>' +
       '<select data-sensor-family class="efc-sensor-inspect__fallback-select" hidden></select></div>' +
-      '<div class="efc-sensor-inspect__field efc-sensor-inspect__field--vars"><span>Séries</span>' +
+      '<div class="efc-sensor-inspect__field efc-sensor-inspect__field--vars" hidden><span>Séries</span>' +
       '<div class="efc-sensor-inspect__var-chips" data-sensor-vars role="group"></div>' +
       '<select data-sensor-variable class="efc-sensor-inspect__fallback-select" hidden></select></div>' +
       '<div class="efc-sensor-inspect__windows" role="group">' +
-      '<button type="button" data-sensor-days="1" class="efc-sensor-inspect__win">24h</button>' +
       '<button type="button" data-sensor-days="7" class="efc-sensor-inspect__win is-active">7d</button>' +
       '<button type="button" data-sensor-days="30" class="efc-sensor-inspect__win">30d</button>' +
       "</div>" +
       '<span class="efc-sensor-inspect__fresh" data-sensor-fresh></span>' +
-      "</div>" +
-      '<div class="efc-sensor-inspect__chart-card"><div class="efc-sensor-inspect__chart" data-sensor-chart></div></div>' +
+      "</div></div>" +
+      '<div class="efc-sensor-inspect__gallery" data-sensor-gallery></div>' +
+      '<div class="efc-sensor-inspect__chart" data-sensor-chart hidden></div>' +
       '<p class="efc-sensor-inspect__hint" data-sensor-hint hidden></p>' +
-      "</div></div></div></div></div>";
+      "</div></div></div>";
     document.body.appendChild(modal);
     modal.querySelectorAll("[data-sensor-modal-close]").forEach(function (el) {
       el.addEventListener("click", function () {
