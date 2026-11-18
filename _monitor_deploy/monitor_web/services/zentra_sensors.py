@@ -1,13 +1,22 @@
 """Zentra (TEROS/ATMOS) catalog + last readings for map / Sensores aba."""
 from __future__ import annotations
 
+import json
+import logging
 import math
 import os
 from datetime import datetime, timezone
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 # Sentinel / bad water-potential readings from ZENTRA when sensor dry/offline.
 _WP_SENTINEL = -90000.0
+
+# GCS snapshots written by the Zentra ingest job (local/ADC-friendly fallback).
+_DEFAULT_DEVICES_GCS = "gs://efc-clima-data/obs/zentra/zentra_devices_latest.json"
+_DEFAULT_LOCATIONS_GCS = "gs://efc-clima-data/obs/zentra/zentra_locations_latest.json"
+_DEFAULT_SERIES_GCS = "gs://efc-clima-data/obs/zentra/zentra_clima_series_latest.ndjson"
 
 # Series shown in map popup (compact) and sensors table.
 POPUP_VARS: tuple[str, ...] = (
@@ -41,12 +50,21 @@ def _bq_dataset(dataset: str | None = None) -> str:
     return (dataset or os.environ.get("BQ_DATASET") or "efc_clima").strip() or "efc_clima"
 
 
+def _gcs_fallback_enabled() -> bool:
+    return (os.environ.get("ZENTRA_SKIP_GCS_FALLBACK") or "").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
 def _client():
     try:
         from gcp.bq_load_clima import _bq_client
 
         return _bq_client()
-    except Exception:
+    except Exception as exc:
+        logger.warning("zentra BQ client unavailable: %s", exc)
         return None
 
 
@@ -54,6 +72,263 @@ def _pfx(dataset: str) -> str:
     from gcp.bq_config import get_bq_fully_qualified_prefix
 
     return get_bq_fully_qualified_prefix(dataset)
+
+
+def _read_uri_bytes(uri: str) -> bytes | None:
+    """Read ``gs://`` (ADC) or local ``file://`` / path bytes. Returns None on failure."""
+    u = (uri or "").strip()
+    if not u:
+        return None
+    try:
+        if u.startswith("gs://"):
+            from google.cloud import storage
+
+            _, _, rest = u.partition("gs://")
+            bucket_name, _, blob_name = rest.partition("/")
+            if not bucket_name or not blob_name:
+                return None
+            client = storage.Client()
+            return client.bucket(bucket_name).blob(blob_name).download_as_bytes()
+        if u.startswith("file://"):
+            u = u[7:]
+        with open(u, "rb") as fh:
+            return fh.read()
+    except Exception as exc:
+        logger.warning("zentra URI read failed (%s): %s", u, exc)
+        return None
+
+
+def _location_id_from_device_id(device_id: str) -> str:
+    did = (device_id or "").strip()
+    if not did:
+        return ""
+    if did.startswith("zentra_"):
+        return did
+    return "zentra_" + did.replace("-", "_")
+
+
+def _asset_class_from_sensors(sensors: list[str]) -> str:
+    names = " ".join(sensors).upper()
+    has_teros = "TEROS" in names
+    has_atmos = "ATMOS" in names
+    if has_teros and has_atmos:
+        return "mixed"
+    if has_atmos:
+        return "climate"
+    if has_teros:
+        return "geotech"
+    return "—"
+
+
+def _devices_df_from_raw_payload(payload: Any):
+    """Normalize Zentra Cloud ``devices`` JSON → DataFrame matching BQ columns."""
+    import pandas as pd
+
+    if isinstance(payload, dict):
+        devices = payload.get("devices") or []
+    elif isinstance(payload, list):
+        devices = payload
+    else:
+        return None
+    rows: list[dict[str, Any]] = []
+    for d in devices:
+        if not isinstance(d, dict):
+            continue
+        loc_obj = d.get("location") or {}
+        try:
+            lat = float(loc_obj.get("latitude"))
+            lon = float(loc_obj.get("longitude"))
+        except (TypeError, ValueError):
+            continue
+        if not (math.isfinite(lat) and math.isfinite(lon)):
+            continue
+        if abs(lat) <= 0.1 or abs(lon) <= 0.1:
+            continue
+        device_id = str(d.get("device_id") or d.get("name") or "").strip()
+        if not device_id:
+            continue
+        ports = d.get("ports") or []
+        sensors: list[str] = []
+        seen: set[str] = set()
+        for p in ports:
+            if not isinstance(p, dict):
+                continue
+            sn = str(p.get("sensor_short_name") or "").strip()
+            if sn and sn not in seen:
+                seen.add(sn)
+                sensors.append(sn)
+        data_range = d.get("data_range") or {}
+        lm = data_range.get("last_measurement")
+        try:
+            lm_i = int(lm) if lm is not None and str(lm).strip() != "" else None
+        except (TypeError, ValueError):
+            lm_i = None
+        # Raw Cloud dump has no status; treat readable + coords as active (matches BQ).
+        can_read = d.get("can_read_data")
+        status = "active" if can_read is not False else "inactive"
+        if status != "active":
+            continue
+        loc_id = _location_id_from_device_id(device_id)
+        name = str(d.get("name") or device_id).strip()
+        rows.append(
+            {
+                "codEstacao": loc_id,
+                "location_id": loc_id,
+                "nome": name,
+                "latitude": lat,
+                "longitude": lon,
+                "status": status,
+                "asset_class": _asset_class_from_sensors(sensors),
+                "model": str(d.get("model") or "").strip() or None,
+                "sensors": sensors,
+                "last_measurement": lm_i,
+            }
+        )
+    if not rows:
+        return None
+    return pd.DataFrame(rows)
+
+
+def _devices_df_from_locations_payload(payload: Any):
+    """Normalize ingest ``zentra_locations_latest.json`` list → DataFrame."""
+    import pandas as pd
+
+    items = payload if isinstance(payload, list) else (payload.get("locations") if isinstance(payload, dict) else None)
+    if not items:
+        return None
+    rows: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        extra = item.get("extra") if isinstance(item.get("extra"), dict) else {}
+        status = str(extra.get("status") or item.get("status") or "active").strip() or "active"
+        if status != "active":
+            continue
+        try:
+            lat = float(item.get("lat"))
+            lon = float(item.get("lon"))
+        except (TypeError, ValueError):
+            continue
+        if not (math.isfinite(lat) and math.isfinite(lon)):
+            continue
+        if abs(lat) <= 0.1 or abs(lon) <= 0.1:
+            continue
+        loc_id = str(item.get("location_id") or "").strip()
+        if not loc_id:
+            station = str(item.get("station_id") or item.get("name") or "").strip()
+            loc_id = _location_id_from_device_id(station)
+        if not loc_id:
+            continue
+        sensors = extra.get("sensors") or item.get("sensors") or []
+        if hasattr(sensors, "tolist"):
+            sensors = list(sensors.tolist())
+        if not isinstance(sensors, (list, tuple)):
+            sensors = []
+        sensors = [str(s) for s in sensors if s]
+        lm = extra.get("last_measurement") or item.get("last_measurement")
+        try:
+            lm_i = int(lm) if lm is not None and str(lm).strip() != "" else None
+        except (TypeError, ValueError):
+            lm_i = None
+        rows.append(
+            {
+                "codEstacao": loc_id,
+                "location_id": loc_id,
+                "nome": str(item.get("name") or loc_id).strip(),
+                "latitude": lat,
+                "longitude": lon,
+                "status": status,
+                "asset_class": str(extra.get("asset_class") or item.get("asset_class") or _asset_class_from_sensors(sensors)),
+                "model": str(extra.get("model") or item.get("model") or "").strip() or None,
+                "sensors": sensors,
+                "last_measurement": lm_i,
+            }
+        )
+    if not rows:
+        return None
+    return pd.DataFrame(rows)
+
+
+def load_zentra_devices_from_gcs(*, uri: str | None = None):
+    """Load active Zentra devices from GCS snapshot (or local path)."""
+    if not _gcs_fallback_enabled() and uri is None:
+        return None
+    primary = (uri or os.environ.get("ZENTRA_DEVICES_GCS_URI") or _DEFAULT_DEVICES_GCS).strip()
+    raw = _read_uri_bytes(primary)
+    if raw:
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+            df = _devices_df_from_raw_payload(payload)
+            if df is not None and not df.empty:
+                logger.info("zentra devices loaded from GCS (%s): %s rows", primary, len(df))
+                return df
+            # locations-shaped JSON pointed at by override URI
+            df = _devices_df_from_locations_payload(payload)
+            if df is not None and not df.empty:
+                logger.info("zentra devices loaded from GCS locations (%s): %s rows", primary, len(df))
+                return df
+        except Exception as exc:
+            logger.warning("zentra GCS devices parse failed (%s): %s", primary, exc)
+    # Second chance: locations snapshot (richer status/sensors)
+    alt = (os.environ.get("ZENTRA_LOCATIONS_GCS_URI") or _DEFAULT_LOCATIONS_GCS).strip()
+    if alt and alt != primary:
+        raw2 = _read_uri_bytes(alt)
+        if raw2:
+            try:
+                payload2 = json.loads(raw2.decode("utf-8"))
+                df2 = _devices_df_from_locations_payload(payload2)
+                if df2 is not None and not df2.empty:
+                    logger.info("zentra devices loaded from GCS locations (%s): %s rows", alt, len(df2))
+                    return df2
+            except Exception as exc:
+                logger.warning("zentra GCS locations parse failed (%s): %s", alt, exc)
+    return None
+
+
+def load_zentra_latest_from_gcs(
+    *,
+    uri: str | None = None,
+    variables: tuple[str, ...] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Latest clima_series-like values from NDJSON snapshot (per location/variable)."""
+    if not _gcs_fallback_enabled() and uri is None:
+        return {}
+    path = (uri or os.environ.get("ZENTRA_SERIES_GCS_URI") or _DEFAULT_SERIES_GCS).strip()
+    raw = _read_uri_bytes(path)
+    if not raw:
+        return {}
+    vars_ = set(variables or POPUP_VARS)
+    out: dict[str, dict[str, Any]] = {}
+    try:
+        text = raw.decode("utf-8")
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            var = str(row.get("variable") or "")
+            if var not in vars_:
+                continue
+            loc = str(row.get("location_id") or "").strip()
+            if not loc:
+                continue
+            date = row.get("date") or row.get("ingested_at")
+            try:
+                val = float(row["value"]) if row.get("value") is not None else None
+            except (TypeError, ValueError):
+                val = None
+            bucket = out.setdefault(loc, {})
+            prev = bucket.get(var)
+            # Keep the chronologically latest date when multiple lines exist.
+            if prev is None or (date is not None and str(date) >= str(prev.get("date") or "")):
+                bucket[var] = {"value": val, "date": date}
+        return out
+    except Exception as exc:
+        logger.warning("zentra GCS series parse failed (%s): %s", path, exc)
+        return {}
 
 
 def _fmt_value(variable: str, value: float | None) -> str | None:
@@ -87,41 +362,48 @@ def _freshness_label(ts: datetime | None, *, lang_pt: bool = True) -> str:
 
 
 def load_zentra_devices_df(*, bq_dataset: str | None = None):
-    """Active Zentra loggers with valid coords (DataFrame for Folium / 3D)."""
+    """Active Zentra loggers with valid coords (DataFrame for Folium / 3D).
+
+    Prefers BigQuery ``zentra_devices``; on failure/empty falls back to GCS
+    ``gs://efc-clima-data/obs/zentra/zentra_devices_latest.json`` (local-friendly).
+    """
     import pandas as pd
 
     ds = _bq_dataset(bq_dataset)
     client = _client()
-    if client is None:
-        return None
-    try:
-        pfx = _pfx(ds)
-        sql = f"""
-            SELECT
-              location_id AS codEstacao,
-              location_id,
-              name AS nome,
-              lat AS latitude,
-              lon AS longitude,
-              status,
-              asset_class,
-              model,
-              sensors,
-              last_measurement
-            FROM `{pfx}.zentra_devices`
-            WHERE status = 'active'
-              AND lat IS NOT NULL AND lon IS NOT NULL
-              AND ABS(lat) > 0.1 AND ABS(lon) > 0.1
-        """
-        df = client.query(sql).to_dataframe()
-        if df is None or df.empty:
-            return None
-        df["latitude"] = pd.to_numeric(df["latitude"], errors="coerce")
-        df["longitude"] = pd.to_numeric(df["longitude"], errors="coerce")
-        df = df.dropna(subset=["latitude", "longitude"]).reset_index(drop=True)
-        return df if not df.empty else None
-    except Exception:
-        return None
+    if client is not None:
+        try:
+            pfx = _pfx(ds)
+            sql = f"""
+                SELECT
+                  location_id AS codEstacao,
+                  location_id,
+                  name AS nome,
+                  lat AS latitude,
+                  lon AS longitude,
+                  status,
+                  asset_class,
+                  model,
+                  sensors,
+                  last_measurement
+                FROM `{pfx}.zentra_devices`
+                WHERE status = 'active'
+                  AND lat IS NOT NULL AND lon IS NOT NULL
+                  AND ABS(lat) > 0.1 AND ABS(lon) > 0.1
+            """
+            df = client.query(sql).to_dataframe()
+            if df is not None and not df.empty:
+                df["latitude"] = pd.to_numeric(df["latitude"], errors="coerce")
+                df["longitude"] = pd.to_numeric(df["longitude"], errors="coerce")
+                df = df.dropna(subset=["latitude", "longitude"]).reset_index(drop=True)
+                if not df.empty:
+                    return df
+            logger.warning("zentra BQ devices empty (%s.zentra_devices); trying GCS fallback", pfx)
+        except Exception as exc:
+            logger.warning("zentra BQ devices query failed: %s; trying GCS fallback", exc)
+    else:
+        logger.warning("zentra BQ client missing; trying GCS fallback for devices")
+    return load_zentra_devices_from_gcs()
 
 
 def load_zentra_latest_by_location(
@@ -132,45 +414,49 @@ def load_zentra_latest_by_location(
     """location_id → {variable → {value, date}} for latest clima_series rows."""
     ds = _bq_dataset(bq_dataset)
     client = _client()
-    if client is None:
-        return {}
     vars_ = variables or POPUP_VARS
-    try:
-        pfx = _pfx(ds)
-        var_list = ", ".join(f"'{v}'" for v in vars_)
-        sql = f"""
-            WITH ranked AS (
-              SELECT
-                location_id,
-                variable,
-                value,
-                date,
-                ROW_NUMBER() OVER (
-                  PARTITION BY location_id, variable
-                  ORDER BY date DESC
-                ) AS rn
-              FROM `{pfx}.clima_series`
-              WHERE source = 'zentra'
-                AND variable IN ({var_list})
-            )
-            SELECT location_id, variable, value, date
-            FROM ranked
-            WHERE rn = 1
-        """
-        rows = list(client.query(sql).result())
-        out: dict[str, dict[str, Any]] = {}
-        for r in rows:
-            loc = str(r["location_id"])
-            var = str(r["variable"])
-            try:
-                val = float(r["value"]) if r["value"] is not None else None
-            except (TypeError, ValueError):
-                val = None
-            bucket = out.setdefault(loc, {})
-            bucket[var] = {"value": val, "date": r["date"]}
-        return out
-    except Exception:
-        return {}
+    if client is not None:
+        try:
+            pfx = _pfx(ds)
+            var_list = ", ".join(f"'{v}'" for v in vars_)
+            sql = f"""
+                WITH ranked AS (
+                  SELECT
+                    location_id,
+                    variable,
+                    value,
+                    date,
+                    ROW_NUMBER() OVER (
+                      PARTITION BY location_id, variable
+                      ORDER BY date DESC
+                    ) AS rn
+                  FROM `{pfx}.clima_series`
+                  WHERE source = 'zentra'
+                    AND variable IN ({var_list})
+                )
+                SELECT location_id, variable, value, date
+                FROM ranked
+                WHERE rn = 1
+            """
+            rows = list(client.query(sql).result())
+            out: dict[str, dict[str, Any]] = {}
+            for r in rows:
+                loc = str(r["location_id"])
+                var = str(r["variable"])
+                try:
+                    val = float(r["value"]) if r["value"] is not None else None
+                except (TypeError, ValueError):
+                    val = None
+                bucket = out.setdefault(loc, {})
+                bucket[var] = {"value": val, "date": r["date"]}
+            if out:
+                return out
+            logger.warning("zentra BQ latest empty; trying GCS series fallback")
+        except Exception as exc:
+            logger.warning("zentra BQ latest query failed: %s; trying GCS series fallback", exc)
+    else:
+        logger.warning("zentra BQ client missing; trying GCS series fallback")
+    return load_zentra_latest_from_gcs(variables=vars_)
 
 
 def _nearest_km(lat: float, lon: float, main_line, cum_km) -> float | None:

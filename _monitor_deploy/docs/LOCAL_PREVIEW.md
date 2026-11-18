@@ -35,7 +35,35 @@ Prod Cloud Run = **Django** `monitor_web`, **não** Streamlit.
 
 Branch: `cursor/zentra-sensor-detail-9ef8` (inclui pluvio + map 3D + sensor detail).
 
-Sensores vêm de BigQuery (`climaticsystem.efc_clima.zentra_devices`). Sem `USE_BQ=1` + ADC → tabela vazia.
+Sensores vêm de BigQuery (`climaticsystem.efc_clima.zentra_devices`). Sem ADC / BQ falha → **fallback GCS**
+`gs://efc-clima-data/obs/zentra/zentra_devices_latest.json` (mesmo catálogo do ingest).
+
+### Verificar ADC + contar Zentra (mesma função da view)
+
+```bash
+export CS="${CS:-$HOME/gabriela/ClimaticSystem}"
+export GI="${GI:-$HOME/gabriela/GeoInfra}"
+export PATH="$HOME/google-cloud-sdk/bin:$PATH"   # se preciso
+gcloud config set project climaticsystem
+gcloud auth application-default print-access-token >/dev/null && echo "ADC OK"
+gcloud auth application-default set-quota-project climaticsystem
+
+# Overlay atualizado (inclui GCS fallback)
+bash "$GI/_monitor_deploy/scripts/sync_zentra_overlay_into_climaticsystem.sh" "$CS"
+
+cd "$CS" && source .venv/bin/activate
+export USE_BQ=1 GOOGLE_CLOUD_PROJECT=climaticsystem BQ_DATASET=efc_clima
+export DJANGO_SETTINGS_MODULE=efc_site.settings
+python - <<'PY'
+from monitor_web.services.zentra_sensors import build_zentra_sensor_rows
+rows = build_zentra_sensor_rows()
+print(len(rows), "Zentra")
+print([r["name"] for r in rows])
+PY
+# Esperado: 8 Zentra
+```
+
+Se BQ falhar mas ADC ler GCS, o print ainda deve mostrar **8**. Sem ADC nem para GCS → `0` + "Nenhum sensor Zentra ativo."
 
 ---
 
