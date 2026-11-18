@@ -137,7 +137,7 @@ export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-efc_site.settings}"
 export DJANGO_DEBUG="${DJANGO_DEBUG:-1}"
 export DJANGO_ALLOWED_HOSTS="${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}"
 export EFC_MONITOR_DISABLE_AUTH="${EFC_MONITOR_DISABLE_AUTH:-1}"
-export MONITOR_STATIC_BUST="${MONITOR_STATIC_BUST:-20261118gallery1}"
+export MONITOR_STATIC_BUST="${MONITOR_STATIC_BUST:-20261118gallery2}"
 
 if [[ "$SKIP_ADC" -eq 0 ]]; then
   echo "==> Checando Application Default Credentials (BQ)"
