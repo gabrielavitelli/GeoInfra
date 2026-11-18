@@ -2722,7 +2722,10 @@
   function onHtmxAfterSwap(ev) {
     var target = ev.detail && ev.detail.target;
     if (!target || !target.id) return;
-    if (target.id === "home-day-strip") setLoadPct(35);
+    if (target.id === "home-day-strip") {
+      setLoadPct(35);
+      initStatusMapChrome();
+    }
     if (target.id === "home-alerts-slot") setLoadPct(55);
     if (target.id === "home-exceed-slot") setLoadPct(62);
     if (target.id === "home-indicators") {
@@ -4308,26 +4311,38 @@
     return path;
   }
 
-  function initMapLayerStrip() {
+  var __efcSharedMapView = null;
+  var VIEW_STORAGE_KEY = "efc_map_view";
+
+  function readSharedMapView() {
+    if (__efcSharedMapView) return __efcSharedMapView;
+    try {
+      var raw = sessionStorage.getItem(VIEW_STORAGE_KEY);
+      if (raw) __efcSharedMapView = JSON.parse(raw);
+    } catch (eR) {}
+    return __efcSharedMapView;
+  }
+
+  function writeSharedMapView(view) {
+    if (!view || !isFinite(view.lat) || !isFinite(view.lon)) return;
+    __efcSharedMapView = view;
+    try {
+      sessionStorage.setItem(VIEW_STORAGE_KEY, JSON.stringify(view));
+    } catch (eW) {}
+  }
+
+  function initStatusMapChrome() {
+    var chrome = document.getElementById("efc-status-map-chrome");
     var strip = document.getElementById("efc-layer-strip");
-    if (!strip || strip.dataset.bound === "1") return;
-    strip.dataset.bound = "1";
-    var SUSC_KEY = "efc_map_suscetibilidade_on";
-    var BASE_KEY = "efc_map_basemap";
-    var STATIONS_KEY = "efc_map_stations_on";
-    var ZENTRA_KEY = "efc_map_zentra_on";
-    var climaOn = false;
-    var climaPoints = null;
-    var orthoOn = false;
     var langPt =
       (document.documentElement.lang || "").toLowerCase().indexOf("pt") === 0 ||
       !!(document.body && document.body.getAttribute("data-lang") === "pt");
-    var basemapLabel = strip.querySelector("[data-basemap-label]");
+    var basemapLabel = document.querySelector("[data-basemap-label]");
 
     function setBasemapLabel(on) {
-      orthoOn = !!on;
+      if (!basemapLabel) basemapLabel = document.querySelector("[data-basemap-label]");
       if (!basemapLabel) return;
-      var txt = orthoOn
+      var txt = on
         ? langPt
           ? "Ortofoto"
           : "Orthophoto"
@@ -4335,24 +4350,16 @@
           ? "Satélite"
           : "Satellite";
       basemapLabel.textContent = txt;
-      basemapLabel.classList.toggle("is-ortho", orthoOn);
-      basemapLabel.setAttribute("data-mode", orthoOn ? "ortho" : "sat");
+      basemapLabel.classList.toggle("is-ortho", !!on);
+      basemapLabel.setAttribute("data-mode", on ? "ortho" : "sat");
     }
-    setBasemapLabel(false);
-
-    function setBasemap(mode) {
-      mode = mode === "sat" ? "sat" : "3d";
-      try {
-        localStorage.setItem(BASE_KEY, mode);
-      } catch (e0) {}
-      strip.querySelectorAll("[data-basemap]").forEach(function (btn) {
-        btn.classList.toggle("is-active", btn.getAttribute("data-basemap") === mode);
-      });
-      postToMap({ type: "efc-map-basemap", mode: mode });
-    }
+    window.__efcSetBasemapLabel = setBasemapLabel;
 
     function parseTaludes() {
-      var raw = strip.getAttribute("data-taludes") || "[]";
+      var raw =
+        (chrome && chrome.getAttribute("data-taludes")) ||
+        (strip && strip.getAttribute("data-taludes")) ||
+        "[]";
       try {
         var parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed : [];
@@ -4362,16 +4369,20 @@
     }
 
     function initTaludesMenu() {
-      var toggle = strip.querySelector("[data-taludes-toggle]");
-      var list = strip.querySelector("[data-taludes-list]");
-      if (!toggle || !list || list.dataset.bound === "1") return;
+      var host = chrome || strip;
+      if (!host) return;
+      var toggle = host.querySelector("[data-taludes-toggle]");
+      var list = host.querySelector("[data-taludes-list]");
+      if (!toggle || !list) return;
+      // Allow rebind after HTMX status swap (list node is replaced).
+      if (list.dataset.bound === "1" && list.childNodes.length) return;
       list.dataset.bound = "1";
       var sites = parseTaludes();
       list.innerHTML = "";
       if (!sites.length) {
         var empty = document.createElement("li");
         empty.innerHTML =
-          '<button type="button" class="efc-layer-strip__taludes-item" disabled>' +
+          '<button type="button" class="efc-stitch-hero__taludes-item" disabled>' +
           (langPt ? "Nenhum talude disponível" : "No sites available") +
           "</button>";
         list.appendChild(empty);
@@ -4380,7 +4391,7 @@
           var li = document.createElement("li");
           var btn = document.createElement("button");
           btn.type = "button";
-          btn.className = "efc-layer-strip__taludes-item";
+          btn.className = "efc-stitch-hero__taludes-item";
           btn.setAttribute("role", "option");
           var kind =
             site.kind === "tunnel"
@@ -4405,8 +4416,18 @@
             var lat = Number(site.lat);
             var lon = Number(site.lon);
             if (!isFinite(lat) || !isFinite(lon)) return;
-            setOverlayLayer("zentra", true);
+            if (typeof window.__efcSetOverlayLayer === "function") {
+              window.__efcSetOverlayLayer("zentra", true);
+            }
             var zoom = Number(site.zoom) || 15.5;
+            writeSharedMapView({
+              lat: lat,
+              lon: lon,
+              zoom: zoom,
+              pitch: 42,
+              bearing: -18,
+              mode: "focus",
+            });
             postToMap({
               type: "efc-map-focus-zentra",
               lat: lat,
@@ -4415,7 +4436,6 @@
               km: site.km,
               zoom: zoom,
             });
-            // Also nudge 2D Folium path via goto-km when available.
             if (site.km != null && isFinite(Number(site.km))) {
               postToMap({
                 type: "efc-map-goto-km",
@@ -4431,6 +4451,8 @@
           list.appendChild(li);
         });
       }
+      if (toggle.dataset.bound === "1") return;
+      toggle.dataset.bound = "1";
       function closeMenu() {
         list.hidden = true;
         toggle.setAttribute("aria-expanded", "false");
@@ -4443,13 +4465,53 @@
         toggle.setAttribute("aria-expanded", open ? "true" : "false");
       });
       document.addEventListener("click", function (ev) {
-        if (!list.hidden && !strip.contains(ev.target)) closeMenu();
+        if (!list.hidden && host && !host.contains(ev.target)) closeMenu();
       });
       document.addEventListener("keydown", function (ev) {
         if (ev.key === "Escape") closeMenu();
       });
     }
     initTaludesMenu();
+  }
+
+  function initMapLayerStrip() {
+    initStatusMapChrome();
+    var strip = document.getElementById("efc-layer-strip");
+    if (!strip || strip.dataset.bound === "1") return;
+    strip.dataset.bound = "1";
+    var SUSC_KEY = "efc_map_suscetibilidade_on";
+    var BASE_KEY = "efc_map_basemap";
+    var STATIONS_KEY = "efc_map_stations_on";
+    var ZENTRA_KEY = "efc_map_zentra_on";
+    var climaOn = false;
+    var climaPoints = null;
+    var orthoOn = false;
+    var langPt =
+      (document.documentElement.lang || "").toLowerCase().indexOf("pt") === 0 ||
+      !!(document.body && document.body.getAttribute("data-lang") === "pt");
+
+    function setBasemapLabel(on) {
+      orthoOn = !!on;
+      if (typeof window.__efcSetBasemapLabel === "function") {
+        window.__efcSetBasemapLabel(on);
+      }
+    }
+    setBasemapLabel(false);
+
+    function setBasemap(mode) {
+      mode = mode === "sat" ? "sat" : "3d";
+      try {
+        localStorage.setItem(BASE_KEY, mode);
+      } catch (e0) {}
+      strip.querySelectorAll("[data-basemap]").forEach(function (btn) {
+        btn.classList.toggle("is-active", btn.getAttribute("data-basemap") === mode);
+      });
+      postToMap({
+        type: "efc-map-basemap",
+        mode: mode,
+        view: readSharedMapView(),
+      });
+    }
 
     function setOverlayLayer(name, on) {
       var key = name === "zentra" ? ZENTRA_KEY : name === "stations" ? STATIONS_KEY : null;
@@ -4465,6 +4527,7 @@
       }
       postToMap({ type: "efc-map-layer", layer: name, on: !!on });
     }
+    window.__efcSetOverlayLayer = setOverlayLayer;
 
     function setSusc(on) {
       try {
@@ -4658,6 +4721,9 @@
 
     window.addEventListener("message", function (ev) {
       if (!ev.data) return;
+      if (ev.data.type === "efc-map-view" && ev.data.view) {
+        writeSharedMapView(ev.data.view);
+      }
       if (ev.data.type === "efc-map-ready" || ev.data.type === "efc-map-3d-ready") {
         var mode = prefBase;
         try {
@@ -4668,13 +4734,13 @@
         postToMap({ type: "efc-map-susc", on: prefSusc });
         setOverlayLayer("stations", prefStations);
         setOverlayLayer("zentra", prefZentra);
+        var shared = readSharedMapView();
+        if (shared) postToMap({ type: "efc-map-view", view: shared });
         applyFocusFromUrl();
       }
       if (ev.data.type === "efc-map-zoom") {
         var z = Number(ev.data.zoom);
         if (isFinite(z) && z >= 14.5) {
-          // Zoomed near sensors: ensure Esri orthophoto basemap (2D sat or 3D sat tiles).
-          if (prefBase !== "3d") setBasemap("sat");
           setBasemapLabel(true);
         } else if (isFinite(z)) {
           setBasemapLabel(false);
@@ -4682,7 +4748,6 @@
       }
       if (ev.data.type === "efc-map-ortho") {
         setBasemapLabel(!!ev.data.on);
-        if (ev.data.on && prefBase !== "3d") setBasemap("sat");
       }
     });
   }

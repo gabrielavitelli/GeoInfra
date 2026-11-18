@@ -115,9 +115,15 @@ def is_raijin_limiar_kind(kind: str) -> bool:
 SUSCETIBILIDADE_TIF = DATA_DIR / "indice_suscetibilidade" / "mapa_suscetibilidade_rf (1).tif"
 # Basemap: imagem de alta resolução (~1–2 m, Esri World Imagery). OSM removido.
 TILES_SATELLITE = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+# Ortofoto (zoom alto): Esri World Imagery Clarity — tiles distintos do World Imagery padrão.
+TILES_ORTHO = os.environ.get(
+    "EFC_MAP_ORTHO_TILES",
+    "https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+)
 # Alias legado (código antigo / scripts); não expor no LayerControl.
 TILES_PADRAO = TILES_SATELLITE
 ATTR_ESRI = "Esri · Maxar/Airbus (~2 m)"
+ATTR_ORTHO = "Esri Clarity · orthophoto"
 ATTR_OSM = ATTR_ESRI
 # Esri não entrega tiles acima de ~z17; sem max_native_zoom o Leaflet pede z18+ → mapa branco.
 EFC_MAP_MAX_ZOOM = int(os.environ.get("EFC_MAP_MAX_ZOOM", "18"))

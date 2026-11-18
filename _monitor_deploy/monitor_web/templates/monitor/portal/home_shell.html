@@ -1,0 +1,94 @@
+{% extends "monitor/base.html" %}
+{% load static monitor_tags %}
+{% block title %}{% mt "home_title" %}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'monitor/css/stitch-home.css' %}?v={{ monitor_static_bust|default:'20261118ortho1' }}" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="{% static 'monitor/css/monitor_tour.css' %}?v=20260803speed345" media="print" onload="this.media='all'">
+<noscript>
+  <link rel="stylesheet" href="{% static 'monitor/css/stitch-home.css' %}?v={{ monitor_static_bust|default:'20261118ortho1' }}">
+  <link rel="stylesheet" href="{% static 'monitor/css/monitor_tour.css' %}?v=20260803speed345">
+</noscript>
+<script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js" defer></script>
+<script src="{% static 'monitor/js/monitor_tour.js' %}?v=20260803speed345" defer></script>
+{% endblock %}
+{% block content %}
+<div class="efc-load-progress" id="efc-load-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="12"></div>
+
+<header class="efc-portal-home-topbar" aria-label="{% if lang_pt %}Barra superior{% else %}Top bar{% endif %}">
+  <div class="efc-portal-home-topbar__title">
+    <span class="efc-portal-home-topbar__crumb">{% if lang_pt %}Monitor EFC{% else %}EFC Monitor{% endif %}</span>
+    <span class="efc-portal-home-topbar__sep" aria-hidden="true">/</span>
+    <strong>{% if lang_pt %}Visão Geral{% else %}Overview{% endif %}</strong>
+  </div>
+  <div class="efc-portal-home-topbar__tools">
+    {% include "monitor/components/home_top_tools.html" %}
+  </div>
+  <div class="efc-portal-home-topbar__right">
+    {% include "monitor/components/home_toolbar.html" %}
+  </div>
+</header>
+
+<section class="dj-panel" aria-labelledby="situation-title">
+  <header class="dj-panel__header">
+    <h1 id="situation-title" class="dj-panel__title">{% mt "home_title" %}</h1>
+  </header>
+
+  <div id="home-day-strip" class="dj-panel__hero-slot">
+    <div class="dj-hero dj-hero--ok dj-hero--loading" aria-live="polite">
+      <div class="dj-hero__inner">
+        <span class="dj-hero__status-icon" aria-hidden="true">◐</span>
+        <div class="dj-hero__copy">
+          <strong class="dj-hero__title">{% if lang_pt %}Carregando dados…{% else %}Loading data…{% endif %}</strong>
+          <p class="dj-hero__meta">{% if lang_pt %}Consulta BigQuery (pode levar até 1 minuto){% else %}BigQuery query (may take up to 1 minute){% endif %}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="portal-home-bootstrap" hidden aria-hidden="true"
+       data-indicators-url="{% murl 'home_fragment_indicators' %}?date={{ selected_date }}&accum={{ accum_hours }}&km={{ fc_km }}&{{ indicators_period_qs }}"
+       data-map-url="{% murl 'home_fragment_map' %}?date={{ selected_date }}&accum={{ accum_hours }}&km={{ fc_km }}"
+       data-fc-km="{{ fc_km }}"
+       hx-get="{% murl 'home_fragment_bootstrap' %}?date={{ selected_date }}&accum={{ accum_hours }}&km={{ fc_km }}"
+       hx-trigger="load"
+       hx-swap="none"
+       hx-timeout="300000"></div>
+
+  <div class="dj-situation-grid" id="efc-home-main" aria-busy="true">
+    <aside class="dj-situation-grid__aside" aria-label="{% if lang_pt %}Painel lateral{% else %}Side panel{% endif %}">
+      <div id="home-alerts-slot" class="dj-alerts dj-alerts--compact">
+        <h3 class="dj-alerts__title">{% if lang_pt %}Trechos em alerta{% else %}Alert segments{% endif %}</h3>
+        <div class="dj-alerts__chips">
+          <span class="dj-skeleton dj-skeleton--chip"></span>
+          <span class="dj-skeleton dj-skeleton--chip"></span>
+        </div>
+      </div>
+      <div id="home-exceed-slot" class="dj-exceed-slot dj-exceed-slot--aside" aria-live="polite"></div>
+      <div id="home-indicators" class="dj-situation-grid__metrics">
+        <div class="dj-module dj-module--compact dj-module--metrics dj-module--loading efc-skel-indicators" aria-hidden="true">
+          <div class="dj-skeleton dj-skeleton--line efc-skel-indicators__title"></div>
+          <div class="efc-skel-indicators__grid">
+            <div class="dj-skeleton dj-skeleton--card"></div>
+            <div class="dj-skeleton dj-skeleton--card"></div>
+            <div class="dj-skeleton dj-skeleton--card"></div>
+          </div>
+        </div>
+      </div>
+      {% if not monitor_portal_hide_previsao %}
+      <a href="{% murl 'previsao' %}?km={{ fc_km }}" class="dj-btn dj-btn--block">
+        {% if lang_pt %}Ver previsão →{% else %}View forecast →{% endif %}
+      </a>
+      {% endif %}
+    </aside>
+    <div class="dj-situation-grid__map">
+      <div id="home-map-panel" class="dj-map-panel">
+        <div class="dj-map-panel__placeholder dj-map-panel__placeholder--loading efc-map-skel" aria-hidden="true">
+          <div class="dj-skeleton dj-skeleton--map efc-map-skel__block"></div>
+          <p class="efc-map-skel__label">{% if lang_pt %}Carregando mapa…{% else %}Loading map…{% endif %}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% include "monitor/components/stitch_fab.html" %}
+{% endblock %}

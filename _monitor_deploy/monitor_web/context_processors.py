@@ -75,6 +75,6 @@ def monitor_globals(request):
     import os
 
     ctx["monitor_static_bust"] = (
-        os.environ.get("MONITOR_STATIC_BUST", "").strip() or "20261118taludes1"
+        os.environ.get("MONITOR_STATIC_BUST", "").strip() or "20261118ortho1"
     )
     return ctx
