@@ -11,6 +11,7 @@ import logging
 import math
 import os
 import re
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -194,10 +195,20 @@ def _pfx(dataset: str) -> str:
     return get_bq_fully_qualified_prefix(dataset)
 
 
+# In-process cache for large GCS snapshots (7d readings ~50MB) so gallery
+# multi-variable requests do not re-download on every variable.
+_URI_BYTES_CACHE: dict[str, tuple[float, bytes]] = {}
+_URI_BYTES_TTL_S = float(os.environ.get("ZENTRA_GCS_BYTES_TTL_S") or "90")
+
+
 def _read_uri_bytes(uri: str) -> bytes | None:
     u = (uri or "").strip()
     if not u:
         return None
+    now = time.time()
+    cached = _URI_BYTES_CACHE.get(u)
+    if cached and (now - cached[0]) < _URI_BYTES_TTL_S:
+        return cached[1]
     try:
         if u.startswith("gs://"):
             from google.cloud import storage
@@ -207,11 +218,19 @@ def _read_uri_bytes(uri: str) -> bytes | None:
             if not bucket_name or not blob_name:
                 return None
             client = storage.Client()
-            return client.bucket(bucket_name).blob(blob_name).download_as_bytes()
-        if u.startswith("file://"):
-            u = u[7:]
-        with open(u, "rb") as fh:
-            return fh.read()
+            raw = client.bucket(bucket_name).blob(blob_name).download_as_bytes()
+        else:
+            path = u[7:] if u.startswith("file://") else u
+            with open(path, "rb") as fh:
+                raw = fh.read()
+        if raw is not None:
+            _URI_BYTES_CACHE[u] = (now, raw)
+            # Keep cache bounded (latest readings + series + devices at most).
+            if len(_URI_BYTES_CACHE) > 6:
+                oldest = sorted(_URI_BYTES_CACHE.items(), key=lambda kv: kv[1][0])
+                for k, _ in oldest[: max(0, len(_URI_BYTES_CACHE) - 4)]:
+                    _URI_BYTES_CACHE.pop(k, None)
+        return raw
     except Exception as exc:
         logger.warning("sensor_series URI read failed (%s): %s", u, exc)
         return None
