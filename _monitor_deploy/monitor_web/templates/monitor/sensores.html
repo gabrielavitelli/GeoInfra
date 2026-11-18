@@ -1,5 +1,5 @@
 {% extends "monitor/base.html" %}
-{% load monitor_tags %}
+{% load monitor_tags l10n %}
 {% block title %}{% if lang_pt %}Sensores{% else %}Sensors{% endif %}{% endblock %}
 {% block content %}
 {# Scroll host: stitch-page/main are overflow:hidden; canvas is the scroll container. #}
@@ -22,12 +22,12 @@
         {% for row in sensor_rows %}
         <article class="efc-sensores__card efc-sensores__row{% if initial_sensor_id == row.location_id %} is-active{% endif %}"
                  data-location-id="{{ row.location_id }}"
-                 data-lat="{{ row.lat }}"
-                 data-lon="{{ row.lon }}">
+                 data-lat="{{ row.lat|unlocalize }}"
+                 data-lon="{{ row.lon|unlocalize }}">
           <div class="efc-sensores__card-map"
                data-sensor-card-map
-               data-lat="{{ row.lat }}"
-               data-lon="{{ row.lon }}"
+               data-lat="{{ row.lat|unlocalize }}"
+               data-lon="{{ row.lon|unlocalize }}"
                role="img"
                aria-label="{% if lang_pt %}Mapa {{ row.name }}{% else %}Map {{ row.name }}{% endif %}"></div>
           <div class="efc-sensores__card-body">
@@ -72,10 +72,10 @@
                       data-sensor-pick
                       data-location-id="{{ row.location_id }}"
                       data-source="zentra"
-                      data-lat="{{ row.lat }}"
-                      data-lon="{{ row.lon }}"
+                      data-lat="{{ row.lat|unlocalize }}"
+                      data-lon="{{ row.lon|unlocalize }}"
                       data-name="{{ row.name }}"
-                      data-km="{% if row.km is not None %}{{ row.km }}{% endif %}">
+                      data-km="{% if row.km is not None %}{{ row.km|unlocalize }}{% endif %}">
                 {% if lang_pt %}Série{% else %}Series{% endif %}
               </button>
               <a class="efc-btn efc-btn--ghost efc-btn--sm" href="{{ row.map_href }}">{% if lang_pt %}Mapa{% else %}Map{% endif %} →</a>

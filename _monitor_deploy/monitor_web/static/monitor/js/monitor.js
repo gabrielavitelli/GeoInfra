@@ -4613,16 +4613,25 @@
     return window.__efcMapLibrePromise;
   }
 
+  function parseCoord(v) {
+    if (v == null || v === "") return NaN;
+    if (typeof v === "number") return v;
+    var s = String(v).trim().replace(/\s+/g, "");
+    // Brazilian locale may emit "-4,25936" — accept comma decimal when no dot present.
+    if (s.indexOf(",") >= 0 && s.indexOf(".") < 0) s = s.replace(",", ".");
+    return Number(s);
+  }
+
   function renderSensorMiniMap(host, lat, lon, opts) {
-    if (!host || lat == null || lon == null || !isFinite(Number(lat)) || !isFinite(Number(lon))) {
+    var la = parseCoord(lat);
+    var lo = parseCoord(lon);
+    if (!host || !isFinite(la) || !isFinite(lo)) {
       return;
     }
     opts = opts || {};
     var interactive = opts.interactive !== false;
     var pitch = opts.pitch != null ? Number(opts.pitch) : 42;
     var zoom = opts.zoom != null ? Number(opts.zoom) : 15.5;
-    var la = Number(lat);
-    var lo = Number(lon);
     ensureMapLibre()
       .then(function () {
         if (host.__efcMiniMap) {
@@ -5327,8 +5336,10 @@
         state.variable = opts.variable || "";
         state.variables = opts.variables || [];
         state.days = opts.days || state.days || 7;
-        state.lat = opts.lat != null ? Number(opts.lat) : state.lat;
-        state.lon = opts.lon != null ? Number(opts.lon) : state.lon;
+        state.lat = opts.lat != null ? parseCoord(opts.lat) : state.lat;
+        state.lon = opts.lon != null ? parseCoord(opts.lon) : state.lon;
+        if (!isFinite(state.lat)) state.lat = null;
+        if (!isFinite(state.lon)) state.lon = null;
         state.name = opts.name || "";
         state.km = opts.km;
         if (titleEl && state.name) titleEl.textContent = state.name;
