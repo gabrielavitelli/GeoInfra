@@ -4639,6 +4639,7 @@
       ".efc-sensor-inspect__title{color:#1e293b!important}" +
       ".efc-sensor-inspect__chip{background:#fff!important;border-color:#e7e5e4!important;color:#44403c!important}" +
       ".efc-sensor-inspect__chip b{color:#1f77b4!important}" +
+      ".efc-sensor-inspect__field[hidden],.efc-sensor-inspect [hidden]{display:none!important}" +
       ".efc-sensor-inspect__chip-btn{background:#fff;border:1px solid #d6d3d1;color:#44403c;border-radius:999px}" +
       ".efc-sensor-inspect__chip-btn.is-active{background:#1f77b4;border-color:#1f77b4;color:#fff}" +
       ".efc-sensor-inspect__windows{background:#fff;border:1px solid #d6d3d1;border-radius:999px}" +

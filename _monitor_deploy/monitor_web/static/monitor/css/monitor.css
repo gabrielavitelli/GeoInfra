@@ -3787,6 +3787,10 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
   color: #78716c;
   font-weight: 700;
 }
+.efc-sensor-inspect__field[hidden],
+.efc-sensor-inspect [hidden] {
+  display: none !important;
+}
 .efc-sensor-inspect__field select,
 .efc-sensor-inspect__fallback-select {
   min-width: 8.5rem;
