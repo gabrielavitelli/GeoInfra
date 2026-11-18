@@ -4506,22 +4506,33 @@
         setBasemap("3d");
         setOverlayLayer("zentra", true);
         var zid = u.searchParams.get("zid") || "";
+        var name = u.searchParams.get("name") || "";
+        var km = u.searchParams.get("km");
         postToMap({
           type: "efc-map-focus-zentra",
           lat: lat,
           lon: lon,
           zid: zid,
         });
+        // Open series modal immediately (do not wait for iframe map-ready).
         if (typeof openSensorDetail === "function") {
           openSensorDetail({
             location_id: zid,
             source: "zentra",
             lat: lat,
             lon: lon,
+            name: name,
+            km: km,
           });
         }
       } catch (eF) {}
     }
+    // Deep-link focus works even if the map iframe is still loading.
+    try {
+      if (new URL(window.location.href).searchParams.get("focus") === "zentra") {
+        applyFocusFromUrl();
+      }
+    } catch (eFocus0) {}
 
     window.addEventListener("message", function (ev) {
       if (!ev.data) return;
@@ -4554,22 +4565,50 @@
   function ensureMapLibre() {
     if (window.maplibregl) return Promise.resolve();
     if (window.__efcMapLibrePromise) return window.__efcMapLibrePromise;
+    var urls = [
+      "https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js",
+      "https://cdn.jsdelivr.net/npm/maplibre-gl@3.6.2/dist/maplibre-gl.js",
+    ];
+    var cssUrls = [
+      "https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css",
+      "https://cdn.jsdelivr.net/npm/maplibre-gl@3.6.2/dist/maplibre-gl.css",
+    ];
     window.__efcMapLibrePromise = new Promise(function (resolve, reject) {
-      if (!document.querySelector('link[data-efc-maplibre-inspect="1"]')) {
+      function injectCss(href) {
+        if (document.querySelector('link[data-efc-maplibre-inspect="1"]')) return;
         var l = document.createElement("link");
         l.rel = "stylesheet";
-        l.href = "https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css";
+        l.href = href;
         l.setAttribute("data-efc-maplibre-inspect", "1");
         document.head.appendChild(l);
       }
-      var s = document.createElement("script");
-      s.src = "https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js";
-      s.async = true;
-      s.onload = function () {
-        resolve();
-      };
-      s.onerror = reject;
-      document.head.appendChild(s);
+      function tryLoad(i) {
+        if (window.maplibregl) {
+          resolve();
+          return;
+        }
+        if (i >= urls.length) {
+          window.__efcMapLibrePromise = null;
+          reject(new Error("maplibre load failed"));
+          return;
+        }
+        injectCss(cssUrls[i] || cssUrls[0]);
+        var s = document.createElement("script");
+        s.src = urls[i];
+        s.async = true;
+        s.onload = function () {
+          if (window.maplibregl) resolve();
+          else tryLoad(i + 1);
+        };
+        s.onerror = function () {
+          try {
+            s.remove();
+          } catch (eR) {}
+          tryLoad(i + 1);
+        };
+        document.head.appendChild(s);
+      }
+      tryLoad(0);
     });
     return window.__efcMapLibrePromise;
   }
@@ -4646,36 +4685,45 @@
     var hosts = root.querySelectorAll("[data-sensor-card-map]");
     if (!hosts.length) return;
     function paint(host) {
-      if (!host || host.__efcMiniMap || host.__efcMapQueued) return;
-      host.__efcMapQueued = 1;
+      if (!host || host.__efcMiniMap || host.__efcMapPainting) return;
+      host.__efcMapPainting = 1;
       var lat = host.getAttribute("data-lat");
       var lon = host.getAttribute("data-lon");
+      // Eager MapLibre load then paint — do not gate the CDN fetch on IO alone.
       renderSensorMiniMap(host, lat, lon, {
         interactive: false,
         pitch: 48,
         zoom: 14.8,
       });
+      // Allow retry if the first attempt never created a map (CDN stall).
+      window.setTimeout(function () {
+        if (host && !host.__efcMiniMap) {
+          host.__efcMapPainting = 0;
+          renderSensorMiniMap(host, lat, lon, {
+            interactive: false,
+            pitch: 48,
+            zoom: 14.8,
+          });
+        }
+      }, 2500);
     }
-    if (typeof IntersectionObserver === "function") {
-      var io = new IntersectionObserver(
-        function (entries) {
-          entries.forEach(function (en) {
-            if (en.isIntersecting) {
-              paint(en.target);
+    // Prefetch MapLibre once, then paint all cards (8 Zentra — cheap).
+    ensureMapLibre()
+      .then(function () {
+        hosts.forEach(paint);
+        window.setTimeout(function () {
+          hosts.forEach(function (h) {
+            if (h && h.__efcMiniMap) {
               try {
-                io.unobserve(en.target);
-              } catch (eU) {}
+                h.__efcMiniMap.resize();
+              } catch (eR) {}
             }
           });
-        },
-        { root: root.querySelector(".efc-sensores__canvas") || null, rootMargin: "80px", threshold: 0.05 }
-      );
-      hosts.forEach(function (h) {
-        io.observe(h);
+        }, 200);
+      })
+      .catch(function () {
+        hosts.forEach(paint);
       });
-    } else {
-      hosts.forEach(paint);
-    }
   }
 
   function ensureSensorGalleryCss() {
