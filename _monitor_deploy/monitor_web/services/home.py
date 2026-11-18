@@ -323,10 +323,10 @@ def folium_map_standalone_html(m, *, height: str = "390px", map3d_payload: dict 
         'm.on("click","efc-zentra",function(e){var f=e.features&&e.features[0];if(!f)return;'
         'var p=f.properties||{};var ll=e.lngLat||{};'
         'm.easeTo({center:[ll.lng,ll.lat],zoom:Math.max(m.getZoom(),15.6),pitch:42,bearing:-18,duration:700});'
+        # Parent opens light series gallery modal (time series + live meta).
         'window.parent.postMessage({type:"efc-sensor-open",source:"zentra",'
         'location_id:p.code||p.location_id||"",name:p.name||"",lat:ll.lat,lon:ll.lng,km:p.km},"*");'
-        'new maplibregl.Popup({offset:12,closeButton:true}).setLngLat(e.lngLat)'
-        '.setHTML(p.popup||("<b>"+(p.name||"")+"</b><br>Zentra")).addTo(m);});'
+        '});'
         'm.on("mouseenter","efc-zentra",function(){m.getCanvas().style.cursor="pointer";});'
         'm.on("mouseleave","efc-zentra",function(){m.getCanvas().style.cursor="";});}}'
         'function cinematicEntry(m){'

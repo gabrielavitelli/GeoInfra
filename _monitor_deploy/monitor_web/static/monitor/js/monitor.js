@@ -131,6 +131,10 @@
     if (el && el.classList && el.classList.contains("efc-previsao-heatmap-plot")) {
       cfg.scrollZoom = !previsaoHeatmapCompact(el);
     }
+    // Sensor gallery cards: never steal page/modal wheel scroll.
+    if (el && el.classList && el.classList.contains("efc-sensor-card__plot")) {
+      cfg.scrollZoom = false;
+    }
     return cfg;
   }
 
@@ -4570,10 +4574,14 @@
     return window.__efcMapLibrePromise;
   }
 
-  function renderSensorMiniMap(host, lat, lon) {
+  function renderSensorMiniMap(host, lat, lon, opts) {
     if (!host || lat == null || lon == null || !isFinite(Number(lat)) || !isFinite(Number(lon))) {
       return;
     }
+    opts = opts || {};
+    var interactive = opts.interactive !== false;
+    var pitch = opts.pitch != null ? Number(opts.pitch) : 42;
+    var zoom = opts.zoom != null ? Number(opts.zoom) : 15.5;
     var la = Number(lat);
     var lo = Number(lon);
     ensureMapLibre()
@@ -4581,7 +4589,7 @@
         if (host.__efcMiniMap) {
           try {
             host.__efcMiniMap.setCenter([lo, la]);
-            host.__efcMiniMap.setZoom(15.5);
+            host.__efcMiniMap.setZoom(zoom);
             if (host.__efcMiniMarker) host.__efcMiniMarker.setLngLat([lo, la]);
             host.__efcMiniMap.resize();
           } catch (e0) {}
@@ -4598,14 +4606,19 @@
           container: host,
           style: style,
           center: [lo, la],
-          zoom: 15.5,
-          pitch: 42,
+          zoom: zoom,
+          pitch: pitch,
           bearing: -18,
           attributionControl: false,
-          interactive: true,
+          interactive: interactive,
         });
-        // Flat terrain (exaggeration 0) — no DEM needed for inspection zoom.
-        map.dragRotate.disable();
+        // Flat 3D view (exaggeration 0) — sat pitch only, no DEM.
+        if (interactive) {
+          try {
+            map.dragRotate.disable();
+            map.scrollZoom.disable();
+          } catch (eDis) {}
+        }
         var el = document.createElement("div");
         el.style.cssText =
           "width:12px;height:12px;border-radius:50%;background:#f97316;border:2px solid #9a3412;box-shadow:0 0 0 3px rgba(249,115,22,.35)";
@@ -4626,6 +4639,43 @@
           lo.toFixed(4) +
           "</div>";
       });
+  }
+
+  function initSensorLandingMaps(root) {
+    if (!root) return;
+    var hosts = root.querySelectorAll("[data-sensor-card-map]");
+    if (!hosts.length) return;
+    function paint(host) {
+      if (!host || host.__efcMiniMap || host.__efcMapQueued) return;
+      host.__efcMapQueued = 1;
+      var lat = host.getAttribute("data-lat");
+      var lon = host.getAttribute("data-lon");
+      renderSensorMiniMap(host, lat, lon, {
+        interactive: false,
+        pitch: 48,
+        zoom: 14.8,
+      });
+    }
+    if (typeof IntersectionObserver === "function") {
+      var io = new IntersectionObserver(
+        function (entries) {
+          entries.forEach(function (en) {
+            if (en.isIntersecting) {
+              paint(en.target);
+              try {
+                io.unobserve(en.target);
+              } catch (eU) {}
+            }
+          });
+        },
+        { root: root.querySelector(".efc-sensores__canvas") || null, rootMargin: "80px", threshold: 0.05 }
+      );
+      hosts.forEach(function (h) {
+        io.observe(h);
+      });
+    } else {
+      hosts.forEach(paint);
+    }
   }
 
   function ensureSensorGalleryCss() {
@@ -4653,6 +4703,9 @@
       ".efc-sensor-gallery__cell--wide .efc-sensor-card__plot{height:320px}" +
       ".efc-sensor-card__csv{display:inline-flex;align-items:center;gap:.3rem;margin-top:.35rem;font-size:.78rem;color:#57534e;text-decoration:none;font-weight:560}" +
       ".efc-sensor-card__csv:hover{color:#1f77b4;text-decoration:underline}" +
+      ".efc-modal--sensor .efc-modal__panel{max-height:min(92vh,920px);overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}" +
+      ".efc-sensor-inspect__title,.efc-sensores__detail-title{font-weight:700!important}" +
+      ".efc-sensor-inspect__fresh b{font-weight:700;color:#44403c}" +
       "@media(max-width:900px){.efc-sensor-gallery{grid-template-columns:1fr}.efc-sensor-gallery__cell--wide{grid-column:auto}.efc-sensor-inspect__identity-row{grid-template-columns:1fr}}";
     document.head.appendChild(s);
   }
@@ -4783,8 +4836,8 @@
     ];
     var layout = {
       title: {
-        text: chartTitle,
-        font: { size: 14, color: ink, family: "IBM Plex Sans, Segoe UI, sans-serif" },
+        text: "<b>" + chartTitle + "</b>",
+        font: { size: 14, color: ink, family: "IBM Plex Sans, Segoe UI, sans-serif", weight: 700 },
         x: 0.01,
         xanchor: "left",
         pad: { t: 4, b: 2 },
@@ -5052,8 +5105,11 @@
       if (payload.status) bits.push(payload.status);
       if (subEl) subEl.textContent = bits.join("  ·  ");
       if (freshEl) {
-        freshEl.textContent =
-          (langPt ? "Atualizado " : "Updated ") + (payload.freshness || "—");
+        freshEl.innerHTML =
+          "<b>" +
+          (langPt ? "Última leitura" : "Last reading") +
+          "</b> " +
+          (payload.freshness || "—");
       }
       if (latestEl) {
         latestEl.innerHTML = "";
@@ -5282,13 +5338,16 @@
       '<p class="efc-sensor-inspect__hint" data-sensor-hint hidden></p>' +
       "</div></div></div>";
     document.body.appendChild(modal);
+    function closeSensorModal() {
+      modal.hidden = true;
+      document.body.classList.remove("efc-sensor-modal-open");
+    }
+    modal.__efcClose = closeSensorModal;
     modal.querySelectorAll("[data-sensor-modal-close]").forEach(function (el) {
-      el.addEventListener("click", function () {
-        modal.hidden = true;
-      });
+      el.addEventListener("click", closeSensorModal);
     });
     document.addEventListener("keydown", function (ev) {
-      if (ev.key === "Escape" && !modal.hidden) modal.hidden = true;
+      if (ev.key === "Escape" && !modal.hidden) closeSensorModal();
     });
     return modal;
   }
@@ -5307,12 +5366,15 @@
         btn.classList.toggle("is-active", on);
         btn.setAttribute("aria-pressed", on ? "true" : "false");
       });
-      pageRoot.querySelectorAll(".efc-sensores__row").forEach(function (tr) {
-        tr.classList.toggle("is-active", tr.getAttribute("data-location-id") === opts.location_id);
+      pageRoot.querySelectorAll(".efc-sensores__row, .efc-sensores__card").forEach(function (card) {
+        card.classList.toggle(
+          "is-active",
+          card.getAttribute("data-location-id") === opts.location_id
+        );
       });
       if (detail && typeof detail.scrollIntoView === "function") {
         try {
-          detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          detail.scrollIntoView({ behavior: "smooth", block: "start" });
         } catch (eScroll) {}
       }
       window.setTimeout(function () {
@@ -5331,8 +5393,12 @@
     var title = modal.querySelector("#efc-sensor-modal-title");
     if (title) title.textContent = opts.name || opts.location_id || "Sensor";
     modal.hidden = false;
+    document.body.classList.add("efc-sensor-modal-open");
     if (api2) api2.open(opts);
     window.setTimeout(function () {
+      try {
+        modal.querySelector(".efc-modal__panel").scrollTop = 0;
+      } catch (eScr) {}
       var mapHost = inspect && inspect.querySelector("[data-sensor-mini-map]");
       if (mapHost && mapHost.__efcMiniMap) {
         try {
@@ -5347,6 +5413,7 @@
     if (!page) return;
     var inspect = page.querySelector("[data-sensor-inspect]");
     bindSensorInspect(inspect);
+    initSensorLandingMaps(page);
     page.querySelectorAll("[data-sensor-pick]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         openSensorDetail({
@@ -5359,7 +5426,7 @@
         });
       });
     });
-    // Only auto-open when deep-linked (?zid=) — keep prod table as first paint.
+    // Only auto-open when deep-linked (?zid=) — keep card landing as first paint.
     var initial =
       page.getAttribute("data-initial-id") ||
       (inspect && inspect.getAttribute("data-initial-id")) ||
@@ -5375,8 +5442,10 @@
       var p = ev.data;
       if (!p || !p.type) return;
       if (p.type === "efc-sensor-open") {
+        var locId = p.location_id || p.zid || p.code || "";
+        if (!locId && p.lat == null) return;
         openSensorDetail({
-          location_id: p.location_id || p.zid || p.code || "",
+          location_id: locId,
           source: p.source || "zentra",
           lat: p.lat,
           lon: p.lon,
@@ -5392,7 +5461,7 @@
                 type: "efc-map-focus-zentra",
                 lat: Number(p.lat),
                 lon: Number(p.lon),
-                zid: p.location_id || "",
+                zid: locId,
               },
               "*"
             );

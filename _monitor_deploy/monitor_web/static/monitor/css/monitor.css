@@ -3561,26 +3561,52 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
   }
 }
 
-/* Sensores aba — prod table layout + series panel below */
-.efc-sensores {
-  padding: 1rem 1.25rem 2rem;
+/* Sensores aba — card landing + light series gallery
+   Scroll root cause: stitch-ui/compat set overflow:hidden on
+   .efc-main:has(.efc-stitch-page) and .efc-stitch-scope.efc-stitch-page.
+   Sensores wraps content in .efc-stitch-canvas (overflow-y:auto) — same pattern
+   as Previsão/Boletins. Extra overrides keep wheel/touch scroll working. */
+.efc-main:has(.efc-sensores),
+.efc-main:has(.efc-sensores.efc-stitch-page) {
+  overflow: hidden;
+}
+.efc-stitch-scope.efc-sensores.efc-stitch-page,
+.efc-sensores.efc-stitch-page {
+  overflow: hidden;
+  max-height: 100vh;
+  max-height: 100dvh;
+}
+.efc-sensores__canvas.efc-stitch-canvas,
+.efc-sensores .efc-stitch-canvas {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.efc-sensores__inner {
   max-width: 1180px;
+  width: 100%;
+  padding-bottom: 2.5rem;
 }
 .efc-sensores__head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 1.1rem;
 }
 .efc-sensores__crumb {
   display: flex;
   gap: 0.4rem;
   font-size: 0.85rem;
-  color: #64748b;
+  color: #94a3b8;
 }
-.efc-sensores__crumb strong { color: #0f172a; }
-.efc-ui-graphite .efc-sensores__crumb strong { color: #e2e8f0; }
+.efc-sensores__crumb strong {
+  color: #e2e8f0;
+  font-weight: 700;
+}
 .efc-sensores__count {
   margin: 0;
   font-size: 0.8rem;
@@ -3588,28 +3614,67 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.efc-sensores__table-wrap { overflow-x: auto; }
-.efc-sensores__table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-.efc-sensores__table th {
-  text-align: left;
-  font-weight: 650;
-  color: #64748b;
-  border-bottom: 1px solid #e2e8f0;
-  padding: 0.55rem 0.5rem;
-  white-space: nowrap;
+.efc-sensores__count strong {
+  color: #38bdf8;
+  font-weight: 700;
 }
-.efc-ui-graphite .efc-sensores__table th { border-bottom-color: #1e293b; color: #94a3b8; }
-.efc-sensores__table td {
-  padding: 0.65rem 0.5rem;
-  border-bottom: 1px solid #f1f5f9;
-  vertical-align: top;
+
+/* Landing card grid (dark navy + cyan accents) */
+.efc-sensores__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 1.1rem;
 }
-.efc-ui-graphite .efc-sensores__table td { border-bottom-color: #1e293b; }
-.efc-sensores__row.is-active td {
-  background: #fff7ed;
+.efc-sensores__empty {
+  grid-column: 1 / -1;
+  color: #94a3b8;
+  margin: 1rem 0;
 }
-.efc-ui-graphite .efc-sensores__row.is-active td {
-  background: rgba(249, 115, 22, 0.1);
+.efc-sensores__card {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: 0;
+  background: #141c2b;
+  border: 1px solid #2d3a4f;
+  border-radius: 10px;
+  overflow: hidden;
+  min-width: 0;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.efc-sensores__card:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.12);
+}
+.efc-sensores__card.is-active {
+  border-color: #1f77b4;
+  box-shadow: 0 0 0 1px rgba(31, 119, 180, 0.35);
+}
+.efc-sensores__card-map {
+  height: 100%;
+  min-height: 168px;
+  background: #0b1220;
+  border-right: 1px solid #2d3a4f;
+}
+.efc-sensores__card-body {
+  padding: 0.75rem 0.85rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.efc-sensores__card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.efc-sensores__card-name {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #f8fafc;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
 }
 .efc-sensores__dot {
   display: inline-block;
@@ -3618,26 +3683,58 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
   border-radius: 50%;
   background: #f97316;
   border: 1.5px solid #9a3412;
-  margin-right: 0.4rem;
+  margin-right: 0.35rem;
   vertical-align: middle;
 }
 .efc-sensores__meta {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   color: #94a3b8;
-  margin-top: 0.15rem;
+  margin: 0;
+  line-height: 1.35;
+}
+.efc-sensores__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem 0.75rem;
+  margin: 0.25rem 0 0;
+}
+.efc-sensores__facts dt {
+  margin: 0;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.efc-sensores__facts dd {
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  font-variant-numeric: tabular-nums;
+}
+.efc-sensores__facts dd strong {
+  color: #f1f5f9;
+  font-weight: 700;
 }
 .efc-sensores__coords {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  color: #475569;
-  font-size: 0.82rem;
+  color: #94a3b8;
+  font-size: 0.78rem;
 }
-.efc-ui-graphite .efc-sensores__coords { color: #94a3b8; }
 .efc-sensores__series {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
+  color: #cbd5e1;
+}
+.efc-sensores__series--card {
+  margin-top: 0.15rem;
+}
+.efc-sensores__series b {
+  color: #38bdf8;
+  font-weight: 700;
 }
 .efc-sensores__fresh {
   color: #94a3b8;
@@ -3645,23 +3742,31 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
 }
 .efc-sensores__status {
   display: inline-block;
-  font-size: 0.75rem;
+  font-size: 0.68rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: #64748b;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  flex-shrink: 0;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(148, 163, 184, 0.12);
 }
-.efc-sensores__status--active { color: #15803d; }
-.efc-ui-graphite .efc-sensores__status--active { color: #4ade80; }
+.efc-sensores__status--active {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.12);
+}
 .efc-sensores__actions {
   white-space: nowrap;
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
-  justify-content: flex-end;
+  margin-top: auto;
+  padding-top: 0.45rem;
 }
 .efc-sensores__detail,
 .efc-sensores__detail--gallery {
-  margin-top: 1.15rem;
+  margin-top: 1.25rem;
   min-width: 0;
   border: 1px solid #e7dfd2;
   background: #f5f0e8;
@@ -3697,10 +3802,6 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
   margin: 0.2rem 0 0;
   font-size: 0.75rem;
   color: #78716c;
-}
-.efc-ui-graphite .efc-sensores__row.is-active td,
-.efc-stitch-page .efc-sensores__row.is-active td {
-  background: rgba(31, 119, 180, 0.08);
 }
 
 /* Sensor inspect — light Plotly card gallery */
@@ -3928,6 +4029,11 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
 /* Map → sensor detail modal (same light gallery) */
 .efc-modal--sensor .efc-modal__panel {
   width: min(1120px, 96vw);
+  max-height: min(92vh, 920px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   background: #f5f0e8;
   border-color: #e7dfd2;
 }
@@ -3938,9 +4044,21 @@ body.efc-ui-graphite .efc-modal--sensor .efc-modal__panel {
   border-color: #e7dfd2;
   color: #1e293b;
 }
+.efc-modal--sensor .efc-modal__head {
+  background: #f5f0e8;
+  border-bottom-color: #e7dfd2;
+  color: #1e293b;
+}
+.efc-modal--sensor .efc-modal__head strong {
+  font-weight: 700;
+  color: #1e293b;
+}
 .efc-modal--sensor .efc-modal__body { padding: 0.65rem 0.85rem 0.9rem; }
 .efc-modal--sensor .efc-sensor-inspect__mini-map { height: 120px; }
 .efc-modal--sensor .efc-sensor-card__plot { height: 260px; }
+body.efc-sensor-modal-open {
+  overflow: hidden !important;
+}
 
 @media (max-width: 900px) {
   .efc-sensor-inspect__identity-row {
@@ -3954,4 +4072,16 @@ body.efc-ui-graphite .efc-modal--sensor .efc-modal__panel {
   }
   .efc-sensor-inspect__mini-map { height: 140px; }
   .efc-sensores__actions { justify-content: flex-start; }
+  .efc-sensores__grid {
+    grid-template-columns: 1fr;
+  }
+  .efc-sensores__card {
+    grid-template-columns: 1fr;
+  }
+  .efc-sensores__card-map {
+    min-height: 140px;
+    height: 140px;
+    border-right: 0;
+    border-bottom: 1px solid #2d3a4f;
+  }
 }

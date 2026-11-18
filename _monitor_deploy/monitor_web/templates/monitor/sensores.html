@@ -2,83 +2,99 @@
 {% load monitor_tags %}
 {% block title %}{% if lang_pt %}Sensores{% else %}Sensors{% endif %}{% endblock %}
 {% block content %}
+{# Scroll host: stitch-page/main are overflow:hidden; canvas is the scroll container. #}
 <div class="efc-stitch-scope efc-stitch-main efc-stitch-page efc-sensores"
      data-sensor-page
      data-series-api="{{ sensor_series_api }}"
      data-lang="{% if lang_pt %}pt{% else %}en{% endif %}"
      {% if initial_sensor_id %}data-initial-id="{{ initial_sensor_id }}"{% endif %}>
-  <header class="efc-sensores__head">
-    <nav class="efc-sensores__crumb" aria-label="{% if lang_pt %}Navegação{% else %}Breadcrumb{% endif %}">
-      <span>EFC</span><span aria-hidden="true">/</span>
-      <strong>{% if lang_pt %}Sensores{% else %}Sensors{% endif %}</strong>
-    </nav>
-    <p class="efc-sensores__count">{{ sensor_count }} Zentra</p>
-  </header>
+  <div class="efc-stitch-canvas efc-sensores__canvas">
+    <div class="efc-stitch-canvas__inner efc-sensores__inner">
+      <header class="efc-sensores__head">
+        <nav class="efc-sensores__crumb" aria-label="{% if lang_pt %}Navegação{% else %}Breadcrumb{% endif %}">
+          <span>EFC</span><span aria-hidden="true">/</span>
+          <strong>{% if lang_pt %}Sensores{% else %}Sensors{% endif %}</strong>
+        </nav>
+        <p class="efc-sensores__count"><strong>{{ sensor_count }}</strong> Zentra</p>
+      </header>
 
-  <div class="efc-sensores__table-wrap">
-    <table class="efc-table efc-sensores__table">
-      <thead>
-        <tr>
-          <th>{% if lang_pt %}Sensor{% else %}Sensor{% endif %}</th>
-          <th>km</th>
-          <th>{% if lang_pt %}Coords{% else %}Coords{% endif %}</th>
-          <th>Status</th>
-          <th>{% if lang_pt %}Últimos{% else %}Latest{% endif %}</th>
-          <th>Health</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
+      <div class="efc-sensores__grid" data-sensor-landing>
         {% for row in sensor_rows %}
-        <tr class="efc-sensores__row{% if initial_sensor_id == row.location_id %} is-active{% endif %}"
-            data-location-id="{{ row.location_id }}">
-          <td>
-            <span class="efc-sensores__dot" aria-hidden="true"></span>
-            <strong>{{ row.name }}</strong>
-            <div class="efc-sensores__meta">{{ row.sensors|join:" · " }}</div>
-          </td>
-          <td>{% if row.km is not None %}{{ row.km|floatformat:0 }}{% else %}—{% endif %}</td>
-          <td class="efc-sensores__coords">{{ row.lat|floatformat:4 }}, {{ row.lon|floatformat:4 }}</td>
-          <td><span class="efc-sensores__status efc-sensores__status--{{ row.status }}">{{ row.status }}</span></td>
-          <td class="efc-sensores__series">
-            {% for s in row.series %}
-              {% if s.variable == "soil_vwc" or s.variable == "water_potential_kpa" or s.variable == "precip_mm" %}
-              <span>{{ s.label }} <b>{{ s.value_txt }}</b>{% if s.unit %} {{ s.unit }}{% endif %}</span>
-              {% endif %}
-            {% empty %}
-              —
-            {% endfor %}
-            <div class="efc-sensores__fresh">{{ row.freshness }}</div>
-          </td>
-          <td>{{ row.health }}</td>
-          <td class="efc-sensores__actions">
-            <button type="button"
-                    class="efc-btn efc-btn--ghost efc-btn--sm"
-                    data-sensor-pick
-                    data-location-id="{{ row.location_id }}"
-                    data-source="zentra"
-                    data-lat="{{ row.lat }}"
-                    data-lon="{{ row.lon }}"
-                    data-name="{{ row.name }}"
-                    data-km="{% if row.km is not None %}{{ row.km }}{% endif %}">
-              {% if lang_pt %}Série{% else %}Series{% endif %}
-            </button>
-            <a class="efc-btn efc-btn--ghost efc-btn--sm" href="{{ row.map_href }}">{% if lang_pt %}Mapa{% else %}Map{% endif %} →</a>
-          </td>
-        </tr>
+        <article class="efc-sensores__card efc-sensores__row{% if initial_sensor_id == row.location_id %} is-active{% endif %}"
+                 data-location-id="{{ row.location_id }}"
+                 data-lat="{{ row.lat }}"
+                 data-lon="{{ row.lon }}">
+          <div class="efc-sensores__card-map"
+               data-sensor-card-map
+               data-lat="{{ row.lat }}"
+               data-lon="{{ row.lon }}"
+               role="img"
+               aria-label="{% if lang_pt %}Mapa {{ row.name }}{% else %}Map {{ row.name }}{% endif %}"></div>
+          <div class="efc-sensores__card-body">
+            <header class="efc-sensores__card-head">
+              <h3 class="efc-sensores__card-name">
+                <span class="efc-sensores__dot" aria-hidden="true"></span>
+                {{ row.name }}
+              </h3>
+              <span class="efc-sensores__status efc-sensores__status--{{ row.status }}">{{ row.status }}</span>
+            </header>
+            <p class="efc-sensores__meta">{{ row.sensors|join:" · " }}</p>
+            <dl class="efc-sensores__facts">
+              <div>
+                <dt>km</dt>
+                <dd>{% if row.km is not None %}<strong>{{ row.km|floatformat:0 }}</strong>{% else %}—{% endif %}</dd>
+              </div>
+              <div>
+                <dt>{% if lang_pt %}Coords{% else %}Coords{% endif %}</dt>
+                <dd class="efc-sensores__coords">{{ row.lat|floatformat:4 }}, {{ row.lon|floatformat:4 }}</dd>
+              </div>
+              <div>
+                <dt>{% if lang_pt %}Última leitura{% else %}Last reading{% endif %}</dt>
+                <dd><strong>{{ row.freshness }}</strong></dd>
+              </div>
+              <div>
+                <dt>Health</dt>
+                <dd><strong>{{ row.health }}</strong></dd>
+              </div>
+            </dl>
+            <div class="efc-sensores__series efc-sensores__series--card">
+              {% for s in row.series %}
+                {% if s.variable == "soil_vwc" or s.variable == "water_potential_kpa" or s.variable == "precip_mm" %}
+                <span>{{ s.label }} <b>{{ s.value_txt }}</b>{% if s.unit %} {{ s.unit }}{% endif %}</span>
+                {% endif %}
+              {% empty %}
+                <span class="efc-muted">—</span>
+              {% endfor %}
+            </div>
+            <div class="efc-sensores__actions">
+              <button type="button"
+                      class="efc-btn efc-btn--ghost efc-btn--sm"
+                      data-sensor-pick
+                      data-location-id="{{ row.location_id }}"
+                      data-source="zentra"
+                      data-lat="{{ row.lat }}"
+                      data-lon="{{ row.lon }}"
+                      data-name="{{ row.name }}"
+                      data-km="{% if row.km is not None %}{{ row.km }}{% endif %}">
+                {% if lang_pt %}Série{% else %}Series{% endif %}
+              </button>
+              <a class="efc-btn efc-btn--ghost efc-btn--sm" href="{{ row.map_href }}">{% if lang_pt %}Mapa{% else %}Map{% endif %} →</a>
+            </div>
+          </div>
+        </article>
         {% empty %}
-        <tr><td colspan="7">{% if lang_pt %}Nenhum sensor Zentra ativo.{% else %}No active Zentra sensors.{% endif %}</td></tr>
+        <p class="efc-sensores__empty">{% if lang_pt %}Nenhum sensor Zentra ativo.{% else %}No active Zentra sensors.{% endif %}</p>
         {% endfor %}
-      </tbody>
-    </table>
-  </div>
+      </div>
 
-  <section class="efc-sensores__detail efc-sensores__detail--gallery" data-sensor-detail hidden aria-live="polite">
-    <header class="efc-sensores__detail-head">
-      <h2 class="efc-sensores__detail-title">{% if lang_pt %}Séries temporais{% else %}Time series{% endif %}</h2>
-      <p class="efc-sensores__detail-sub">{% if lang_pt %}Uma carta por variável · baixar CSV{% else %}One card per variable · download CSV{% endif %}</p>
-    </header>
-    {% include "monitor/components/sensor_inspect.html" %}
-  </section>
+      <section class="efc-sensores__detail efc-sensores__detail--gallery" data-sensor-detail hidden aria-live="polite">
+        <header class="efc-sensores__detail-head">
+          <h2 class="efc-sensores__detail-title">{% if lang_pt %}Séries temporais{% else %}Time series{% endif %}</h2>
+          <p class="efc-sensores__detail-sub">{% if lang_pt %}Uma carta por variável · baixar CSV{% else %}One card per variable · download CSV{% endif %}</p>
+        </header>
+        {% include "monitor/components/sensor_inspect.html" %}
+      </section>
+    </div>
+  </div>
 </div>
 {% endblock %}
