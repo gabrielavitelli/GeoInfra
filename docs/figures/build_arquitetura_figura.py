@@ -21,61 +21,62 @@ ITEM_ICON_SLOT = 90  # espaço horizontal para ícone escalado (evita overlap no
 
 COLORS = ["#2b6de8", "#178f7a", "#b8941f", "#d97706", "#6d28d9"]
 
+# Texto mínimo: 1 linha por item (sem subtítulo)
 PANELS = [
     {
         "num": "01",
-        "title": "FONTES DE DADOS",
+        "title": "FONTES",
         "header_icon": "imagery",
         "items": [
-            ("frame", "Satélite / ortofoto", "Esri ~2 m · ortofoto no zoom"),
-            ("rain", "Clima obs. / previsto", "INMET · ANA · MERGE · GFS"),
-            ("gauge", "Pluviômetros EWS/Orion", "rede ao longo da ferrovia"),
-            ("probe", "Sensores Zentra / ZL6", "TEROS · ATMOS · solo/chuva"),
-            ("track", "Malha operacional", "km · taludes · trechos"),
+            ("frame", "Satélite / ortofoto"),
+            ("rain", "Clima"),
+            ("gauge", "EWS / Orion"),
+            ("probe", "Zentra"),
+            ("track", "Malha (km)"),
         ],
     },
     {
         "num": "02",
-        "title": "PIPELINE DE DADOS",
+        "title": "PIPELINE",
         "header_icon": "pipe",
         "items": [
-            ("upload", "Ingestão automática", "EWS 1 h · Zentra 6 h · jobs"),
-            ("db", "Object storage + BigQuery", "GCS · tabelas analíticas"),
-            ("qc", "Cursors + validação QC", "filtros · tetos pluviométricos"),
-            ("catalog", "Catálogos / snapshots", "consulta rápida na app"),
+            ("upload", "Ingestão"),
+            ("db", "GCS + BigQuery"),
+            ("qc", "QC"),
+            ("catalog", "Snapshots"),
         ],
     },
     {
         "num": "03",
-        "title": "NÚCLEO EM NUVEM",
+        "title": "NÚCLEO",
         "header_icon": "rack",
         "items": [
-            ("server", "GCP escalável", "Cloud Run · BQ · GCS"),
-            ("nodes", "Scheduler + Secrets", "credenciais · cache · jobs"),
-            ("series", "Séries multi-fonte", "clima_series · dispositivos"),
-            ("meta", "Metadados + app", "estações · sensores · API"),
+            ("server", "Cloud Run"),
+            ("nodes", "Scheduler"),
+            ("series", "Séries"),
+            ("meta", "Metadados"),
         ],
     },
     {
         "num": "04",
-        "title": "INTELIGÊNCIA DE RISCO",
+        "title": "RISCO",
         "header_icon": "bars",
         "items": [
-            ("trend", "Suscetibilidade / anomalias", "análises e modelos"),
-            ("accum", "Acumulados + limiares", "24 h · 5 d · 7 d · 30 d"),
-            ("prio", "Priorização por km", "espacial · malha ferroviária"),
-            ("alert", "Alertas + Raijin IA", "inspeção · gestão de taludes"),
+            ("trend", "Anomalias"),
+            ("accum", "Acumulados"),
+            ("prio", "Priorização / km"),
+            ("alert", "Alertas"),
         ],
     },
     {
         "num": "05",
-        "title": "MONITOR E DECISÃO",
+        "title": "MONITOR",
         "header_icon": "monitor",
         "items": [
-            ("map", "Mapas 2D / 3D", "ferrovia · estações · sensores"),
-            ("dash", "Dashboards + Sensores", "médias · portas · CSV/PDF"),
-            ("report", "Boletins e previsões", "camada climática animada"),
-            ("query", "Consulta integrada", "km · túneis · taludes"),
+            ("map", "Mapas 2D / 3D"),
+            ("dash", "Dashboards"),
+            ("report", "Boletins"),
+            ("query", "Consulta"),
         ],
     },
 ]
@@ -168,15 +169,11 @@ def build_svg() -> str:
       }
       .title {
         font-family: "IBM Plex Sans Condensed", "Helvetica Neue", Arial, sans-serif;
-        font-size: 30px; font-weight: 800; letter-spacing: 0.02em; fill: #101010;
+        font-size: 36px; font-weight: 800; letter-spacing: 0.06em; fill: #101010;
       }
       .item {
         font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
-        font-size: 26px; font-weight: 800; fill: #101010;
-      }
-      .sub {
-        font-family: "IBM Plex Mono", Consolas, "Courier New", monospace;
-        font-size: 19.5px; font-weight: 600; fill: #333;
+        font-size: 30px; font-weight: 800; fill: #101010;
       }
       .arrow { fill: #222; }
     ]]></style>
@@ -231,17 +228,16 @@ def build_svg() -> str:
         step = (bottom - top) / max(n, 1)
         text_x = ITEM_ICON_SLOT
 
-        for j, (ikind, label, sub) in enumerate(panel["items"]):
-            iy = top + j * step
+        for j, item in enumerate(panel["items"]):
+            ikind, label = item[0], item[1]
+            iy = top + j * step + step * 0.15
             parts.append(f'    <g transform="translate(28,{iy:.1f})">')
             parts.append(
-                f'      <g transform="translate(0,2) scale({ITEM_ICON_SCALE})">{item_icon(ikind, color)}</g>'
+                f'      <g transform="translate(0,0) scale({ITEM_ICON_SCALE})">{item_icon(ikind, color)}</g>'
             )
+            # uma linha só — alinhada ao centro vertical do ícone
             parts.append(
-                f'      <text class="item" x="{text_x}" y="28">{esc(label)}</text>'
-            )
-            parts.append(
-                f'      <text class="sub" x="{text_x}" y="56">{esc(sub)}</text>'
+                f'      <text class="item" x="{text_x}" y="34">{esc(label)}</text>'
             )
             parts.append("    </g>")
         parts.append("  </g>")
