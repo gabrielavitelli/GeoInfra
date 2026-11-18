@@ -28,7 +28,7 @@ POPUP_VARS: tuple[str, ...] = (
 )
 
 VAR_LABELS_PT: dict[str, str] = {
-    "soil_vwc": "VWC solo",
+    "soil_vwc": "VWC: solo",
     "water_potential_kpa": "Pot. água",
     "precip_mm": "Precip",
     "battery_pct": "Bateria",
@@ -44,6 +44,24 @@ VAR_UNITS: dict[str, str] = {
     "signal_pct": "%",
     "soil_temp_c": "°C",
 }
+
+STATUS_LABELS_PT: dict[str, str] = {
+    "active": "ATIVO",
+    "inactive": "INATIVO",
+}
+
+STATUS_LABELS_EN: dict[str, str] = {
+    "active": "ACTIVE",
+    "inactive": "INACTIVE",
+}
+
+# Card primary reading preference (soil → potential → precip).
+PRIMARY_VARS: tuple[str, ...] = (
+    "soil_vwc",
+    "water_potential_kpa",
+    "precip_mm",
+    "soil_temp_c",
+)
 
 
 def _bq_dataset(dataset: str | None = None) -> str:
@@ -555,10 +573,28 @@ def build_zentra_sensor_rows(
             last_ts = datetime.fromtimestamp(lm_i, tz=timezone.utc)
         km = _nearest_km(lat, lon, main_line, cum_km)
         status = str(r.get("status") or "").strip() or "—"
+        status_key = status.lower()
+        status_map = STATUS_LABELS_PT if lang_pt else STATUS_LABELS_EN
+        status_label = status_map.get(status_key, status.upper() if status != "—" else "—")
         asset = str(r.get("asset_class") or "").strip() or "—"
-        # Health summary from battery/signal when present
-        bat = next((s for s in series if s["variable"] == "battery_pct"), None)
+        # Signal / cobertura for card metric (prefer real signal %).
         sig = next((s for s in series if s["variable"] == "signal_pct"), None)
+        bat = next((s for s in series if s["variable"] == "battery_pct"), None)
+        cobertura_txt = f"{sig['value_txt']}%" if sig else "—"
+        primary = next(
+            (s for v in PRIMARY_VARS for s in series if s["variable"] == v),
+            None,
+        )
+        # Location line: Trecho km N – sensor types (photo-style).
+        sensors_short = " · ".join(sensors[:3]) if sensors else ""
+        if km is not None and sensors_short:
+            location_line = f"Trecho km {km:.0f} – {sensors_short}"
+        elif km is not None:
+            location_line = f"Trecho km {km:.0f}"
+        elif sensors_short:
+            location_line = sensors_short
+        else:
+            location_line = loc
         health_bits = []
         if bat:
             health_bits.append(f"bat {bat['value_txt']}%")
@@ -572,9 +608,13 @@ def build_zentra_sensor_rows(
                 "lon": lon,
                 "km": round(km, 1) if km is not None else None,
                 "status": status,
+                "status_label": status_label,
                 "asset_class": asset,
                 "sensors": sensors,
                 "series": series,
+                "primary": primary,
+                "cobertura": cobertura_txt,
+                "location_line": location_line,
                 "health": " · ".join(health_bits) if health_bits else "—",
                 "last_ts": last_ts.isoformat() if isinstance(last_ts, datetime) else None,
                 "freshness": _freshness_label(last_ts, lang_pt=lang_pt),

@@ -99,6 +99,49 @@ def test_payload_multi_overview_from_gcs(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("ZENTRA_READINGS_GCS_URI", str(tmp_path / "missing_readings.ndjson"))
     monkeypatch.delenv("ZENTRA_SKIP_GCS_FALLBACK", raising=False)
 
+    # Dense readings fixture — multiple raw timestamps (no daily mean).
+    readings_lines = []
+    for i, hour in enumerate((10, 11, 12, 13, 14)):
+        readings_lines.append(
+            json.dumps(
+                {
+                    "location_id": "zentra_z6_35950",
+                    "measurement": "Water Content",
+                    "mapped_variable": "soil_vwc",
+                    "value": 0.20 + i * 0.01,
+                    "datetime": f"2026-11-18T{hour:02d}:00:00+00:00",
+                    "port_num": 1,
+                }
+            )
+        )
+        readings_lines.append(
+            json.dumps(
+                {
+                    "location_id": "zentra_z6_35950",
+                    "measurement": "Battery Percent",
+                    "mapped_variable": "battery_pct",
+                    "value": 90.0,
+                    "datetime": f"2026-11-18T{hour:02d}:00:00+00:00",
+                    "port_num": 0,
+                }
+            )
+        )
+        readings_lines.append(
+            json.dumps(
+                {
+                    "location_id": "zentra_z6_35950",
+                    "measurement": "Signal",
+                    "mapped_variable": "signal_pct",
+                    "value": 55.0,
+                    "datetime": f"2026-11-18T{hour:02d}:00:00+00:00",
+                    "port_num": 0,
+                }
+            )
+        )
+    readings_path = tmp_path / "readings.ndjson"
+    readings_path.write_text("\n".join(readings_lines) + "\n", encoding="utf-8")
+    monkeypatch.setenv("ZENTRA_READINGS_GCS_URI", str(readings_path))
+
     payload = build_sensor_series_payload(
         location_id="zentra_z6_35950",
         family="__overview__",
@@ -107,6 +150,11 @@ def test_payload_multi_overview_from_gcs(tmp_path: Path, monkeypatch):
     )
     assert payload["available"] is True
     assert payload["mode"] == "gallery"
+    assert payload["resolution"] == "raw"
     assert len(payload["traces"]) >= 2
     assert payload["port_chips"][0]["id"] == "__overview__"
-    assert payload["n_points"] >= 2
+    assert payload["n_points"] >= 5
+    vwc = next(t for t in payload["traces"] if t["variable"] == "soil_vwc")
+    assert vwc["n_points"] >= 5
+    assert "battery_pct" in payload["active_variables"]
+    assert "signal_pct" in payload["active_variables"]

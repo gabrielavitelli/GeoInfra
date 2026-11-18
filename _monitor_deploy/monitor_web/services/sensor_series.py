@@ -24,7 +24,7 @@ _DEFAULT_SERIES_GCS = "gs://efc-clima-data/obs/zentra/zentra_clima_series_latest
 _DEFAULT_READINGS_GCS = "gs://efc-clima-data/obs/zentra/zentra_readings_latest.ndjson"
 
 VAR_LABELS_PT: dict[str, str] = {
-    "soil_vwc": "VWC solo",
+    "soil_vwc": "VWC: solo",
     "water_potential_kpa": "Pot. água",
     "soil_temp_c": "Temp solo",
     "precip_mm": "Precip",
@@ -35,6 +35,9 @@ VAR_LABELS_PT: dict[str, str] = {
     "battery_v": "Bateria V",
     "signal_pct": "Sinal",
 }
+
+# Logger health — plotted together on a de-emphasized gray card.
+HEALTH_VARS: tuple[str, ...] = ("battery_pct", "signal_pct")
 
 # Chart card titles (reference-style long labels).
 VAR_CHART_TITLES_PT: dict[str, str] = {
@@ -90,7 +93,7 @@ VAR_COLORS: dict[str, str] = {
     "signal_pct": "#e377c2",
 }
 
-# Default multi-series overview (gallery cards — prefer soil + precip).
+# Default multi-series overview (gallery cards — prefer soil + precip + health).
 MULTI_OVERVIEW_VARS: tuple[str, ...] = (
     "soil_vwc",
     "water_potential_kpa",
@@ -100,6 +103,7 @@ MULTI_OVERVIEW_VARS: tuple[str, ...] = (
     "rh_pct",
     "pressure_hpa",
     "battery_pct",
+    "signal_pct",
 )
 
 # Sensor-family → variables (port/série menus).
@@ -118,7 +122,7 @@ FAMILY_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 
 MEASUREMENT_TO_VAR: dict[str, str] = {
     "water content": "soil_vwc",
-    "raw vwc": "soil_vwc",
+    # Do NOT map "Raw VWC" → soil_vwc (different unit / scale; pollutes VWC charts).
     "matric potential": "water_potential_kpa",
     "precipitation": "precip_mm",
     "soil temperature": "soil_temp_c",
@@ -130,6 +134,7 @@ MEASUREMENT_TO_VAR: dict[str, str] = {
     "battery": "battery_pct",
     "battery voltage": "battery_v",
     "signal strength": "signal_pct",
+    "signal": "signal_pct",
     "rssi": "signal_pct",
 }
 
@@ -545,6 +550,7 @@ def _points_from_gcs_series(
     days: int,
     limit: int = 2500,
 ) -> list[dict[str, Any]]:
+    """Raw clima_series snapshot points (no daily mean / downsample)."""
     if not _gcs_fallback_enabled():
         return []
     path = (os.environ.get("ZENTRA_SERIES_GCS_URI") or _DEFAULT_SERIES_GCS).strip()
@@ -553,8 +559,7 @@ def _points_from_gcs_series(
         return []
     start = date.today() - timedelta(days=max(days, 1))
     loc = location_id.strip()
-    # date → [values]
-    buckets: dict[str, list[float]] = {}
+    out: list[dict[str, Any]] = []
     try:
         for line in raw.decode("utf-8").splitlines():
             line = line.strip()
@@ -586,20 +591,32 @@ def _points_from_gcs_series(
                 continue
             if variable == "water_potential_kpa" and fv <= _WP_SENTINEL:
                 continue
-            buckets.setdefault(d_str, []).append(fv)
+            # Prefer ingested_at / valid_time when present; else noon UTC on date.
+            ts_iso = None
+            for key in ("valid_time", "ingested_at", "timestamp", "datetime"):
+                raw_ts = row.get(key)
+                if raw_ts is None or raw_ts == "":
+                    continue
+                try:
+                    if isinstance(raw_ts, (int, float)):
+                        ts_iso = datetime.fromtimestamp(int(raw_ts), tz=timezone.utc).isoformat()
+                    else:
+                        ts_iso = datetime.fromisoformat(
+                            str(raw_ts).replace("Z", "+00:00")
+                        ).astimezone(timezone.utc).isoformat()
+                    break
+                except (OverflowError, OSError, ValueError, TypeError):
+                    continue
+            if not ts_iso:
+                ts_iso = datetime(
+                    d_obj.year, d_obj.month, d_obj.day, 12, 0, tzinfo=timezone.utc
+                ).isoformat()
+            out.append({"t": ts_iso, "v": fv, "n": 1})
     except Exception as exc:
         logger.warning("sensor_series GCS series points failed: %s", exc)
         return []
-    out: list[dict[str, Any]] = []
-    for d_str in sorted(buckets.keys())[:limit]:
-        vals = buckets[d_str]
-        if not vals:
-            continue
-        mean = sum(vals) / len(vals)
-        d_obj = date.fromisoformat(d_str)
-        ts = datetime(d_obj.year, d_obj.month, d_obj.day, 12, 0, tzinfo=timezone.utc).isoformat()
-        out.append({"t": ts, "v": mean, "n": len(vals)})
-    return out
+    out.sort(key=lambda p: p["t"])
+    return out[:limit]
 
 
 def _points_from_gcs_readings(
@@ -693,13 +710,14 @@ def fetch_series_points(
     variable: str = "soil_vwc",
     days: int = 7,
     bq_dataset: str | None = None,
-    limit: int = 2500,
+    limit: int = 5000,
     port_num: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Series from clima_series (daily mean) or GCS readings (dense timestamps).
+    """Raw measurement points — no daily/hourly mean aggregation.
 
-    Prefer BigQuery daily means for multi-day windows. For short windows, try
-    GCS readings (port-aware) when available, then GCS clima_series snapshot.
+    Prefer GCS readings (true ``datetime`` stamps) for Zentra, then BQ
+    ``clima_series`` rows as-is (``valid_time`` / ``ingested_at``), then the
+    GCS clima_series snapshot.
     """
     if not location_id or not variable:
         return []
@@ -708,8 +726,9 @@ def fetch_series_points(
     client = _client()
     start = date.today() - timedelta(days=max(days, 1))
 
-    # Dense readings first for 24h (and as enrichment when BQ empty).
-    if source == "zentra" and days <= 1:
+    # Dense raw readings first (all windows) — avoids BQ re-ingest duplicates
+    # and daily AVG collapse.
+    if source == "zentra":
         dense = _points_from_gcs_readings(
             location_id=location_id,
             variable=variable,
@@ -727,9 +746,8 @@ def fetch_series_points(
 
             sql = f"""
                 SELECT
-                  date AS d,
-                  AVG(value) AS value,
-                  COUNT(*) AS n
+                  COALESCE(valid_time, ingested_at, TIMESTAMP(date)) AS t,
+                  value AS value
                 FROM `{pfx}.clima_series`
                 WHERE source = @src
                   AND location_id = @loc
@@ -737,8 +755,7 @@ def fetch_series_points(
                   AND date >= @start
                   AND value IS NOT NULL
                   AND (@var != 'water_potential_kpa' OR value > {_WP_SENTINEL})
-                GROUP BY 1
-                ORDER BY 1
+                ORDER BY t
                 LIMIT @lim
             """
             job = client.query(
@@ -755,9 +772,9 @@ def fetch_series_points(
             )
             out: list[dict[str, Any]] = []
             for r in job.result():
-                d = r.get("d")
+                t = r.get("t")
                 v = r.get("value")
-                if v is None or d is None:
+                if v is None or t is None:
                     continue
                 try:
                     fv = float(v)
@@ -765,11 +782,8 @@ def fetch_series_points(
                     continue
                 if not math.isfinite(fv):
                     continue
-                if isinstance(d, date) and not isinstance(d, datetime):
-                    ts = datetime(d.year, d.month, d.day, 12, 0, tzinfo=timezone.utc).isoformat()
-                else:
-                    ts = d.isoformat() if hasattr(d, "isoformat") else str(d)
-                out.append({"t": ts, "v": fv, "n": int(r.get("n") or 0)})
+                ts = t.isoformat() if hasattr(t, "isoformat") else str(t)
+                out.append({"t": ts, "v": fv, "n": 1})
             if out:
                 return out
             logger.warning("sensor_series BQ points empty; trying GCS")
@@ -778,15 +792,6 @@ def fetch_series_points(
 
     if source != "zentra":
         return []
-    dense = _points_from_gcs_readings(
-        location_id=location_id,
-        variable=variable,
-        days=days,
-        port_num=port_num,
-        limit=limit,
-    )
-    if dense:
-        return dense
     return _points_from_gcs_series(
         location_id=location_id,
         variable=variable,
@@ -1038,11 +1043,16 @@ def build_sensor_series_payload(
     if variables:
         active_vars = [v for v in variables if v]
     elif want_multi and fam_id == "__overview__":
-        # Gallery: one card per available variable (priority order, capped).
+        # Gallery: env cards (priority, capped) + always reserve health pair.
         ranked = [v for v in CHART_VARS_PRIORITY if (not avail or v in avail)]
         if not ranked:
             ranked = [v for v in MULTI_OVERVIEW_VARS if (not avail or v in avail)]
-        active_vars = ranked[:8] if ranked else ([var] if var else [])
+        env_ranked = [v for v in ranked if v not in HEALTH_VARS]
+        active_vars = env_ranked[:6] if env_ranked else ([var] if var else [])
+        # Always attempt health pair; empty traces are dropped in _build_traces.
+        for hv in HEALTH_VARS:
+            if hv not in active_vars:
+                active_vars.append(hv)
         if not active_vars:
             active_vars = list(avail[:6]) if avail else [var]
     elif want_multi and fam_id != "__overview__":
@@ -1129,7 +1139,6 @@ def build_sensor_series_payload(
         "latest": latest,
         "freshness": freshness,
         "n_points": sum(t.get("n_points") or 0 for t in traces) if traces else len(points),
-        "resolution": "hourly" if days_i <= 1 and any(
-            (t.get("points") or [{}])[0].get("n") == 1 for t in traces
-        ) else "daily",
+        # Always raw measurements (no hourly/daily mean aggregation).
+        "resolution": "raw",
     }

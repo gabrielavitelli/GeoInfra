@@ -30,7 +30,7 @@ def test_popup_html_compact():
             "series": [
                 {
                     "variable": "soil_vwc",
-                    "label": "VWC solo",
+                    "label": "VWC: solo",
                     "value_txt": "0.218",
                     "unit": "m³/m³",
                 }
@@ -38,7 +38,7 @@ def test_popup_html_compact():
         }
     )
     assert "Zentra z6-35939" in html
-    assert "VWC solo" in html
+    assert "VWC: solo" in html
     assert "km 412" in html
     assert "TEROS 12" in html
 
