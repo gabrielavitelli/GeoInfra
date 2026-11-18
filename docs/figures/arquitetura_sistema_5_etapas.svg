@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1760" height="560" viewBox="0 0 1760 560" role="img" aria-label="Arquitetura do sistema em cinco etapas">
+  <defs>
+    <style type="text/css"><![CDATA[
+      .bg { fill: #f1f1ee; }
+      .panel { fill: #ffffff; stroke-width: 2.25; }
+      .num {
+        font-family: "IBM Plex Mono", Consolas, "Courier New", monospace;
+        font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+      }
+      .title {
+        font-family: "IBM Plex Sans Condensed", "Helvetica Neue", Arial, sans-serif;
+        font-size: 14px; font-weight: 700; letter-spacing: 0.045em; fill: #141414;
+      }
+      .item {
+        font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+        font-size: 12.5px; font-weight: 600; fill: #1c1c1c;
+      }
+      .sub {
+        font-family: "IBM Plex Mono", Consolas, "Courier New", monospace;
+        font-size: 10.25px; fill: #5a5a5a;
+      }
+      .arrow { fill: #2e2e2e; }
+    ]]></style>
+  </defs>
+  <rect class="bg" width="1760" height="560"/>
+  <g stroke="#d8d8d2" stroke-width="0.55" opacity="0.9">
+    <path d="M0 0H1760"/>
+    <path d="M0 45H1760"/>
+    <path d="M0 90H1760"/>
+    <path d="M0 135H1760"/>
+    <path d="M0 180H1760"/>
+    <path d="M0 225H1760"/>
+    <path d="M0 270H1760"/>
+    <path d="M0 315H1760"/>
+    <path d="M0 360H1760"/>
+    <path d="M0 405H1760"/>
+    <path d="M0 450H1760"/>
+    <path d="M0 495H1760"/>
+    <path d="M0 540H1760"/>
+    <path d="M0 0V560"/>
+    <path d="M45 0V560"/>
+    <path d="M90 0V560"/>
+    <path d="M135 0V560"/>
+    <path d="M180 0V560"/>
+    <path d="M225 0V560"/>
+    <path d="M270 0V560"/>
+    <path d="M315 0V560"/>
+    <path d="M360 0V560"/>
+    <path d="M405 0V560"/>
+    <path d="M450 0V560"/>
+    <path d="M495 0V560"/>
+    <path d="M540 0V560"/>
+    <path d="M585 0V560"/>
+    <path d="M630 0V560"/>
+    <path d="M675 0V560"/>
+    <path d="M720 0V560"/>
+    <path d="M765 0V560"/>
+    <path d="M810 0V560"/>
+    <path d="M855 0V560"/>
+    <path d="M900 0V560"/>
+    <path d="M945 0V560"/>
+    <path d="M990 0V560"/>
+    <path d="M1035 0V560"/>
+    <path d="M1080 0V560"/>
+    <path d="M1125 0V560"/>
+    <path d="M1170 0V560"/>
+    <path d="M1215 0V560"/>
+    <path d="M1260 0V560"/>
+    <path d="M1305 0V560"/>
+    <path d="M1350 0V560"/>
+    <path d="M1395 0V560"/>
+    <path d="M1440 0V560"/>
+    <path d="M1485 0V560"/>
+    <path d="M1530 0V560"/>
+    <path d="M1575 0V560"/>
+    <path d="M1620 0V560"/>
+    <path d="M1665 0V560"/>
+    <path d="M1710 0V560"/>
+    <path d="M1755 0V560"/>
+  </g>
+  <g transform="translate(28,30)">
+    <rect class="panel" width="308" height="500" rx="2" ry="2" stroke="#2b6de8"/>
+    <rect width="308" height="5" fill="#2b6de8"/>
+    <g transform="translate(138.0,24)">
+      <circle cx="16" cy="16" r="16" fill="none" stroke="#2b6de8" stroke-width="2"/>
+      <rect x="7" y="9" width="18" height="14" fill="none" stroke="#2b6de8" stroke-width="1.6"/>
+      <path d="M9 19 L13 14 L16 17 L19 13 L23 19" fill="none" stroke="#2b6de8" stroke-width="1.5"/>
+      <circle cx="11" cy="12" r="1.4" fill="#2b6de8"/></g>
+    <text class="num" x="154.0" y="78" text-anchor="middle" fill="#2b6de8">01</text>
+    <text class="title" x="154.0" y="100" text-anchor="middle">FONTES DE DADOS</text>
+    <line x1="36" y1="114" x2="272" y2="114" stroke="#2b6de8" stroke-width="1.15"/>
+    <g transform="translate(26,140.0)">
+      <rect x="0" y="2" width="22" height="16" fill="none" stroke="#2b6de8" stroke-width="1.55"/><path d="M4 8h14M4 12h10" stroke="#2b6de8" stroke-width="1.35"/>
+      <text class="item" x="36" y="10">Satélite / ortofoto</text>
+      <text class="sub" x="36" y="25">Esri ~2 m · ortofoto no zoom</text>
+    </g>
+    <g transform="translate(26,206.4)">
+      <path d="M3 12 Q3 3 11 3 Q13 0 17 3 Q24 3 24 9 Q28 9 28 13 Q28 18 22 18 H8 Q3 18 3 12Z" fill="none" stroke="#2b6de8" stroke-width="1.5"/><path d="M9 20v5M15 20v7M21 20v4" stroke="#2b6de8" stroke-width="1.45"/>
+      <text class="item" x="36" y="10">Clima obs. / previsto</text>
+      <text class="sub" x="36" y="25">INMET · ANA · MERGE · GFS</text>
+    </g>
+    <g transform="translate(26,272.8)">
+      <path d="M11 1v12M4 7l7 7 7-7" fill="none" stroke="#2b6de8" stroke-width="1.55"/><circle cx="11" cy="22" r="3.2" fill="none" stroke="#2b6de8" stroke-width="1.5"/>
+      <text class="item" x="36" y="10">Pluviômetros EWS/Orion</text>
+      <text class="sub" x="36" y="25">rede ao longo da ferrovia</text>
+    </g>
+    <g transform="translate(26,339.2)">
+      <rect x="2" y="1" width="18" height="22" fill="none" stroke="#2b6de8" stroke-width="1.55"/><path d="M6 7h10M6 12h10M6 17h7" stroke="#2b6de8" stroke-width="1.35"/>
+      <text class="item" x="36" y="10">Sensores Zentra / ZL6</text>
+      <text class="sub" x="36" y="25">TEROS · ATMOS · solo/chuva</text>
+    </g>
+    <g transform="translate(26,405.6)">
+      <path d="M1 5h22M1 11h22M1 17h14" stroke="#2b6de8" stroke-width="1.55"/><circle cx="21" cy="17" r="3.2" fill="none" stroke="#2b6de8" stroke-width="1.45"/>
+      <text class="item" x="36" y="10">Malha operacional</text>
+      <text class="sub" x="36" y="25">km · taludes · trechos</text>
+    </g>
+  </g>
+  <polygon class="arrow" points="342,280.0 356,268.0 356,275.0 370,275.0 370,285.0 356,285.0 356,292.0"/>
+  <g transform="translate(376,30)">
+    <rect class="panel" width="308" height="500" rx="2" ry="2" stroke="#178f7a"/>
+    <rect width="308" height="5" fill="#178f7a"/>
+    <g transform="translate(138.0,24)">
+      <circle cx="16" cy="16" r="16" fill="none" stroke="#178f7a" stroke-width="2"/>
+      <rect x="5" y="12" width="22" height="8" fill="none" stroke="#178f7a" stroke-width="1.6"/>
+      <circle cx="11" cy="16" r="2.6" fill="none" stroke="#178f7a" stroke-width="1.45"/>
+      <circle cx="21" cy="16" r="2.6" fill="none" stroke="#178f7a" stroke-width="1.45"/>
+      <path d="M2 16h3M27 16h3" stroke="#178f7a" stroke-width="1.6"/></g>
+    <text class="num" x="154.0" y="78" text-anchor="middle" fill="#178f7a">02</text>
+    <text class="title" x="154.0" y="100" text-anchor="middle">PIPELINE DE DADOS</text>
+    <line x1="36" y1="114" x2="272" y2="114" stroke="#178f7a" stroke-width="1.15"/>
+    <g transform="translate(26,140.0)">
+      <path d="M4 18 L12 5 L20 18" fill="none" stroke="#178f7a" stroke-width="1.6"/><path d="M12 7v16" stroke="#178f7a" stroke-width="1.6"/>
+      <text class="item" x="36" y="10">Ingestão automática</text>
+      <text class="sub" x="36" y="25">EWS 1 h · Zentra 6 h · jobs</text>
+    </g>
+    <g transform="translate(26,223.0)">
+      <ellipse cx="12" cy="5" rx="10" ry="4" fill="none" stroke="#178f7a" stroke-width="1.5"/><path d="M2 5v11c0 4 20 4 20 0V5" fill="none" stroke="#178f7a" stroke-width="1.5"/>
+      <text class="item" x="36" y="10">Object storage + BigQuery</text>
+      <text class="sub" x="36" y="25">GCS · tabelas analíticas</text>
+    </g>
+    <g transform="translate(26,306.0)">
+      <path d="M3 5h18M3 11h18M3 17h11" stroke="#178f7a" stroke-width="1.5"/><path d="M17 15l3 3 7-8" fill="none" stroke="#178f7a" stroke-width="1.65"/>
+      <text class="item" x="36" y="10">Cursors + validação QC</text>
+      <text class="sub" x="36" y="25">filtros · tetos pluviométricos</text>
+    </g>
+    <g transform="translate(26,389.0)">
+      <rect x="2" y="3" width="20" height="16" fill="none" stroke="#178f7a" stroke-width="1.55"/><path d="M6 8h12M6 13h9" stroke="#178f7a" stroke-width="1.35"/>
+      <text class="item" x="36" y="10">Catálogos / snapshots</text>
+      <text class="sub" x="36" y="25">consulta rápida na app</text>
+    </g>
+  </g>
+  <polygon class="arrow" points="690,280.0 704,268.0 704,275.0 718,275.0 718,285.0 704,285.0 704,292.0"/>
+  <g transform="translate(724,30)">
+    <rect class="panel" width="308" height="500" rx="2" ry="2" stroke="#b8941f"/>
+    <rect width="308" height="5" fill="#b8941f"/>
+    <g transform="translate(138.0,24)">
+      <circle cx="16" cy="16" r="16" fill="none" stroke="#b8941f" stroke-width="2"/>
+      <rect x="7" y="7" width="18" height="18" fill="none" stroke="#b8941f" stroke-width="1.55"/>
+      <path d="M10 12h12M10 16h12M10 20h12" stroke="#b8941f" stroke-width="1.3"/>
+      <circle cx="12" cy="12" r="1.05" fill="#b8941f"/>
+      <circle cx="12" cy="16" r="1.05" fill="#b8941f"/>
+      <circle cx="12" cy="20" r="1.05" fill="#b8941f"/></g>
+    <text class="num" x="154.0" y="78" text-anchor="middle" fill="#b8941f">03</text>
+    <text class="title" x="154.0" y="100" text-anchor="middle">NÚCLEO EM NUVEM</text>
+    <line x1="36" y1="114" x2="272" y2="114" stroke="#b8941f" stroke-width="1.15"/>
+    <g transform="translate(26,140.0)">
+      <rect x="2" y="4" width="20" height="14" fill="none" stroke="#b8941f" stroke-width="1.55"/><path d="M6 9h12M6 13h8" stroke="#b8941f" stroke-width="1.3"/>
+      <text class="item" x="36" y="10">GCP escalável</text>
+      <text class="sub" x="36" y="25">Cloud Run · BQ · GCS</text>
+    </g>
+    <g transform="translate(26,223.0)">
+      <circle cx="7" cy="12" r="3.1" fill="none" stroke="#b8941f" stroke-width="1.45"/><circle cx="18" cy="5" r="3.1" fill="none" stroke="#b8941f" stroke-width="1.45"/><circle cx="18" cy="19" r="3.1" fill="none" stroke="#b8941f" stroke-width="1.45"/><path d="M10 11l5-4M10 13l5 4" stroke="#b8941f" stroke-width="1.35"/>
+      <text class="item" x="36" y="10">Scheduler + Secrets</text>
+      <text class="sub" x="36" y="25">credenciais · cache · jobs</text>
+    </g>
+    <g transform="translate(26,306.0)">
+      <path d="M1 18 L6 10 L11 14 L16 4 L22 9" fill="none" stroke="#b8941f" stroke-width="1.55"/><path d="M1 20h22" stroke="#b8941f" stroke-width="1.3"/>
+      <text class="item" x="36" y="10">Séries multi-fonte</text>
+      <text class="sub" x="36" y="25">clima_series · dispositivos</text>
+    </g>
+    <g transform="translate(26,389.0)">
+      <rect x="3" y="3" width="16" height="16" fill="none" stroke="#b8941f" stroke-width="1.55"/><path d="M7 8h8M7 12h6" stroke="#b8941f" stroke-width="1.3"/>
+      <text class="item" x="36" y="10">Metadados + app</text>
+      <text class="sub" x="36" y="25">estações · sensores · API</text>
+    </g>
+  </g>
+  <polygon class="arrow" points="1038,280.0 1052,268.0 1052,275.0 1066,275.0 1066,285.0 1052,285.0 1052,292.0"/>
+  <g transform="translate(1072,30)">
+    <rect class="panel" width="308" height="500" rx="2" ry="2" stroke="#d97706"/>
+    <rect width="308" height="5" fill="#d97706"/>
+    <g transform="translate(138.0,24)">
+      <circle cx="16" cy="16" r="16" fill="none" stroke="#d97706" stroke-width="2"/>
+      <path d="M7 23V14h4v9M14 23V10h4v13M21 23V7h4v16" fill="none" stroke="#d97706" stroke-width="1.55"/>
+      <path d="M6 12h20" stroke="#d97706" stroke-width="1" stroke-dasharray="2.2 1.8"/></g>
+    <text class="num" x="154.0" y="78" text-anchor="middle" fill="#d97706">04</text>
+    <text class="title" x="154.0" y="100" text-anchor="middle">INTELIGÊNCIA DE RISCO</text>
+    <line x1="36" y1="114" x2="272" y2="114" stroke="#d97706" stroke-width="1.15"/>
+    <g transform="translate(26,140.0)">
+      <path d="M3 18 L9 7 L15 14 L22 3" fill="none" stroke="#d97706" stroke-width="1.65"/><circle cx="22" cy="3" r="2.1" fill="#d97706"/>
+      <text class="item" x="36" y="10">Suscetibilidade / anomalias</text>
+      <text class="sub" x="36" y="25">análises e modelos</text>
+    </g>
+    <g transform="translate(26,223.0)">
+      <rect x="2" y="3" width="20" height="16" fill="none" stroke="#d97706" stroke-width="1.55"/><path d="M6 15V9M10 15V7M14 15V10M18 15V6" stroke="#d97706" stroke-width="1.45"/>
+      <text class="item" x="36" y="10">Acumulados + limiares</text>
+      <text class="sub" x="36" y="25">24 h · 5 d · 7 d · 30 d</text>
+    </g>
+    <g transform="translate(26,306.0)">
+      <path d="M12 3 L4 19h16Z" fill="none" stroke="#d97706" stroke-width="1.55"/><path d="M12 9v5M12 16.2v1.2" stroke="#d97706" stroke-width="1.55"/>
+      <text class="item" x="36" y="10">Priorização por km</text>
+      <text class="sub" x="36" y="25">espacial · malha ferroviária</text>
+    </g>
+    <g transform="translate(26,389.0)">
+      <rect x="2" y="5" width="20" height="12" fill="none" stroke="#d97706" stroke-width="1.55"/><path d="M7 5v12M2 11h20" stroke="#d97706" stroke-width="1.25"/>
+      <text class="item" x="36" y="10">Alertas + Raijin IA</text>
+      <text class="sub" x="36" y="25">inspeção · gestão de taludes</text>
+    </g>
+  </g>
+  <polygon class="arrow" points="1386,280.0 1400,268.0 1400,275.0 1414,275.0 1414,285.0 1400,285.0 1400,292.0"/>
+  <g transform="translate(1420,30)">
+    <rect class="panel" width="308" height="500" rx="2" ry="2" stroke="#6d28d9"/>
+    <rect width="308" height="5" fill="#6d28d9"/>
+    <g transform="translate(138.0,24)">
+      <circle cx="16" cy="16" r="16" fill="none" stroke="#6d28d9" stroke-width="2"/>
+      <rect x="6" y="8" width="20" height="14" fill="none" stroke="#6d28d9" stroke-width="1.55"/>
+      <path d="M12 22h8M16 22v-2" stroke="#6d28d9" stroke-width="1.45"/>
+      <path d="M9 14h8M9 17h5" stroke="#6d28d9" stroke-width="1.25"/></g>
+    <text class="num" x="154.0" y="78" text-anchor="middle" fill="#6d28d9">05</text>
+    <text class="title" x="154.0" y="100" text-anchor="middle">MONITOR E DECISÃO</text>
+    <line x1="36" y1="114" x2="272" y2="114" stroke="#6d28d9" stroke-width="1.15"/>
+    <g transform="translate(26,140.0)">
+      <rect x="1" y="3" width="22" height="16" fill="none" stroke="#6d28d9" stroke-width="1.55"/><path d="M4 14l5-5 4 3 5-6" fill="none" stroke="#6d28d9" stroke-width="1.45"/><circle cx="18" cy="7" r="1.6" fill="#6d28d9"/>
+      <text class="item" x="36" y="10">Mapas 2D / 3D</text>
+      <text class="sub" x="36" y="25">ferrovia · estações · sensores</text>
+    </g>
+    <g transform="translate(26,223.0)">
+      <rect x="1" y="2" width="10" height="8" fill="none" stroke="#6d28d9" stroke-width="1.45"/><rect x="13" y="2" width="10" height="8" fill="none" stroke="#6d28d9" stroke-width="1.45"/><rect x="1" y="13" width="22" height="8" fill="none" stroke="#6d28d9" stroke-width="1.45"/>
+      <text class="item" x="36" y="10">Dashboards + Sensores</text>
+      <text class="sub" x="36" y="25">médias · portas · CSV/PDF</text>
+    </g>
+    <g transform="translate(26,306.0)">
+      <path d="M5 2h12l5 5v15H5Z" fill="none" stroke="#6d28d9" stroke-width="1.5"/><path d="M17 2v5h5M8 12h10M8 16h8" stroke="#6d28d9" stroke-width="1.3"/>
+      <text class="item" x="36" y="10">Boletins e previsões</text>
+      <text class="sub" x="36" y="25">camada climática animada</text>
+    </g>
+    <g transform="translate(26,389.0)">
+      <circle cx="11" cy="11" r="7" fill="none" stroke="#6d28d9" stroke-width="1.55"/><path d="M16 16l6 6" stroke="#6d28d9" stroke-width="1.55"/>
+      <text class="item" x="36" y="10">Consulta integrada</text>
+      <text class="sub" x="36" y="25">km · túneis · taludes</text>
+    </g>
+  </g>
+  <g fill="none" stroke="#222" stroke-width="1.4" opacity="0.55"><path d="M12 12h16M12 12v16"/><path d="M1748 12h-16M1748 12v16"/><path d="M12 548h16M12 548v-16"/><path d="M1748 548h-16M1748 548v-16"/></g>
+</svg>
