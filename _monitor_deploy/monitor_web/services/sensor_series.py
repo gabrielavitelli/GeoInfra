@@ -13,8 +13,23 @@ import os
 import re
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
+
+_TZ_SP = ZoneInfo("America/Sao_Paulo")
+
+# Distinct stroke colors when one variable spans multiple TEROS ports/depths.
+PORT_COLORS: tuple[str, ...] = (
+    "#1f77b4",
+    "#ff7f0e",
+    "#2ca02c",
+    "#d62728",
+    "#9467bd",
+    "#8c564b",
+    "#e377c2",
+    "#17becf",
+)
 
 _WP_SENTINEL = -90000.0
 
@@ -287,14 +302,66 @@ def default_variable_for_ports(ports: list[dict[str, Any]]) -> tuple[str, str]:
 
 def _parse_days(raw: str | int | None) -> int:
     try:
-        d = int(raw) if raw is not None else 7
+        d = int(raw) if raw is not None else 30
     except (TypeError, ValueError):
-        d = 7
+        d = 30
     if d <= 1:
         return 1
     if d <= 7:
         return 7
-    return 30
+    if d <= 14:
+        return 14
+    if d <= 30:
+        return 30
+    return min(d, 90)
+
+
+def _parse_iso_date(raw: str | None) -> date | None:
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(str(raw).strip()[:10])
+    except ValueError:
+        return None
+
+
+def _freshness_from_ts(ts: datetime | None, *, lang_pt: bool = True) -> str:
+    if ts is None:
+        return "—"
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=_TZ_SP)
+    now = datetime.now(_TZ_SP)
+    age_s = (now - ts.astimezone(_TZ_SP)).total_seconds()
+    if age_s < 0:
+        age_s = 0.0
+    age_m = age_s / 60.0
+    age_h = age_s / 3600.0
+    if age_m < 60:
+        n = max(1, int(round(age_m))) if age_m >= 1 else 0
+        if n <= 0:
+            return "agora" if lang_pt else "now"
+        return f"há {n} min" if lang_pt else f"{n}m ago"
+    if age_h < 24:
+        n = max(1, int(round(age_h)))
+        return f"há {n} h" if lang_pt else f"{n}h ago"
+    n = max(1, int(round(age_h / 24.0)))
+    return f"há {n} d" if lang_pt else f"{n}d ago"
+
+
+def _span_days(points: list[dict[str, Any]]) -> float:
+    """Calendar span covered by point timestamps (days)."""
+    ts_list: list[datetime] = []
+    for p in points or []:
+        raw = p.get("t")
+        if not raw:
+            continue
+        try:
+            ts_list.append(datetime.fromisoformat(str(raw).replace("Z", "+00:00")))
+        except ValueError:
+            continue
+    if len(ts_list) < 2:
+        return 0.0
+    return (max(ts_list) - min(ts_list)).total_seconds() / 86400.0
 
 
 def _device_meta_from_gcs(location_id: str) -> dict[str, Any] | None:
@@ -708,37 +775,66 @@ def fetch_series_points(
     location_id: str,
     source: str = "zentra",
     variable: str = "soil_vwc",
-    days: int = 7,
+    days: int = 30,
     bq_dataset: str | None = None,
     limit: int = 5000,
     port_num: int | None = None,
+    start: date | None = None,
+    end: date | None = None,
 ) -> list[dict[str, Any]]:
     """Raw measurement points — no daily/hourly mean aggregation.
 
-    Prefer GCS readings (true ``datetime`` stamps) for Zentra, then BQ
-    ``clima_series`` rows as-is (``valid_time`` / ``ingested_at``), then the
-    GCS clima_series snapshot.
+    Prefer GCS readings (true ``datetime`` + ``port_num``) for Zentra when they
+    cover the requested window. If the snapshot only has a short span (e.g. 2
+    days) while the user asked for 7d/30d, fall through to BQ ``clima_series``.
     """
     if not location_id or not variable:
         return []
     days = _parse_days(days)
     ds = _bq_dataset(bq_dataset)
     client = _client()
-    start = date.today() - timedelta(days=max(days, 1))
+    if end is None:
+        end = date.today()
+    if start is None:
+        start = end - timedelta(days=max(days, 1))
+    if start > end:
+        start, end = end, start
+    # Effective lookback for GCS cutoff helpers that take ``days``.
+    days_eff = max(days, (end - start).days + 1)
 
-    # Dense raw readings first (all windows) — avoids BQ re-ingest duplicates
-    # and daily AVG collapse.
+    dense: list[dict[str, Any]] = []
     if source == "zentra":
         dense = _points_from_gcs_readings(
             location_id=location_id,
             variable=variable,
-            days=days,
+            days=days_eff,
             port_num=port_num,
             limit=limit,
         )
-        if dense:
+        # Filter to [start, end] inclusive (Brazil calendar days).
+        if dense and (start or end):
+            filtered: list[dict[str, Any]] = []
+            for p in dense:
+                try:
+                    ts = datetime.fromisoformat(str(p["t"]).replace("Z", "+00:00"))
+                    d_local = ts.astimezone(_TZ_SP).date()
+                except Exception:
+                    filtered.append(p)
+                    continue
+                if start and d_local < start:
+                    continue
+                if end and d_local > end:
+                    continue
+                filtered.append(p)
+            dense = filtered
+        # Keep dense only when it actually spans most of the window (or user
+        # picked a custom short range). Otherwise try BQ for longer history.
+        span = _span_days(dense)
+        want = float(max((end - start).days, 1))
+        if dense and (span >= min(want * 0.45, want - 0.5) or want <= 3 or port_num is not None):
             return dense
 
+    bq_out: list[dict[str, Any]] = []
     if client is not None:
         try:
             pfx = _pfx(ds)
@@ -753,6 +849,7 @@ def fetch_series_points(
                   AND location_id = @loc
                   AND variable = @var
                   AND date >= @start
+                  AND date <= @end
                   AND value IS NOT NULL
                   AND (@var != 'water_potential_kpa' OR value > {_WP_SENTINEL})
                 ORDER BY t
@@ -766,11 +863,11 @@ def fetch_series_points(
                         bq.ScalarQueryParameter("loc", "STRING", location_id),
                         bq.ScalarQueryParameter("var", "STRING", variable),
                         bq.ScalarQueryParameter("start", "DATE", start),
+                        bq.ScalarQueryParameter("end", "DATE", end),
                         bq.ScalarQueryParameter("lim", "INT64", int(limit)),
                     ]
                 ),
             )
-            out: list[dict[str, Any]] = []
             for r in job.result():
                 t = r.get("t")
                 v = r.get("value")
@@ -783,19 +880,27 @@ def fetch_series_points(
                 if not math.isfinite(fv):
                     continue
                 ts = t.isoformat() if hasattr(t, "isoformat") else str(t)
-                out.append({"t": ts, "v": fv, "n": 1})
-            if out:
-                return out
+                bq_out.append({"t": ts, "v": fv, "n": 1})
+            if bq_out and (not dense or _span_days(bq_out) >= _span_days(dense)):
+                return bq_out
+            if dense:
+                return dense
+            if bq_out:
+                return bq_out
             logger.warning("sensor_series BQ points empty; trying GCS")
         except Exception as exc:
             logger.warning("sensor_series BQ points failed: %s; trying GCS", exc)
+            if dense:
+                return dense
 
+    if dense:
+        return dense
     if source != "zentra":
         return []
     return _points_from_gcs_series(
         location_id=location_id,
         variable=variable,
-        days=days,
+        days=days_eff,
         limit=limit,
     )
 
@@ -916,6 +1021,94 @@ def _trace_axis(variable: str) -> str:
     return "y"
 
 
+def _port_key(raw: Any) -> str | None:
+    if raw is None or raw == "":
+        return None
+    try:
+        return str(int(raw))
+    except (TypeError, ValueError):
+        return str(raw).strip() or None
+
+
+def _traces_for_variable(
+    *,
+    variable: str,
+    points: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """One Plotly trace per port when multiple ports share a timestamp (no sawtooth)."""
+    if not points:
+        return []
+    base_label = VAR_LABELS_PT.get(variable, variable)
+    chart_title = VAR_CHART_TITLES_PT.get(variable, base_label)
+    unit = VAR_UNITS.get(variable, "")
+    by_port: dict[str, list[dict[str, Any]]] = {}
+    no_port: list[dict[str, Any]] = []
+    sensor_by_port: dict[str, str] = {}
+    for p in points:
+        pk = _port_key(p.get("port"))
+        if pk is None:
+            no_port.append(p)
+            continue
+        by_port.setdefault(pk, []).append(p)
+        sn = p.get("sensor")
+        if sn and pk not in sensor_by_port:
+            sensor_by_port[pk] = str(sn)
+    # Single undifferentiated series — keep one trace.
+    if len(by_port) <= 1 and not (by_port and no_port):
+        only_port = next(iter(by_port.keys()), None) if by_port else None
+        pts = by_port[only_port] if only_port is not None else no_port or points
+        label = base_label
+        if only_port is not None:
+            sn = sensor_by_port.get(only_port)
+            label = f"{base_label} · Porta {only_port}" + (f" ({sn})" if sn else "")
+        return [
+            {
+                "variable": variable,
+                "port": only_port,
+                "label": label,
+                "chart_title": chart_title,
+                "unit": unit,
+                "color": VAR_COLORS.get(variable, "#1f77b4"),
+                "axis": "y",
+                "points": pts,
+                "n_points": len(pts),
+            }
+        ]
+    traces: list[dict[str, Any]] = []
+    for i, pk in enumerate(sorted(by_port.keys(), key=lambda x: (len(x), x))):
+        pts = by_port[pk]
+        sn = sensor_by_port.get(pk)
+        label = f"{base_label} · Porta {pk}" + (f" ({sn})" if sn else "")
+        traces.append(
+            {
+                "variable": variable,
+                "port": pk,
+                "label": label,
+                "chart_title": chart_title,
+                "unit": unit,
+                "color": PORT_COLORS[i % len(PORT_COLORS)],
+                "axis": "y",
+                "points": pts,
+                "n_points": len(pts),
+            }
+        )
+    if no_port:
+        traces.append(
+            {
+                "variable": variable,
+                "port": None,
+                "label": f"{base_label} · —",
+                "chart_title": chart_title,
+                "unit": unit,
+                "color": VAR_COLORS.get(variable, "#7f7f7f"),
+                "axis": "y",
+                "points": no_port,
+                "n_points": len(no_port),
+            }
+        )
+    return traces
+
+
 def _build_traces(
     *,
     location_id: str,
@@ -923,6 +1116,8 @@ def _build_traces(
     variables: list[str],
     days: int,
     bq_dataset: str | None,
+    start: date | None = None,
+    end: date | None = None,
 ) -> list[dict[str, Any]]:
     traces: list[dict[str, Any]] = []
     for var in variables:
@@ -932,21 +1127,12 @@ def _build_traces(
             variable=var,
             days=days,
             bq_dataset=bq_dataset,
+            start=start,
+            end=end,
         )
         if not pts:
             continue
-        traces.append(
-            {
-                "variable": var,
-                "label": VAR_LABELS_PT.get(var, var),
-                "chart_title": VAR_CHART_TITLES_PT.get(var, VAR_LABELS_PT.get(var, var)),
-                "unit": VAR_UNITS.get(var, ""),
-                "color": VAR_COLORS.get(var, "#1f77b4"),
-                "axis": "y",
-                "points": pts,
-                "n_points": len(pts),
-            }
-        )
+        traces.extend(_traces_for_variable(variable=var, points=pts))
     return traces
 
 
@@ -956,16 +1142,28 @@ def build_sensor_series_payload(
     source: str = "zentra",
     variable: str | None = None,
     family: str | None = None,
-    days: int | str = 7,
+    days: int | str = 30,
     bq_dataset: str | None = None,
     lang_pt: bool = True,
     multi: bool | None = None,
     variables: list[str] | None = None,
+    start: str | date | None = None,
+    end: str | date | None = None,
 ) -> dict[str, Any]:
     source = (source or "zentra").strip().lower()
     if source not in ("zentra", "orion"):
         source = "zentra"
     days_i = _parse_days(days)
+    start_d = start if isinstance(start, date) else _parse_iso_date(str(start) if start else None)
+    end_d = end if isinstance(end, date) else _parse_iso_date(str(end) if end else None)
+    if end_d is None:
+        end_d = date.today()
+    if start_d is None:
+        start_d = end_d - timedelta(days=max(days_i, 1))
+    if start_d > end_d:
+        start_d, end_d = end_d, start_d
+    days_i = max(days_i, (end_d - start_d).days + 1)
+    days_i = _parse_days(days_i)
     # Default: multi-series overview (VWC + pot + precip) unless a single var forced.
     want_multi = True if multi is None else bool(multi)
     if variable and multi is None and not variables:
@@ -1069,6 +1267,8 @@ def build_sensor_series_payload(
         variables=active_vars,
         days=days_i,
         bq_dataset=bq_dataset,
+        start=start_d,
+        end=end_d,
     )
     # Primary points = first trace (back-compat for older JS).
     points = traces[0]["points"] if traces else fetch_series_points(
@@ -1077,6 +1277,8 @@ def build_sensor_series_payload(
         variable=var,
         days=days_i,
         bq_dataset=bq_dataset,
+        start=start_d,
+        end=end_d,
     )
     if traces:
         var = traces[0]["variable"]
@@ -1086,28 +1288,55 @@ def build_sensor_series_payload(
         source=source,
         bq_dataset=bq_dataset,
     )
-    last_ts = None
-    for cell in latest:
-        if cell.get("ingested_at"):
-            last_ts = cell["ingested_at"]
-            break
-        if cell.get("date") and last_ts is None:
-            last_ts = cell.get("date")
-    freshness = "—"
-    if last_ts:
-        try:
-            ts = datetime.fromisoformat(str(last_ts).replace("Z", "+00:00"))
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-            age_h = (datetime.now(timezone.utc) - ts).total_seconds() / 3600.0
-            if age_h < 6:
-                freshness = "ok"
-            elif age_h < 24:
-                freshness = f"{age_h:.0f} h"
-            else:
-                freshness = f"{age_h / 24.0:.0f} d"
-        except Exception:
-            freshness = "—"
+    # Prefer device last_measurement, then max raw point time, then latest cells.
+    last_dt: datetime | None = None
+    lm_meta = meta.get("last_measurement")
+    try:
+        lm_i = int(lm_meta) if lm_meta is not None and str(lm_meta).strip() != "" else None
+    except (TypeError, ValueError):
+        lm_i = None
+    if lm_i:
+        last_dt = datetime.fromtimestamp(lm_i, tz=timezone.utc)
+    if last_dt is None:
+        for tr in traces:
+            for p in tr.get("points") or []:
+                try:
+                    cand = datetime.fromisoformat(str(p.get("t")).replace("Z", "+00:00"))
+                except Exception:
+                    continue
+                if last_dt is None or cand > last_dt:
+                    last_dt = cand
+    if last_dt is None:
+        for cell in latest:
+            raw = cell.get("ingested_at") or cell.get("date")
+            if not raw:
+                continue
+            try:
+                s = str(raw)
+                if len(s) <= 10:
+                    cand = datetime.fromisoformat(s[:10] + "T23:59:00").replace(tzinfo=_TZ_SP)
+                else:
+                    cand = datetime.fromisoformat(s.replace("Z", "+00:00"))
+                    if cand.tzinfo is None:
+                        cand = cand.replace(tzinfo=_TZ_SP)
+            except Exception:
+                continue
+            if last_dt is None or cand > last_dt:
+                last_dt = cand
+    freshness = _freshness_from_ts(last_dt, lang_pt=lang_pt)
+
+    # Actual data calendar span (so UI can explain short windows).
+    data_start = data_end = None
+    all_ts: list[datetime] = []
+    for tr in traces:
+        for p in tr.get("points") or []:
+            try:
+                all_ts.append(datetime.fromisoformat(str(p.get("t")).replace("Z", "+00:00")))
+            except Exception:
+                pass
+    if all_ts:
+        data_start = min(all_ts).astimezone(_TZ_SP).date().isoformat()
+        data_end = max(all_ts).astimezone(_TZ_SP).date().isoformat()
 
     return {
         "available": bool(traces) or bool(points) or bool(latest),
@@ -1130,14 +1359,19 @@ def build_sensor_series_payload(
         "mode": "gallery" if want_multi or len(traces) > 1 else "single",
         "traces": traces,
         "days": days_i,
+        "start": start_d.isoformat(),
+        "end": end_d.isoformat(),
+        "data_start": data_start,
+        "data_end": data_end,
         "windows": [
-            {"id": 1, "label": "24h"},
             {"id": 7, "label": "7d"},
             {"id": 30, "label": "30d"},
+            {"id": 90, "label": "90d"},
         ],
         "points": points,
         "latest": latest,
         "freshness": freshness,
+        "last_ts": last_dt.isoformat() if last_dt else None,
         "n_points": sum(t.get("n_points") or 0 for t in traces) if traces else len(points),
         # Always raw measurements (no hourly/daily mean aggregation).
         "resolution": "raw",

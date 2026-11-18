@@ -4773,6 +4773,13 @@
       ".efc-sensor-gallery__cell--health .efc-sensor-card__plot{height:240px;min-height:200px}" +
       ".efc-sensor-card__csv{display:inline-flex;align-items:center;gap:.3rem;margin-top:.35rem;font-size:.78rem;color:#57534e;text-decoration:none;font-weight:560}" +
       ".efc-sensor-card__csv:hover{color:#1f77b4;text-decoration:underline}" +
+      ".efc-sensor-inspect__exports{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center;margin:.35rem 0 .6rem}" +
+      ".efc-sensor-inspect__export-btn{appearance:none;border:1px solid #d6d3d1;background:#fff;color:#44403c;border-radius:8px;padding:.35rem .7rem;font-size:.78rem;font-weight:600;cursor:pointer}" +
+      ".efc-sensor-inspect__export-btn:hover{border-color:#1f77b4;color:#1f77b4}" +
+      ".efc-sensor-inspect__range{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;margin:.25rem 0}" +
+      ".efc-sensor-inspect__range label{font-size:.72rem;color:#78716c;font-weight:600;display:flex;flex-direction:column;gap:.15rem}" +
+      ".efc-sensor-inspect__range input[type=date]{border:1px solid #d6d3d1;border-radius:8px;padding:.3rem .45rem;font-size:.78rem;color:#1e293b;background:#fff}" +
+      ".efc-sensor-inspect__data-span{font-size:.75rem;color:#78716c;margin:.2rem 0 .5rem}" +
       ".efc-modal--sensor .efc-modal__panel{max-height:min(92vh,920px);overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}" +
       ".efc-sensor-inspect__title,.efc-sensores__detail-title{font-weight:700!important}" +
       ".efc-sensor-inspect__fresh b{font-weight:700;color:#44403c}" +
@@ -4833,9 +4840,10 @@
 
   function downloadSensorTraceCsv(tr, deviceName) {
     var points = (tr && tr.points) || [];
-    var lines = ["timestamp,value,unit,variable,device"];
+    var lines = ["timestamp,value,unit,variable,port,device"];
     var unit = (tr && tr.unit) || "";
     var variable = (tr && tr.variable) || "";
+    var port = tr && tr.port != null ? String(tr.port) : "";
     var device = deviceName || "";
     points.forEach(function (p) {
       lines.push(
@@ -4844,6 +4852,7 @@
           p.v != null ? String(p.v) : "",
           unit,
           variable,
+          port || (p.port != null ? String(p.port) : ""),
           device,
         ].join(",")
       );
@@ -4852,9 +4861,10 @@
     var url = URL.createObjectURL(blob);
     var a = document.createElement("a");
     var safeVar = String(variable || "serie").replace(/[^\w.-]+/g, "_");
+    var safePort = port ? "_p" + port.replace(/[^\w.-]+/g, "_") : "";
     var safeDev = String(device || "sensor").replace(/[^\w.-]+/g, "_");
     a.href = url;
-    a.download = safeDev + "_" + safeVar + ".csv";
+    a.download = safeDev + "_" + safeVar + safePort + ".csv";
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -4865,28 +4875,202 @@
     }, 1500);
   }
 
+  function downloadAllSensorTracesCsv(traces, deviceName) {
+    var lines = ["timestamp,value,unit,variable,port,label,device"];
+    var device = deviceName || "";
+    (traces || []).forEach(function (tr) {
+      var unit = (tr && tr.unit) || "";
+      var variable = (tr && tr.variable) || "";
+      var port = tr && tr.port != null ? String(tr.port) : "";
+      var label = (tr && tr.label) || variable;
+      ((tr && tr.points) || []).forEach(function (p) {
+        lines.push(
+          [
+            p.t != null ? String(p.t) : "",
+            p.v != null ? String(p.v) : "",
+            unit,
+            variable,
+            port || (p.port != null ? String(p.port) : ""),
+            '"' + String(label).replace(/"/g, '""') + '"',
+            device,
+          ].join(",")
+        );
+      });
+    });
+    var blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = String(deviceName || "sensor").replace(/[^\w.-]+/g, "_") + "_todas_series.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(function () {
+      try {
+        URL.revokeObjectURL(url);
+      } catch (e0) {}
+    }, 1500);
+  }
+
+  function loadScriptOnce(src, flag) {
+    if (window[flag]) return window[flag];
+    window[flag] = new Promise(function (resolve, reject) {
+      if (document.querySelector('script[data-efc-src="' + src + '"]')) {
+        resolve();
+        return;
+      }
+      var s = document.createElement("script");
+      s.src = src;
+      s.async = true;
+      s.setAttribute("data-efc-src", src);
+      s.onload = function () {
+        resolve();
+      };
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+    return window[flag];
+  }
+
+  function ensureJsPdf() {
+    if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve(window.jspdf.jsPDF);
+    return loadScriptOnce(
+      "https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js",
+      "__efcJsPdfPromise"
+    ).then(function () {
+      return window.jspdf && window.jspdf.jsPDF;
+    });
+  }
+
+  function exportSensorGalleryPdf(root, payload, langPt) {
+    var gallery = root && root.querySelector("[data-sensor-gallery]");
+    if (!gallery) return Promise.reject(new Error("no gallery"));
+    var plots = gallery.querySelectorAll(".efc-sensor-card__plot, .js-plotly-plot");
+    return ensureJsPdf()
+      .then(function (JsPDF) {
+        if (!JsPDF) throw new Error("jsPDF missing");
+        return ensurePlotlyLoaded().then(function () {
+          return JsPDF;
+        });
+      })
+      .then(function (JsPDF) {
+        var doc = new JsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+        var margin = 14;
+        var y = margin;
+        var pageW = doc.internal.pageSize.getWidth();
+        var pageH = doc.internal.pageSize.getHeight();
+        var ink = [30, 41, 59];
+        function ensureSpace(h) {
+          if (y + h > pageH - margin) {
+            doc.addPage();
+            y = margin;
+          }
+        }
+        // Header band
+        doc.setFillColor(248, 250, 252);
+        doc.rect(0, 0, pageW, 28, "F");
+        doc.setTextColor(ink[0], ink[1], ink[2]);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(14);
+        doc.text("GeoInfra USP · Monitor EFC", margin, 12);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        doc.setTextColor(100, 116, 139);
+        doc.text(langPt ? "Relatório de séries — Zentra" : "Series report — Zentra", margin, 18);
+        y = 34;
+        doc.setTextColor(ink[0], ink[1], ink[2]);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(13);
+        doc.text(String((payload && (payload.name || payload.location_id)) || "Sensor"), margin, y);
+        y += 6;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(71, 85, 105);
+        var metaBits = [];
+        if (payload && payload.location_id) metaBits.push(payload.location_id);
+        if (payload && payload.sensors && payload.sensors.length) metaBits.push(payload.sensors.join(", "));
+        if (payload && payload.start && payload.end) {
+          metaBits.push((langPt ? "Janela " : "Window ") + payload.start + " → " + payload.end);
+        }
+        if (payload && payload.data_start && payload.data_end) {
+          metaBits.push(
+            (langPt ? "Dados " : "Data ") + payload.data_start + " → " + payload.data_end
+          );
+        }
+        if (payload && payload.freshness) {
+          metaBits.push((langPt ? "Última leitura: " : "Last reading: ") + payload.freshness);
+        }
+        var metaLine = metaBits.join("  ·  ");
+        var split = doc.splitTextToSize(metaLine, pageW - margin * 2);
+        doc.text(split, margin, y);
+        y += split.length * 4.2 + 4;
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.3);
+        doc.line(margin, y, pageW - margin, y);
+        y += 6;
+
+        var chain = Promise.resolve();
+        Array.prototype.forEach.call(plots, function (plotEl, idx) {
+          chain = chain.then(function () {
+            if (!plotEl || !plotEl.data) return null;
+            return Plotly.toImage(plotEl, { format: "png", width: 1100, height: 520 }).then(
+              function (dataUrl) {
+                var imgW = pageW - margin * 2;
+                var imgH = imgW * (520 / 1100);
+                ensureSpace(imgH + 8);
+                doc.addImage(dataUrl, "PNG", margin, y, imgW, imgH);
+                y += imgH + 6;
+                if (idx < plots.length - 1 && y > pageH - 40) {
+                  doc.addPage();
+                  y = margin;
+                }
+              }
+            );
+          });
+        });
+        return chain.then(function () {
+          doc.setFontSize(8);
+          doc.setTextColor(148, 163, 184);
+          doc.text(
+            "GeoInfra USP · gerado " + new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }),
+            margin,
+            pageH - 8
+          );
+          var safe = String((payload && (payload.name || payload.location_id)) || "sensor").replace(
+            /[^\w.-]+/g,
+            "_"
+          );
+          doc.save(safe + "_series_geoinfra.pdf");
+        });
+      });
+  }
+
   function isHealthVariable(variable) {
     return variable === "battery_pct" || variable === "signal_pct" || variable === "battery_v";
   }
 
-  function plotOneSensorCard(plotEl, tr, deviceName, langPt) {
-    var points = (tr && tr.points) || [];
-    if (!plotEl || !points.length || !plotlyReady()) return;
+  function plotOneSensorCard(plotEl, tracesOrOne, deviceName, langPt) {
+    var tracesIn = Array.isArray(tracesOrOne) ? tracesOrOne : tracesOrOne ? [tracesOrOne] : [];
+    tracesIn = tracesIn.filter(function (t) {
+      return t && t.points && t.points.length;
+    });
+    if (!plotEl || !tracesIn.length || !plotlyReady()) return;
     var colors = sensorChartColors();
-    var v = (tr && tr.variable) || "";
-    var u = (tr && tr.unit) || "";
-    var nm = (tr && tr.label) || v;
-    var col = (tr && tr.color) || colors[v] || "#1f77b4";
+    var v = (tracesIn[0] && tracesIn[0].variable) || "";
+    var u = (tracesIn[0] && tracesIn[0].unit) || "";
     var chartTitle =
-      (tr && tr.chart_title) ||
-      sensorChartTitle(v, langPt, nm);
+      (tracesIn[0] && tracesIn[0].chart_title) ||
+      sensorChartTitle(v, langPt, (tracesIn[0] && tracesIn[0].label) || v);
     if (deviceName) chartTitle = chartTitle + " — " + deviceName;
     var isPrecip = v === "precip_mm";
     var grid = "rgba(148,163,184,.28)";
     var ink = "#1e293b";
     var muted = "#64748b";
-    var data = [
-      {
+    var data = tracesIn.map(function (tr) {
+      var points = tr.points || [];
+      var nm = tr.label || tr.variable || v;
+      var col = tr.color || colors[v] || "#1f77b4";
+      return {
         type: isPrecip ? "bar" : "scatter",
         mode: isPrecip ? undefined : "lines+markers",
         x: points.map(function (p) {
@@ -4906,8 +5090,8 @@
           "</b><br>%{x}<br><b>%{y:.3f}</b>" +
           (u ? " " + u : "") +
           "<extra></extra>",
-      },
-    ];
+      };
+    });
     var layout = {
       title: {
         text: "<b>" + chartTitle + "</b>",
@@ -5079,16 +5263,27 @@
     var envTraces = tracesIn.filter(function (t) {
       return !isHealthVariable(t.variable);
     });
+    // Group env traces by variable so multi-port depths share one card (no sawtooth).
+    var envGroups = [];
+    var envIndex = {};
+    envTraces.forEach(function (tr) {
+      var key = tr.variable || tr.label || "";
+      if (envIndex[key] == null) {
+        envIndex[key] = envGroups.length;
+        envGroups.push([]);
+      }
+      envGroups[envIndex[key]].push(tr);
+    });
     var deviceName = (payload && (payload.name || payload.location_id)) || "";
     galleryEl.innerHTML = "";
     var grid = document.createElement("div");
     grid.className = "efc-sensor-gallery";
     galleryEl.appendChild(grid);
 
-    function appendEnvCard(tr, idx, total) {
+    function appendEnvCard(group, idx, total) {
       var cell = document.createElement("div");
       cell.className = "efc-sensor-gallery__cell";
-      if (total === 1 || (total % 2 === 1 && idx === total - 1)) {
+      if (total === 1 || (total % 2 === 1 && idx === total - 1) || group.length > 1) {
         cell.classList.add("efc-sensor-gallery__cell--wide");
       }
       var card = document.createElement("article");
@@ -5097,25 +5292,31 @@
       plot.className = "efc-sensor-card__plot";
       card.appendChild(plot);
       cell.appendChild(card);
-      var csv = document.createElement("a");
-      csv.href = "#";
-      csv.className = "efc-sensor-card__csv";
-      csv.innerHTML =
-        '<span class="efc-sensor-card__csv-icon" aria-hidden="true">⇩</span> ' +
-        (langPt ? "Baixar CSV" : "Download CSV");
-      csv.addEventListener("click", function (ev) {
-        ev.preventDefault();
-        downloadSensorTraceCsv(tr, deviceName);
+      group.forEach(function (tr) {
+        var csv = document.createElement("a");
+        csv.href = "#";
+        csv.className = "efc-sensor-card__csv";
+        csv.innerHTML =
+          '<span class="efc-sensor-card__csv-icon" aria-hidden="true">⇩</span> ' +
+          (group.length > 1
+            ? (tr.label || tr.variable) + " CSV"
+            : langPt
+              ? "Baixar CSV"
+              : "Download CSV");
+        csv.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          downloadSensorTraceCsv(tr, deviceName);
+        });
+        cell.appendChild(csv);
       });
-      cell.appendChild(csv);
       grid.appendChild(cell);
-      plotOneSensorCard(plot, tr, deviceName, langPt);
+      plotOneSensorCard(plot, group, deviceName, langPt);
     }
 
     ensurePlotlyLoaded()
       .then(function () {
-        envTraces.forEach(function (tr, idx) {
-          appendEnvCard(tr, idx, envTraces.length);
+        envGroups.forEach(function (group, idx) {
+          appendEnvCard(group, idx, envGroups.length);
         });
         if (healthPair.length) {
           var cellH = document.createElement("div");
@@ -5142,10 +5343,10 @@
           });
           grid.appendChild(cellH);
           plotHealthSensorCard(plotH, healthPair, deviceName, langPt);
-        } else if (!envTraces.length && healthTraces.length) {
+        } else if (!envGroups.length && healthTraces.length) {
           // Fallback: only battery_v or lone health vars.
           healthTraces.forEach(function (tr, idx) {
-            appendEnvCard(tr, idx, healthTraces.length);
+            appendEnvCard([tr], idx, healthTraces.length);
           });
         }
       })
@@ -5261,13 +5462,105 @@
       family: "__overview__",
       variable: "",
       variables: [],
-      days: 7,
+      days: 30,
+      start: "",
+      end: "",
       lat: null,
       lon: null,
       name: "",
       km: null,
       portsCache: [],
+      lastPayload: null,
     };
+    var startInput = root.querySelector("[data-sensor-start]");
+    var endInput = root.querySelector("[data-sensor-end]");
+    var spanEl = root.querySelector("[data-sensor-data-span]");
+    var exportsHost = root.querySelector("[data-sensor-exports]");
+    if (!exportsHost) {
+      exportsHost = document.createElement("div");
+      exportsHost.className = "efc-sensor-inspect__exports";
+      exportsHost.setAttribute("data-sensor-exports", "");
+      if (galleryEl && galleryEl.parentNode) {
+        galleryEl.parentNode.insertBefore(exportsHost, galleryEl);
+      } else {
+        root.appendChild(exportsHost);
+      }
+    }
+    if (!startInput || !endInput) {
+      var rangeHost = root.querySelector("[data-sensor-range]");
+      if (!rangeHost) {
+        rangeHost = document.createElement("div");
+        rangeHost.className = "efc-sensor-inspect__range";
+        rangeHost.setAttribute("data-sensor-range", "");
+        var wins = root.querySelector(".efc-sensor-inspect__windows");
+        if (wins && wins.parentNode) {
+          wins.parentNode.insertBefore(rangeHost, wins.nextSibling);
+        } else {
+          root.appendChild(rangeHost);
+        }
+      }
+      if (!startInput) {
+        rangeHost.innerHTML =
+          "<label>" +
+          (langPt ? "De" : "From") +
+          ' <input type="date" data-sensor-start></label>' +
+          "<label>" +
+          (langPt ? "Até" : "To") +
+          ' <input type="date" data-sensor-end></label>' +
+          '<button type="button" class="efc-sensor-inspect__export-btn" data-sensor-range-apply>' +
+          (langPt ? "Aplicar" : "Apply") +
+          "</button>";
+        startInput = rangeHost.querySelector("[data-sensor-start]");
+        endInput = rangeHost.querySelector("[data-sensor-end]");
+      }
+    }
+    if (!spanEl) {
+      spanEl = document.createElement("p");
+      spanEl.className = "efc-sensor-inspect__data-span";
+      spanEl.setAttribute("data-sensor-data-span", "");
+      spanEl.hidden = true;
+      if (exportsHost && exportsHost.parentNode) {
+        exportsHost.parentNode.insertBefore(spanEl, exportsHost);
+      } else {
+        root.appendChild(spanEl);
+      }
+    }
+
+    function syncRangeInputs() {
+      if (startInput && state.start) startInput.value = state.start;
+      if (endInput && state.end) endInput.value = state.end;
+    }
+
+    function renderExports(payload) {
+      if (!exportsHost) return;
+      exportsHost.innerHTML = "";
+      var csvAll = document.createElement("button");
+      csvAll.type = "button";
+      csvAll.className = "efc-sensor-inspect__export-btn";
+      csvAll.textContent = langPt ? "CSV todas as séries" : "CSV all series";
+      csvAll.addEventListener("click", function () {
+        downloadAllSensorTracesCsv(
+          (payload && payload.traces) || [],
+          (payload && (payload.name || payload.location_id)) || state.name || ""
+        );
+      });
+      var pdfBtn = document.createElement("button");
+      pdfBtn.type = "button";
+      pdfBtn.className = "efc-sensor-inspect__export-btn";
+      pdfBtn.textContent = langPt ? "Exportar PDF" : "Export PDF";
+      pdfBtn.addEventListener("click", function () {
+        pdfBtn.disabled = true;
+        exportSensorGalleryPdf(root, payload || state.lastPayload || {}, langPt)
+          .catch(function () {
+            window.alert(langPt ? "Falha ao gerar PDF." : "PDF export failed.");
+          })
+          .then(function () {
+            pdfBtn.disabled = false;
+          });
+      });
+      exportsHost.appendChild(csvAll);
+      exportsHost.appendChild(pdfBtn);
+    }
 
     function setGalleryStatus(html) {
       if (galleryEl) {
@@ -5279,7 +5572,11 @@
 
     function setWindowsActive() {
       root.querySelectorAll("[data-sensor-days]").forEach(function (btn) {
-        btn.classList.toggle("is-active", String(btn.getAttribute("data-sensor-days")) === String(state.days));
+        var active =
+          !state.start &&
+          !state.end &&
+          String(btn.getAttribute("data-sensor-days")) === String(state.days);
+        btn.classList.toggle("is-active", active);
       });
     }
 
@@ -5350,10 +5647,50 @@
           (nPts ? " · " + nPts + (langPt ? " pontos" : " points") : "") +
           " · Zentra";
       }
+      state.lastPayload = payload;
       state.portsCache = payload.ports || [];
       state.family = payload.family || state.family || "__overview__";
       state.variable = payload.variable || state.variable;
       state.variables = payload.active_variables || state.variables || [];
+      if (payload.start) state.start = payload.start;
+      if (payload.end) state.end = payload.end;
+      if (payload.days) state.days = payload.days;
+      syncRangeInputs();
+      if (spanEl) {
+        if (payload.data_start && payload.data_end) {
+          var asked =
+            (payload.start || "") + "→" + (payload.end || "");
+          var got = payload.data_start + "→" + payload.data_end;
+          spanEl.hidden = false;
+          if (asked && got !== asked.replace(/-/g, "-") && payload.data_start === payload.data_end) {
+            spanEl.textContent =
+              (langPt ? "Dados disponíveis apenas em " : "Data only available on ") +
+              payload.data_start +
+              ".";
+          } else if (payload.start && payload.data_start > payload.start) {
+            spanEl.textContent =
+              (langPt
+                ? "Histórico ingerido: "
+                : "Ingested history: ") +
+              payload.data_start +
+              " → " +
+              payload.data_end +
+              (langPt
+                ? " (janela pedida maior que os dados brutos disponíveis)."
+                : " (requested window longer than available raw data).");
+          } else {
+            spanEl.textContent =
+              (langPt ? "Período com dados: " : "Data span: ") +
+              payload.data_start +
+              " → " +
+              payload.data_end;
+          }
+        } else {
+          spanEl.hidden = true;
+          spanEl.textContent = "";
+        }
+      }
+      renderExports(payload);
       if (payload.lat != null) state.lat = payload.lat;
       if (payload.lon != null) state.lon = payload.lon;
 
@@ -5429,8 +5766,10 @@
       var url = new URL(apiBase, window.location.origin);
       url.searchParams.set("location_id", state.location_id);
       url.searchParams.set("source", state.source || "zentra");
-      url.searchParams.set("days", String(state.days || 7));
+      url.searchParams.set("days", String(state.days || 30));
       url.searchParams.set("multi", "1");
+      if (state.start) url.searchParams.set("start", state.start);
+      if (state.end) url.searchParams.set("end", state.end);
       if (state.family) url.searchParams.set("family", state.family);
       // Overview / family gallery: let the API pick available variables.
       // Only send an explicit variable list when the user toggled chips off overview.
@@ -5476,11 +5815,38 @@
     }
     root.querySelectorAll("[data-sensor-days]").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        state.days = parseInt(btn.getAttribute("data-sensor-days") || "7", 10) || 7;
+        state.days = parseInt(btn.getAttribute("data-sensor-days") || "30", 10) || 30;
+        state.start = "";
+        state.end = "";
+        syncRangeInputs();
         setWindowsActive();
         load();
       });
     });
+    var applyRangeBtn = root.querySelector("[data-sensor-range-apply]");
+    function applyCustomRange() {
+      var s = startInput && startInput.value;
+      var e = endInput && endInput.value;
+      if (!s || !e) return;
+      state.start = s;
+      state.end = e;
+      try {
+        var t0 = Date.parse(s);
+        var t1 = Date.parse(e);
+        if (isFinite(t0) && isFinite(t1) && t1 >= t0) {
+          state.days = Math.max(1, Math.round((t1 - t0) / 86400000) + 1);
+        }
+      } catch (eR) {}
+      setWindowsActive();
+      load();
+    }
+    if (applyRangeBtn) applyRangeBtn.addEventListener("click", applyCustomRange);
+    if (startInput) startInput.addEventListener("change", function () {});
+    if (endInput) {
+      endInput.addEventListener("change", function () {
+        if (startInput && startInput.value && endInput.value) applyCustomRange();
+      });
+    }
 
     var api = {
       open: function (opts) {
@@ -5490,7 +5856,9 @@
         state.family = opts.family || "__overview__";
         state.variable = opts.variable || "";
         state.variables = opts.variables || [];
-        state.days = opts.days || state.days || 7;
+        state.days = opts.days || state.days || 30;
+        state.start = opts.start || "";
+        state.end = opts.end || "";
         state.lat = opts.lat != null ? parseCoord(opts.lat) : state.lat;
         state.lon = opts.lon != null ? parseCoord(opts.lon) : state.lon;
         if (!isFinite(state.lat)) state.lat = null;
@@ -5498,6 +5866,7 @@
         state.name = opts.name || "";
         state.km = opts.km;
         if (titleEl && state.name) titleEl.textContent = state.name;
+        syncRangeInputs();
         setWindowsActive();
         renderSensorMiniMap(miniMap, state.lat, state.lon);
         load();
@@ -5542,11 +5911,19 @@
       '<div class="efc-sensor-inspect__var-chips" data-sensor-vars role="group"></div>' +
       '<select data-sensor-variable class="efc-sensor-inspect__fallback-select" hidden></select></div>' +
       '<div class="efc-sensor-inspect__windows" role="group">' +
-      '<button type="button" data-sensor-days="7" class="efc-sensor-inspect__win is-active">7d</button>' +
-      '<button type="button" data-sensor-days="30" class="efc-sensor-inspect__win">30d</button>' +
+      '<button type="button" data-sensor-days="7" class="efc-sensor-inspect__win">7d</button>' +
+      '<button type="button" data-sensor-days="30" class="efc-sensor-inspect__win is-active">30d</button>' +
+      '<button type="button" data-sensor-days="90" class="efc-sensor-inspect__win">90d</button>' +
+      "</div>" +
+      '<div class="efc-sensor-inspect__range" data-sensor-range>' +
+      "<label>De <input type=\"date\" data-sensor-start></label>" +
+      "<label>Até <input type=\"date\" data-sensor-end></label>" +
+      '<button type="button" class="efc-sensor-inspect__export-btn" data-sensor-range-apply>Aplicar</button>' +
       "</div>" +
       '<span class="efc-sensor-inspect__fresh" data-sensor-fresh></span>' +
       "</div></div>" +
+      '<p class="efc-sensor-inspect__data-span" data-sensor-data-span hidden></p>' +
+      '<div class="efc-sensor-inspect__exports" data-sensor-exports></div>' +
       '<div class="efc-sensor-inspect__gallery" data-sensor-gallery></div>' +
       '<div class="efc-sensor-inspect__chart" data-sensor-chart hidden></div>' +
       '<p class="efc-sensor-inspect__hint" data-sensor-hint hidden></p>' +
@@ -5695,12 +6072,13 @@
   }
 
   function initSensorMapBridge() {
-    window.addEventListener("message", function (ev) {
-      var p = ev.data;
-      if (!p || !p.type) return;
-      if (p.type === "efc-sensor-open") {
-        var locId = p.location_id || p.zid || p.code || "";
-        if (!locId && p.lat == null) return;
+    if (window.__efcSensorMapBridge) return;
+    window.__efcSensorMapBridge = 1;
+    function handleOpen(p) {
+      if (!p) return;
+      var locId = p.location_id || p.zid || p.code || "";
+      if (!locId && p.lat == null && p.lon == null) return;
+      try {
         openSensorDetail({
           location_id: locId,
           source: p.source || "zentra",
@@ -5708,24 +6086,34 @@
           lon: p.lon,
           name: p.name || "",
           km: p.km,
+          days: p.days || 30,
         });
-        // Also fly map to sensor in 3D sat
-        try {
-          var iframe = document.querySelector("#home-map-panel iframe, .efc-map-frame iframe");
-          if (iframe && iframe.contentWindow && p.lat != null) {
-            iframe.contentWindow.postMessage(
-              {
-                type: "efc-map-focus-zentra",
-                lat: Number(p.lat),
-                lon: Number(p.lon),
-                zid: locId,
-              },
-              "*"
-            );
-          }
-        } catch (eF) {}
+      } catch (eOpen) {
+        console.warn("efc-sensor-open failed", eOpen);
       }
+      // Also fly map to sensor in 3D sat
+      try {
+        var iframe = document.querySelector("#home-map-panel iframe, .efc-map-frame iframe, #efc-map-iframe");
+        if (iframe && iframe.contentWindow && p.lat != null) {
+          iframe.contentWindow.postMessage(
+            {
+              type: "efc-map-focus-zentra",
+              lat: Number(p.lat),
+              lon: Number(p.lon),
+              zid: locId,
+            },
+            "*"
+          );
+        }
+      } catch (eF) {}
+    }
+    window.addEventListener("message", function (ev) {
+      var p = ev.data;
+      if (!p || !p.type) return;
+      if (p.type === "efc-sensor-open") handleOpen(p);
     });
+    // Expose for Folium/MapLibre "Ver séries" buttons that call parent directly.
+    window.efcOpenZentraSensor = handleOpen;
   }
 
   function boot() {

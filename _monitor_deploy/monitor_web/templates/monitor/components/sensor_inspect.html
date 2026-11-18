@@ -29,12 +29,26 @@
       </div>
       <div class="efc-sensor-inspect__windows" role="group"
            aria-label="{% if lang_pt %}Janela{% else %}Window{% endif %}">
-        <button type="button" data-sensor-days="7" class="efc-sensor-inspect__win is-active">7d</button>
-        <button type="button" data-sensor-days="30" class="efc-sensor-inspect__win">30d</button>
+        <button type="button" data-sensor-days="7" class="efc-sensor-inspect__win">7d</button>
+        <button type="button" data-sensor-days="30" class="efc-sensor-inspect__win is-active">30d</button>
+        <button type="button" data-sensor-days="90" class="efc-sensor-inspect__win">90d</button>
+      </div>
+      <div class="efc-sensor-inspect__range" data-sensor-range>
+        <label>{% if lang_pt %}De{% else %}From{% endif %}
+          <input type="date" data-sensor-start>
+        </label>
+        <label>{% if lang_pt %}Até{% else %}To{% endif %}
+          <input type="date" data-sensor-end>
+        </label>
+        <button type="button" class="efc-sensor-inspect__export-btn" data-sensor-range-apply>
+          {% if lang_pt %}Aplicar{% else %}Apply{% endif %}
+        </button>
       </div>
       <span class="efc-sensor-inspect__fresh" data-sensor-fresh></span>
     </div>
   </div>
+  <p class="efc-sensor-inspect__data-span" data-sensor-data-span hidden></p>
+  <div class="efc-sensor-inspect__exports" data-sensor-exports></div>
   <div class="efc-sensor-inspect__gallery" data-sensor-gallery>
     <p class="efc-muted efc-sensor-inspect__empty" data-sensor-chart-placeholder>
       {% if lang_pt %}Selecione um sensor para ver as séries.{% else %}Select a sensor to view series.{% endif %}

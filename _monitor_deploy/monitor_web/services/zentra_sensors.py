@@ -7,8 +7,11 @@ import math
 import os
 from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
+
+_TZ_SP = ZoneInfo("America/Sao_Paulo")
 
 # Sentinel / bad water-potential readings from ZENTRA when sensor dry/offline.
 _WP_SENTINEL = -90000.0
@@ -365,18 +368,28 @@ def _fmt_value(variable: str, value: float | None) -> str | None:
 
 
 def _freshness_label(ts: datetime | None, *, lang_pt: bool = True) -> str:
+    """Relative age in America/Sao_Paulo wall-clock (há Xm / há Xh / há Xd)."""
     if ts is None:
-        return "—" if lang_pt else "—"
+        return "—"
     if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
-    age_h = (datetime.now(timezone.utc) - ts).total_seconds() / 3600.0
-    if age_h < 0:
-        age_h = 0.0
-    if age_h < 6:
-        return "ok"
+        # Naive timestamps from Zentra Cloud are local Brazil time.
+        ts = ts.replace(tzinfo=_TZ_SP)
+    now = datetime.now(_TZ_SP)
+    age_s = (now - ts.astimezone(_TZ_SP)).total_seconds()
+    if age_s < 0:
+        age_s = 0.0
+    age_m = age_s / 60.0
+    age_h = age_s / 3600.0
+    if age_m < 60:
+        n = max(1, int(round(age_m))) if age_m >= 1 else 0
+        if n <= 0:
+            return "agora" if lang_pt else "now"
+        return (f"há {n} min" if lang_pt else f"{n}m ago")
     if age_h < 24:
-        return f"{age_h:.0f} h"
-    return f"{age_h / 24.0:.0f} d"
+        n = max(1, int(round(age_h)))
+        return (f"há {n} h" if lang_pt else f"{n}h ago")
+    n = max(1, int(round(age_h / 24.0)))
+    return (f"há {n} d" if lang_pt else f"{n}d ago")
 
 
 def load_zentra_devices_df(*, bq_dataset: str | None = None):
@@ -551,26 +564,35 @@ def build_zentra_sensor_rows(
             )
             if cell.get("date") is not None:
                 last_dates.append(cell["date"])
-        last_ts = None
-        if last_dates:
-            try:
-                last_ts = max(last_dates)
-            except Exception:
-                last_ts = last_dates[0]
-        if isinstance(last_ts, datetime):
-            pass
-        elif last_ts is not None:
-            try:
-                last_ts = datetime.fromisoformat(str(last_ts))
-            except Exception:
-                last_ts = None
+        # Prefer device last_measurement (unix) over date-only series cells —
+        # date-at-midnight UTC falsely ages readings by ~12–18h in Brazil.
         lm = r.get("last_measurement")
         try:
             lm_i = int(lm) if lm is not None and str(lm).strip() != "" else None
         except (TypeError, ValueError):
             lm_i = None
-        if last_ts is None and lm_i:
+        last_ts: datetime | None = None
+        if lm_i:
             last_ts = datetime.fromtimestamp(lm_i, tz=timezone.utc)
+        elif last_dates:
+            try:
+                cand = max(last_dates)
+            except Exception:
+                cand = last_dates[0]
+            if isinstance(cand, datetime):
+                last_ts = cand
+            elif cand is not None:
+                try:
+                    raw = str(cand)
+                    # Date-only → assume end-of-day São Paulo (not midnight UTC).
+                    if len(raw) <= 10:
+                        last_ts = datetime.fromisoformat(raw[:10] + "T23:59:00").replace(
+                            tzinfo=_TZ_SP
+                        )
+                    else:
+                        last_ts = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                except Exception:
+                    last_ts = None
         km = _nearest_km(lat, lon, main_line, cum_km)
         status = str(r.get("status") or "").strip() or "—"
         status_key = status.lower()
@@ -614,6 +636,7 @@ def build_zentra_sensor_rows(
                 "series": series,
                 "primary": primary,
                 "cobertura": cobertura_txt,
+                "sinal": cobertura_txt,
                 "location_line": location_line,
                 "health": " · ".join(health_bits) if health_bits else "—",
                 "last_ts": last_ts.isoformat() if isinstance(last_ts, datetime) else None,
@@ -703,8 +726,15 @@ def add_zentra_markers_to_map(m, rows: list[dict[str, Any]], *, lang_pt: bool = 
         click_payloads.append((marker.get_name(), json.dumps(payload, ensure_ascii=False)))
     fg.add_to(m)
 
+    # postMessage to parent AND top (Folium may nest srcdoc iframes).
     binds_js = "\n".join(
-        f"try{{{mname}.on('click',function(){{window.parent.postMessage({pj},'*');}});}}catch(eZ){{}}"
+        (
+            f"try{{{mname}.on('click',function(){{"
+            f"var __p={pj};"
+            f"try{{window.parent&&window.parent.postMessage(__p,'*');}}catch(eP){{}}"
+            f"try{{window.top&&window.top!==window&&window.top.postMessage(__p,'*');}}catch(eT){{}}"
+            f"}});}}catch(eZ){{}}"
+        )
         for mname, pj in click_payloads
     )
 

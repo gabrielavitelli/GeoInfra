@@ -110,9 +110,9 @@
               <div>
                 <dt>
                   <span class="efc-sensores__fact-ico" aria-hidden="true">📶</span>
-                  {% if lang_pt %}Cobertura{% else %}Coverage{% endif %}
+                  {% if lang_pt %}Sinal{% else %}Signal{% endif %}
                 </dt>
-                <dd><strong>{{ row.cobertura }}</strong></dd>
+                <dd><strong>{{ row.sinal|default:row.cobertura }}</strong></dd>
               </div>
             </dl>
             {% if row.primary %}

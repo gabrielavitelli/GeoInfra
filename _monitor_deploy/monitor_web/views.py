@@ -336,7 +336,9 @@ def sensor_series_api(request):
     source = (request.GET.get("source") or "zentra").strip().lower()
     variable = (request.GET.get("variable") or "").strip() or None
     family = (request.GET.get("family") or request.GET.get("port") or "").strip() or None
-    days = request.GET.get("days") or request.GET.get("window") or "7"
+    days = request.GET.get("days") or request.GET.get("window") or "30"
+    start = (request.GET.get("start") or request.GET.get("date_start") or "").strip() or None
+    end = (request.GET.get("end") or request.GET.get("date_end") or "").strip() or None
     multi_raw = (request.GET.get("multi") or "").strip().lower()
     multi = None
     if multi_raw in ("1", "true", "yes", "multi"):
@@ -367,6 +369,8 @@ def sensor_series_api(request):
             lang_pt=lang_pt,
             multi=multi,
             variables=variables,
+            start=start,
+            end=end,
         )
         return JsonResponse(sanitize_for_json(payload))
     except Exception as exc:

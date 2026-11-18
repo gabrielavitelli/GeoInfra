@@ -102,18 +102,35 @@ def test_payload_multi_overview_from_gcs(tmp_path: Path, monkeypatch):
     # Dense readings fixture — multiple raw timestamps (no daily mean).
     readings_lines = []
     for i, hour in enumerate((10, 11, 12, 13, 14)):
-        readings_lines.append(
-            json.dumps(
-                {
-                    "location_id": "zentra_z6_35950",
-                    "measurement": "Water Content",
-                    "mapped_variable": "soil_vwc",
-                    "value": 0.20 + i * 0.01,
-                    "datetime": f"2026-11-18T{hour:02d}:00:00+00:00",
-                    "port_num": 1,
-                }
+        # Two TEROS ports at the same timestamp — must become separate traces
+        # (otherwise Plotly sawtooth-connects stacked points).
+        for port, base in ((1, 0.20), (2, 0.28)):
+            readings_lines.append(
+                json.dumps(
+                    {
+                        "location_id": "zentra_z6_35950",
+                        "measurement": "Water Content",
+                        "mapped_variable": "soil_vwc",
+                        "value": base + i * 0.01,
+                        "datetime": f"2026-11-18T{hour:02d}:00:00+00:00",
+                        "port_num": port,
+                        "sensor_name": "TEROS 12",
+                    }
+                )
             )
-        )
+            readings_lines.append(
+                json.dumps(
+                    {
+                        "location_id": "zentra_z6_35950",
+                        "measurement": "Soil Temperature",
+                        "mapped_variable": "soil_temp_c",
+                        "value": 30.0 + port + i * 0.1,
+                        "datetime": f"2026-11-18T{hour:02d}:00:00+00:00",
+                        "port_num": port,
+                        "sensor_name": "TEROS 12",
+                    }
+                )
+            )
         readings_lines.append(
             json.dumps(
                 {
@@ -154,7 +171,17 @@ def test_payload_multi_overview_from_gcs(tmp_path: Path, monkeypatch):
     assert len(payload["traces"]) >= 2
     assert payload["port_chips"][0]["id"] == "__overview__"
     assert payload["n_points"] >= 5
-    vwc = next(t for t in payload["traces"] if t["variable"] == "soil_vwc")
-    assert vwc["n_points"] >= 5
+    vwc_traces = [t for t in payload["traces"] if t["variable"] == "soil_vwc"]
+    assert len(vwc_traces) == 2
+    ports = sorted(str(t.get("port")) for t in vwc_traces)
+    assert ports == ["1", "2"]
+    assert all("Porta" in (t.get("label") or "") for t in vwc_traces)
+    assert all(t["n_points"] >= 5 for t in vwc_traces)
+    # No shared timestamp stacked inside a single trace (sawtooth guard).
+    for t in vwc_traces:
+        times = [p["t"] for p in t["points"]]
+        assert len(times) == len(set(times))
     assert "battery_pct" in payload["active_variables"]
     assert "signal_pct" in payload["active_variables"]
+    assert payload.get("data_start")
+    assert payload.get("freshness")
