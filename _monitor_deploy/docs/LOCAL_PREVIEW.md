@@ -1,5 +1,9 @@
 # Monitor EFC — preview local (igual ao prod `monitor-efc-prod`)
 
+> **Prod static JS note:** Cloud Run mounts `gs://efc-clima-data/monitor/static-patch/monitor/js`
+> over `/app/staticfiles/monitor/js`. After changing `monitor.js`, also upload it (and `.gz`) to that
+> GCS prefix or the live site keeps serving the patched copy.
+
 ## One-liner (PC)
 
 ```bash
