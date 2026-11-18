@@ -201,3 +201,76 @@ def test_build_taludes_monitorados_clusters_nearby():
     labels = [s["label"] for s in sites]
     assert any("Talude km 374" in lab for lab in labels)
     assert any(s["n_sensors"] == 2 for s in sites)
+
+
+def test_cluster_sensor_rows_into_sites_mean_vwc():
+    from monitor_web.services.zentra_sensors import cluster_sensor_rows_into_sites
+
+    # Eight loggers near km 393 (~tens of metres apart) → one site card.
+    base_lat, base_lon = -4.25998, -46.53486
+    rows = []
+    for i in range(8):
+        rows.append(
+            {
+                "location_id": f"zentra_z6_{35930 + i}",
+                "name": f"z6-{35930 + i}",
+                "lat": base_lat + i * 0.00005,  # ~5.5 m steps
+                "lon": base_lon + i * 0.00005,
+                "km": 393.0 + i * 0.01,
+                "status": "active",
+                "status_label": "ATIVO",
+                "sensors": ["TEROS 12"],
+                "primary": {
+                    "variable": "soil_vwc",
+                    "label": "VWC médio",
+                    "value": 0.20 + i * 0.01,
+                    "value_txt": f"{0.20 + i * 0.01:.3f}",
+                    "unit": "m³/m³",
+                    "is_average": True,
+                    "n_ports": 3,
+                },
+                "port_children": [
+                    {"label": f"Porta {p}", "var_label": "VWC", "value_txt": "0.2", "unit": "m³/m³", "port": p}
+                    for p in (1, 2, 3)
+                ],
+                "avg_port_count": 3,
+                "freshness": "hoje",
+                "sinal": "90%",
+                "asset_class": "geotech",
+                "location_line": "Trecho km 393",
+            }
+        )
+    # Far SP logger stays its own card.
+    rows.append(
+        {
+            "location_id": "zentra_far",
+            "name": "far",
+            "lat": -23.55,
+            "lon": -46.73,
+            "km": None,
+            "status": "active",
+            "status_label": "ATIVO",
+            "sensors": ["ATMOS 41"],
+            "primary": {
+                "variable": "soil_vwc",
+                "label": "VWC",
+                "value": 0.15,
+                "value_txt": "0.150",
+                "unit": "m³/m³",
+            },
+            "port_children": [],
+            "avg_port_count": 0,
+            "freshness": "hoje",
+            "sinal": "—",
+            "asset_class": "meteo",
+            "location_line": "SP",
+        }
+    )
+    sites = cluster_sensor_rows_into_sites(rows, lang_pt=True, cluster_m=120.0)
+    assert len(sites) == 2
+    big = next(s for s in sites if s["n_loggers"] == 8)
+    assert "Talude km 393" in big["name"]
+    assert big["primary"]["is_average"] is True
+    assert abs(big["primary"]["value"] - (sum(0.20 + i * 0.01 for i in range(8)) / 8)) < 1e-9
+    assert len(big["loggers"]) == 8
+    assert all(len(lg["port_children"]) == 3 for lg in big["loggers"])

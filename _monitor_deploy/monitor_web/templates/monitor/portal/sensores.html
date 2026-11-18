@@ -15,7 +15,14 @@
           <span>EFC</span><span aria-hidden="true">/</span>
           <strong>{% if lang_pt %}Sensores{% else %}Sensors{% endif %}</strong>
         </nav>
-        <p class="efc-sensores__count"><strong>{{ sensor_count }}</strong> Zentra</p>
+        <p class="efc-sensores__count">
+          <strong>{{ sensor_count }}</strong>
+          {% if lang_pt %}ponto{% if sensor_count != 1 %}s{% endif %}{% else %}site{% if sensor_count != 1 %}s{% endif %}{% endif %}
+          {% if logger_count %}
+          <span class="efc-sensores__count-sep">·</span>
+          <strong>{{ logger_count }}</strong> ZL6
+          {% endif %}
+        </p>
       </header>
 
       <div class="efc-sensores__toolbar" data-sensor-toolbar>
@@ -60,15 +67,18 @@
 
       <div class="efc-sensores__grid" data-sensor-landing>
         {% for row in sensor_rows %}
-        <article class="efc-sensores__card efc-sensores__row{% if initial_sensor_id == row.location_id %} is-active{% endif %}"
+        <article class="efc-sensores__card efc-sensores__row{% if row.n_loggers > 1 %} efc-sensores__card--site{% endif %}{% if initial_sensor_id == row.location_id or initial_sensor_id in row.location_ids %} is-active{% endif %}"
                  data-location-id="{{ row.location_id }}"
+                 data-site-id="{{ row.site_id|default:row.location_id }}"
                  data-lat="{{ row.lat|unlocalize }}"
                  data-lon="{{ row.lon|unlocalize }}"
                  data-name="{{ row.name }}"
                  data-km="{% if row.km is not None %}{{ row.km|unlocalize }}{% endif %}"
                  data-status="{{ row.status }}"
                  data-sensors="{{ row.sensors|join:' ' }}"
-                 data-asset="{{ row.asset_class }}">
+                 data-asset="{{ row.asset_class }}"
+                 data-logger-ids="{{ row.location_ids|join:' ' }}"
+                 data-n-loggers="{{ row.n_loggers|default:1 }}">
           <div class="efc-sensores__card-map"
                data-sensor-card-map
                data-lat="{{ row.lat|unlocalize }}"
@@ -120,12 +130,29 @@
               <span class="efc-sensores__primary-ico" aria-hidden="true">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.2C12 2.2 5.5 9.2 5.5 14a6.5 6.5 0 0 0 13 0C18.5 9.2 12 2.2 12 2.2z"/></svg>
               </span>
-              <span class="efc-sensores__primary-label">{{ row.primary.label }}{% if row.primary.is_average and row.primary.n_ports %} · {{ row.primary.n_ports }} {% if lang_pt %}portas{% else %}ports{% endif %}{% endif %}</span>
+              <span class="efc-sensores__primary-label">
+                {{ row.primary.label }}
+                {% if row.n_loggers > 1 %}
+                  · {{ row.n_loggers }} {% if lang_pt %}loggers{% else %}loggers{% endif %}
+                {% elif row.primary.is_average and row.primary.n_ports %}
+                  · {{ row.primary.n_ports }} {% if lang_pt %}portas{% else %}ports{% endif %}
+                {% endif %}
+              </span>
               <b class="efc-sensores__primary-val">{{ row.primary.value_txt }}{% if row.primary.unit %} {{ row.primary.unit }}{% endif %}</b>
             </p>
             {% endif %}
             <div class="efc-sensores__actions">
-              {% if row.port_children %}
+              {% if row.n_loggers > 1 %}
+              <button type="button"
+                      class="efc-sensores__expand-btn"
+                      data-sensor-expand
+                      aria-expanded="false"
+                      aria-controls="efc-sensor-loggers-{{ row.site_id|default:row.location_id }}"
+                      title="{% if lang_pt %}Ver loggers / profundidades{% else %}Show loggers / depths{% endif %}">
+                <span class="efc-sensores__expand-ico" aria-hidden="true">▾</span>
+                <span class="efc-sensores__expand-label">{% if lang_pt %}Loggers{% else %}Loggers{% endif %} ({{ row.n_loggers }})</span>
+              </button>
+              {% elif row.port_children %}
               <button type="button"
                       class="efc-sensores__expand-btn"
                       data-sensor-expand
@@ -136,19 +163,73 @@
                 <span class="efc-sensores__expand-label">{% if lang_pt %}Portas{% else %}Ports{% endif %} ({{ row.port_children|length }})</span>
               </button>
               {% endif %}
+              {% if row.n_loggers == 1 %}
               <button type="button"
                       class="efc-sensores__details-btn"
                       data-sensor-pick
-                      data-location-id="{{ row.location_id }}"
+                      data-location-id="{{ row.loggers.0.location_id|default:row.location_id }}"
                       data-source="zentra"
                       data-lat="{{ row.lat|unlocalize }}"
                       data-lon="{{ row.lon|unlocalize }}"
-                      data-name="{{ row.name }}"
+                      data-name="{{ row.loggers.0.name|default:row.name }}"
                       data-km="{% if row.km is not None %}{{ row.km|unlocalize }}{% endif %}">
                 {% if lang_pt %}Ver detalhes →{% else %}View details →{% endif %}
               </button>
+              {% endif %}
             </div>
-            {% if row.port_children %}
+            {% if row.n_loggers > 1 %}
+            <ul class="efc-sensores__loggers" id="efc-sensor-loggers-{{ row.site_id|default:row.location_id }}" data-sensor-loggers hidden>
+              {% for lg in row.loggers %}
+              <li class="efc-sensores__logger">
+                <div class="efc-sensores__logger-head">
+                  <div class="efc-sensores__logger-meta">
+                    <strong class="efc-sensores__logger-name">{{ lg.name }}</strong>
+                    <span class="efc-sensores__logger-sub">
+                      {% if lg.km is not None %}km {{ lg.km|floatformat:0 }} · {% endif %}{{ lg.freshness }}
+                      {% if lg.primary %} · {{ lg.primary.label }} {{ lg.primary.value_txt }}{% if lg.primary.unit %} {{ lg.primary.unit }}{% endif %}{% endif %}
+                    </span>
+                  </div>
+                  <button type="button"
+                          class="efc-sensores__details-btn efc-sensores__details-btn--sm"
+                          data-sensor-pick
+                          data-location-id="{{ lg.location_id }}"
+                          data-source="zentra"
+                          data-lat="{{ lg.lat|unlocalize }}"
+                          data-lon="{{ lg.lon|unlocalize }}"
+                          data-name="{{ lg.name }}"
+                          data-km="{% if lg.km is not None %}{{ lg.km|unlocalize }}{% endif %}">
+                    {% if lang_pt %}Séries{% else %}Series{% endif %}
+                  </button>
+                </div>
+                {% if lg.port_children %}
+                <ul class="efc-sensores__ports efc-sensores__ports--nested">
+                  {% for child in lg.port_children %}
+                  <li class="efc-sensores__port-row">
+                    <div class="efc-sensores__port-meta">
+                      <span class="efc-sensores__port-name">{{ child.label }}</span>
+                      <span class="efc-sensores__port-var">{{ child.var_label }}</span>
+                    </div>
+                    <b class="efc-sensores__port-val">{{ child.value_txt }}{% if child.unit %} {{ child.unit }}{% endif %}</b>
+                    <button type="button"
+                            class="efc-sensores__details-btn efc-sensores__details-btn--sm"
+                            data-sensor-pick
+                            data-location-id="{{ lg.location_id }}"
+                            data-source="zentra"
+                            data-lat="{{ lg.lat|unlocalize }}"
+                            data-lon="{{ lg.lon|unlocalize }}"
+                            data-name="{{ lg.name }} · {{ child.label }}"
+                            data-km="{% if lg.km is not None %}{{ lg.km|unlocalize }}{% endif %}"
+                            data-port="{{ child.port }}">
+                      {% if lang_pt %}Séries{% else %}Series{% endif %}
+                    </button>
+                  </li>
+                  {% endfor %}
+                </ul>
+                {% endif %}
+              </li>
+              {% endfor %}
+            </ul>
+            {% elif row.port_children %}
             <ul class="efc-sensores__ports" id="efc-sensor-ports-{{ row.location_id }}" data-sensor-ports hidden>
               {% for child in row.port_children %}
               <li class="efc-sensores__port-row">

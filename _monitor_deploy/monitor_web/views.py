@@ -384,7 +384,10 @@ def sensor_series_api(request):
 @require_GET
 def sensores_view(request):
     """Lista Zentra / geotech — card landing + série temporal sob demanda."""
-    from monitor_web.services.zentra_sensors import build_zentra_sensor_rows
+    from monitor_web.services.zentra_sensors import (
+        build_zentra_sensor_rows,
+        cluster_sensor_rows_into_sites,
+    )
     from monitor_web.services.sensor_series import ports_for_device
 
     lang = get_lang(request)
@@ -402,12 +405,14 @@ def sensores_view(request):
         main_line, cum_km, _, _ = _railway()
     except Exception:
         pass
-    rows = build_zentra_sensor_rows(
+
+    logger_rows = build_zentra_sensor_rows(
         bq_dataset=dataset,
         lang_pt=lang_pt,
         main_line=main_line,
         cum_km=cum_km,
     )
+    rows = cluster_sensor_rows_into_sites(logger_rows, lang_pt=lang_pt, cluster_m=120.0)
     from monitor_web.middleware import portal_base_path
 
     path = getattr(request, "path", "") or ""
@@ -418,6 +423,8 @@ def sensores_view(request):
         qs = row.get("map_url_qs") or ""
         row["map_href"] = f"{home_prefix}?{qs}" if qs else home_prefix
         row["ports"] = ports_for_device(row.get("sensors"), None)
+        for lg in row.get("loggers") or []:
+            lg["ports"] = ports_for_device(lg.get("sensors"), None)
     series_api = (
         f"{home_prefix}api/home/sensor-series/"
         if home_prefix != "/"
@@ -432,6 +439,7 @@ def sensores_view(request):
         )
     except Exception:
         pass
+    logger_count = sum(int(r.get("n_loggers") or 1) for r in rows)
     return render(
         request,
         monitor_template(request, "sensores.html"),
@@ -440,6 +448,7 @@ def sensores_view(request):
             "lang_pt": lang_pt,
             "sensor_rows": rows,
             "sensor_count": len(rows),
+            "logger_count": logger_count,
             "sensor_series_api": series_api,
             "initial_sensor_id": (request.GET.get("zid") or request.GET.get("location_id") or "").strip(),
         },

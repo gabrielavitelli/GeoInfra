@@ -4486,6 +4486,7 @@
     var climaOn = false;
     var climaPoints = null;
     var orthoOn = false;
+    var ORTHO_KEY = "efc_map_ortho_on";
     var langPt =
       (document.documentElement.lang || "").toLowerCase().indexOf("pt") === 0 ||
       !!(document.body && document.body.getAttribute("data-lang") === "pt");
@@ -4496,7 +4497,20 @@
         window.__efcSetBasemapLabel(on);
       }
     }
-    setBasemapLabel(false);
+
+    function setOrtho(on) {
+      orthoOn = !!on;
+      try {
+        localStorage.setItem(ORTHO_KEY, on ? "1" : "0");
+      } catch (eO) {}
+      var btn = strip.querySelector('[data-overlay="ortho"]');
+      if (btn) {
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+        btn.classList.toggle("is-active", !!on);
+      }
+      setBasemapLabel(on);
+      postToMap({ type: "efc-map-ortho-set", on: !!on });
+    }
 
     function setBasemap(mode) {
       mode = mode === "sat" ? "sat" : "3d";
@@ -4633,6 +4647,12 @@
         setOverlayLayer(name, b.getAttribute("aria-pressed") !== "true");
       });
     });
+    var orthoBtn = strip.querySelector('[data-overlay="ortho"]');
+    if (orthoBtn) {
+      orthoBtn.addEventListener("click", function () {
+        setOrtho(orthoBtn.getAttribute("aria-pressed") !== "true");
+      });
+    }
     var form = document.getElementById("efc-goto-km-form");
     if (form) {
       form.addEventListener("submit", function (ev) {
@@ -4679,6 +4699,11 @@
     } catch (e8) {}
     setOverlayLayer("stations", prefStations);
     setOverlayLayer("zentra", prefZentra);
+    var prefOrtho = false;
+    try {
+      prefOrtho = localStorage.getItem(ORTHO_KEY) === "1";
+    } catch (eOrtho) {}
+    setOrtho(prefOrtho);
 
     function applyFocusFromUrl() {
       try {
@@ -4734,19 +4759,13 @@
         postToMap({ type: "efc-map-susc", on: prefSusc });
         setOverlayLayer("stations", prefStations);
         setOverlayLayer("zentra", prefZentra);
+        setOrtho(orthoOn);
         var shared = readSharedMapView();
         if (shared) postToMap({ type: "efc-map-view", view: shared });
         applyFocusFromUrl();
       }
-      if (ev.data.type === "efc-map-zoom") {
-        var z = Number(ev.data.zoom);
-        if (isFinite(z) && z >= 14.5) {
-          setBasemapLabel(true);
-        } else if (isFinite(z)) {
-          setBasemapLabel(false);
-        }
-      }
-      if (ev.data.type === "efc-map-ortho") {
+      // Label follows manual Ortofoto only — ignore auto zoom/ortho posts.
+      if (ev.data.type === "efc-map-ortho" && ev.data.manual) {
         setBasemapLabel(!!ev.data.on);
       }
     });
@@ -6178,10 +6197,13 @@
         ev.preventDefault();
         ev.stopPropagation();
         var card = btn.closest(".efc-sensores__card");
-        var ports = card && card.querySelector("[data-sensor-ports]");
-        if (!ports) return;
-        var open = ports.hidden;
-        ports.hidden = !open;
+        if (!card) return;
+        var panel =
+          card.querySelector("[data-sensor-loggers]") ||
+          card.querySelector("[data-sensor-ports]");
+        if (!panel) return;
+        var open = panel.hidden;
+        panel.hidden = !open;
         btn.setAttribute("aria-expanded", open ? "true" : "false");
       });
     });
@@ -6194,11 +6216,12 @@
       cards.forEach(function (card) {
         var name = (card.getAttribute("data-name") || "").toLowerCase();
         var id = (card.getAttribute("data-location-id") || "").toLowerCase();
+        var loggerIds = (card.getAttribute("data-logger-ids") || "").toLowerCase();
         var km = (card.getAttribute("data-km") || "").toLowerCase();
         var sensors = (card.getAttribute("data-sensors") || "").toLowerCase();
         var asset = (card.getAttribute("data-asset") || "").toLowerCase();
         var st = (card.getAttribute("data-status") || "").toLowerCase();
-        var hay = [name, id, km, sensors, asset].join(" ");
+        var hay = [name, id, loggerIds, km, sensors, asset].join(" ");
         var okQ = !q || hay.indexOf(q) >= 0;
         var okType = true;
         if (type === "mixed") {

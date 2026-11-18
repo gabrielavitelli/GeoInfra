@@ -651,6 +651,241 @@ def build_zentra_sensor_rows(
     return rows
 
 
+def _haversine_m(a: dict[str, Any], b: dict[str, Any]) -> float:
+    """Equirectangular distance in metres — fine for ~100–150 m clusters near equator."""
+    lat1, lon1 = math.radians(float(a["lat"])), math.radians(float(a["lon"]))
+    lat2, lon2 = math.radians(float(b["lat"])), math.radians(float(b["lon"]))
+    x = (lon2 - lon1) * math.cos((lat1 + lat2) / 2.0)
+    y = lat2 - lat1
+    return math.sqrt(x * x + y * y) * 6371000.0
+
+
+def _cluster_logger_groups(
+    rows: list[dict[str, Any]],
+    *,
+    cluster_m: float = 120.0,
+) -> list[list[dict[str, Any]]]:
+    """Group nearby loggers (greedy seed clusters within cluster_m)."""
+    pending = [
+        r
+        for r in (rows or [])
+        if r.get("lat") is not None
+        and r.get("lon") is not None
+        and abs(float(r["lat"])) > 0.1
+        and abs(float(r["lon"])) > 0.1
+    ]
+    used: set[int] = set()
+    groups: list[list[dict[str, Any]]] = []
+    for i, seed in enumerate(pending):
+        if i in used:
+            continue
+        cluster = [seed]
+        used.add(i)
+        for j, other in enumerate(pending):
+            if j in used:
+                continue
+            if _haversine_m(seed, other) <= cluster_m:
+                cluster.append(other)
+                used.add(j)
+        groups.append(cluster)
+    # Orphans without valid coords stay as singleton cards.
+    for r in rows or []:
+        if r in pending:
+            continue
+        groups.append([r])
+    return groups
+
+
+def cluster_sensor_rows_into_sites(
+    rows: list[dict[str, Any]],
+    *,
+    lang_pt: bool = True,
+    cluster_m: float = 120.0,
+) -> list[dict[str, Any]]:
+    """One Sensores card per geographic ponto/talude (~100–150 m).
+
+    Collapsed card shows site-mean VWC; expand reveals each ZL6 logger and its
+    ports/depths. Same clustering radius as Taludes Monitorados.
+    """
+    sites: list[dict[str, Any]] = []
+    for gi, cluster in enumerate(_cluster_logger_groups(rows, cluster_m=cluster_m)):
+        # Stable order inside site: km then name.
+        cluster = sorted(
+            cluster,
+            key=lambda c: (c.get("km") is None, c.get("km") or 0, str(c.get("name") or "")),
+        )
+        n = len(cluster)
+        lats = [float(c["lat"]) for c in cluster if c.get("lat") is not None]
+        lons = [float(c["lon"]) for c in cluster if c.get("lon") is not None]
+        kms = [float(c["km"]) for c in cluster if c.get("km") is not None]
+        lat = sum(lats) / len(lats) if lats else float(cluster[0].get("lat") or 0)
+        lon = sum(lons) / len(lons) if lons else float(cluster[0].get("lon") or 0)
+        km = round(sum(kms) / len(kms), 1) if kms else None
+        loc_ids = [str(c.get("location_id") or "") for c in cluster]
+        site_id = f"site-{km if km is not None else gi}-{loc_ids[0] if loc_ids else gi}"
+
+        # Site mean VWC = mean of each logger's VWC (prefer logger primary when
+        # already averaged across ports; else raw soil_vwc primary).
+        vwc_vals: list[float] = []
+        for c in cluster:
+            prim = c.get("primary") or {}
+            if prim.get("variable") == "soil_vwc" and prim.get("value") is not None:
+                try:
+                    vwc_vals.append(float(prim["value"]))
+                except (TypeError, ValueError):
+                    pass
+        primary = None
+        if vwc_vals:
+            avg = sum(vwc_vals) / len(vwc_vals)
+            txt = _fmt_value("soil_vwc", avg)
+            if txt is not None:
+                primary = {
+                    "variable": "soil_vwc",
+                    "label": ("VWC médio do ponto" if lang_pt else "Site mean VWC"),
+                    "value": avg,
+                    "value_txt": txt,
+                    "unit": VAR_UNITS.get("soil_vwc", ""),
+                    "date": None,
+                    "is_average": True,
+                    "n_ports": sum(int(c.get("avg_port_count") or 0) for c in cluster)
+                    or len(vwc_vals),
+                    "n_loggers": n,
+                }
+        elif n == 1 and cluster[0].get("primary"):
+            primary = cluster[0]["primary"]
+
+        sensors: list[str] = []
+        seen_s: set[str] = set()
+        for c in cluster:
+            for s in c.get("sensors") or []:
+                ss = str(s)
+                if ss and ss not in seen_s:
+                    seen_s.add(ss)
+                    sensors.append(ss)
+
+        statuses = [str(c.get("status") or "").lower() for c in cluster]
+        if any(s == "active" for s in statuses):
+            status = "active"
+        elif statuses and all(s == "inactive" for s in statuses if s):
+            status = "inactive"
+        else:
+            status = str(cluster[0].get("status") or "—")
+        status_map = STATUS_LABELS_PT if lang_pt else STATUS_LABELS_EN
+        status_label = status_map.get(status, str(cluster[0].get("status_label") or status))
+
+        fresh_rank = {"agora": 0, "now": 0, "hoje": 1, "today": 1}
+        freshness = "—"
+        best_f = 99
+        for c in cluster:
+            f = str(c.get("freshness") or "—")
+            key = f.lower().split()[0] if f else "—"
+            rank = fresh_rank.get(key, 50)
+            if rank < best_f:
+                best_f = rank
+                freshness = f
+
+        # Signal: best available among loggers.
+        sinal = "—"
+        for c in cluster:
+            s = c.get("sinal") or c.get("cobertura")
+            if s and s != "—":
+                sinal = s
+                break
+
+        if lang_pt:
+            if km is not None:
+                name = f"Talude km {km:.0f}"
+                if n > 1:
+                    name += f" · {n} loggers"
+            else:
+                name = (
+                    f"Ponto Zentra · {n} loggers"
+                    if n > 1
+                    else str(cluster[0].get("name") or "Zentra")
+                )
+            location_line = (
+                f"Trecho km {km:.0f} – {n} ZL6"
+                if km is not None
+                else (f"{n} loggers Zentra" if n > 1 else str(cluster[0].get("location_line") or ""))
+            )
+        else:
+            if km is not None:
+                name = f"Slope km {km:.0f}"
+                if n > 1:
+                    name += f" · {n} loggers"
+            else:
+                name = (
+                    f"Zentra site · {n} loggers"
+                    if n > 1
+                    else str(cluster[0].get("name") or "Zentra")
+                )
+            location_line = (
+                f"Segment km {km:.0f} – {n} ZL6"
+                if km is not None
+                else (f"{n} Zentra loggers" if n > 1 else str(cluster[0].get("location_line") or ""))
+            )
+
+        # Multi-logger: nest ports under each logger; single logger keeps flat ports.
+        loggers: list[dict[str, Any]] = []
+        for c in cluster:
+            loggers.append(
+                {
+                    "location_id": c.get("location_id"),
+                    "name": c.get("name"),
+                    "lat": c.get("lat"),
+                    "lon": c.get("lon"),
+                    "km": c.get("km"),
+                    "status": c.get("status"),
+                    "status_label": c.get("status_label"),
+                    "sensors": c.get("sensors") or [],
+                    "primary": c.get("primary"),
+                    "freshness": c.get("freshness"),
+                    "sinal": c.get("sinal") or c.get("cobertura"),
+                    "port_children": c.get("port_children") or [],
+                    "avg_port_count": c.get("avg_port_count") or 0,
+                    "asset_class": c.get("asset_class"),
+                    "location_line": c.get("location_line"),
+                }
+            )
+
+        port_children = cluster[0].get("port_children") or [] if n == 1 else []
+        sites.append(
+            {
+                "location_id": site_id if n > 1 else loc_ids[0],
+                "site_id": site_id,
+                "is_site": True,
+                "n_loggers": n,
+                "loggers": loggers,
+                "location_ids": loc_ids,
+                "name": name,
+                "lat": round(lat, 6),
+                "lon": round(lon, 6),
+                "km": km,
+                "status": status,
+                "status_label": status_label,
+                "asset_class": (
+                    "mixed"
+                    if any(str(c.get("asset_class") or "") == "mixed" for c in cluster)
+                    else (cluster[0].get("asset_class") or "—")
+                ),
+                "sensors": sensors,
+                "series": cluster[0].get("series") or [],
+                "primary": primary,
+                "cobertura": sinal,
+                "sinal": sinal,
+                "location_line": location_line,
+                "health": cluster[0].get("health") or "—",
+                "last_ts": cluster[0].get("last_ts"),
+                "freshness": freshness,
+                "map_url_qs": f"focus=zentra&lat={lat:.5f}&lon={lon:.5f}&zid={loc_ids[0] if loc_ids else ''}",
+                "port_children": port_children,
+                "avg_port_count": sum(int(c.get("avg_port_count") or 0) for c in cluster),
+            }
+        )
+    sites.sort(key=lambda x: (x.get("km") is None, x.get("km") or 0, x.get("name") or ""))
+    return sites
+
+
 def enrich_sensor_rows_with_port_averages(
     rows: list[dict[str, Any]],
     *,
@@ -763,38 +998,18 @@ def build_taludes_monitorados(
             lang_pt=lang_pt, main_line=main_line, cum_km=cum_km, corridor_only=True
         )
     sites: list[dict[str, Any]] = []
-    # Geographic clusters of Zentra sensors.
-    pending = [
-        r
-        for r in (rows or [])
-        if r.get("lat") is not None
-        and r.get("lon") is not None
-        and abs(float(r["lat"])) > 0.1
-        and abs(float(r["lon"])) > 0.1
-    ]
-    used: set[int] = set()
-
-    def _dist_m(a: dict[str, Any], b: dict[str, Any]) -> float:
-        # Equirectangular approx — fine for ~100 m clusters near equator.
-        lat1, lon1 = math.radians(float(a["lat"])), math.radians(float(a["lon"]))
-        lat2, lon2 = math.radians(float(b["lat"])), math.radians(float(b["lon"]))
-        x = (lon2 - lon1) * math.cos((lat1 + lat2) / 2.0)
-        y = lat2 - lat1
-        return math.sqrt(x * x + y * y) * 6371000.0
-
-    for i, seed in enumerate(pending):
-        if i in used:
+    for i, cluster in enumerate(_cluster_logger_groups(rows or [], cluster_m=cluster_m)):
+        # Skip coord-less orphans for the map chooser (cards still show them).
+        if not any(
+            c.get("lat") is not None
+            and c.get("lon") is not None
+            and abs(float(c["lat"])) > 0.1
+            and abs(float(c["lon"])) > 0.1
+            for c in cluster
+        ):
             continue
-        cluster = [seed]
-        used.add(i)
-        for j, other in enumerate(pending):
-            if j in used:
-                continue
-            if _dist_m(seed, other) <= cluster_m:
-                cluster.append(other)
-                used.add(j)
-        lats = [float(c["lat"]) for c in cluster]
-        lons = [float(c["lon"]) for c in cluster]
+        lats = [float(c["lat"]) for c in cluster if c.get("lat") is not None]
+        lons = [float(c["lon"]) for c in cluster if c.get("lon") is not None]
         kms = [float(c["km"]) for c in cluster if c.get("km") is not None]
         lat = sum(lats) / len(lats)
         lon = sum(lons) / len(lons)

@@ -33,7 +33,7 @@
   <div class="efc-stitch-hero__chrome" id="efc-status-map-chrome" aria-label="{% if lang_pt %}Controles do mapa{% else %}Map controls{% endif %}"
        {% if taludes_monitorados_json %}data-taludes="{{ taludes_monitorados_json|escape }}"{% endif %}>
     <span class="efc-stitch-hero__basemap-label" data-basemap-label aria-live="polite"
-          title="{% if lang_pt %}Modo da imagem de fundo (Satélite ↔ Ortofoto Clarity){% else %}Basemap imagery mode (Satellite ↔ Orthophoto Clarity){% endif %}">Satélite</span>
+          title="{% if lang_pt %}Imagem de fundo: Satélite (padrão) ou Ortofoto via botão Ortofoto{% else %}Basemap: Satellite (default) or Orthophoto via Ortofoto button{% endif %}">Satélite</span>
     <div class="efc-stitch-hero__taludes" data-taludes-menu>
       <button type="button"
               class="efc-stitch-hero__taludes-btn"

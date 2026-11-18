@@ -3953,6 +3953,45 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
   font-size: 0.72rem;
   border-radius: 8px;
 }
+.efc-sensores__count-sep {
+  margin: 0 0.25rem;
+  opacity: 0.55;
+}
+.efc-sensores__loggers {
+  list-style: none;
+  margin: 0.55rem 0 0;
+  padding: 0.4rem 0 0;
+  border-top: 1px dashed #e7dfd2;
+  display: grid;
+  gap: 0.55rem;
+}
+.efc-sensores__loggers[hidden] {
+  display: none !important;
+}
+.efc-sensores__logger {
+  padding: 0.5rem 0.55rem;
+  border-radius: 10px;
+  background: #faf7f2;
+  border: 1px solid #ebe6de;
+}
+.efc-sensores__logger-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+.efc-sensores__logger-name {
+  display: block;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #1c1917;
+}
+.efc-sensores__logger-sub {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  color: #78716c;
+}
 .efc-sensores__ports {
   list-style: none;
   margin: 0.55rem 0 0;
@@ -3960,6 +3999,11 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
   border-top: 1px dashed #e7dfd2;
   display: grid;
   gap: 0.35rem;
+}
+.efc-sensores__ports--nested {
+  margin-top: 0.45rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed #e4d9c8;
 }
 .efc-sensores__ports[hidden] {
   display: none !important;
