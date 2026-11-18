@@ -735,7 +735,10 @@ def cluster_sensor_rows_into_sites(
                 except (TypeError, ValueError):
                     pass
         primary = None
-        if vwc_vals:
+        if n == 1 and cluster[0].get("primary"):
+            # Keep the logger's own primary (port average / raw) on singleton cards.
+            primary = dict(cluster[0]["primary"])
+        elif vwc_vals:
             avg = sum(vwc_vals) / len(vwc_vals)
             txt = _fmt_value("soil_vwc", avg)
             if txt is not None:
@@ -751,8 +754,6 @@ def cluster_sensor_rows_into_sites(
                     or len(vwc_vals),
                     "n_loggers": n,
                 }
-        elif n == 1 and cluster[0].get("primary"):
-            primary = cluster[0]["primary"]
 
         sensors: list[str] = []
         seen_s: set[str] = set()
@@ -803,11 +804,12 @@ def cluster_sensor_rows_into_sites(
                     if n > 1
                     else str(cluster[0].get("name") or "Zentra")
                 )
-            location_line = (
-                f"Trecho km {km:.0f} – {n} ZL6"
-                if km is not None
-                else (f"{n} loggers Zentra" if n > 1 else str(cluster[0].get("location_line") or ""))
-            )
+            if n > 1 and km is not None:
+                location_line = f"Trecho km {km:.0f} – {n} ZL6"
+            elif n > 1:
+                location_line = f"{n} loggers Zentra"
+            else:
+                location_line = str(cluster[0].get("location_line") or "")
         else:
             if km is not None:
                 name = f"Slope km {km:.0f}"
@@ -819,11 +821,12 @@ def cluster_sensor_rows_into_sites(
                     if n > 1
                     else str(cluster[0].get("name") or "Zentra")
                 )
-            location_line = (
-                f"Segment km {km:.0f} – {n} ZL6"
-                if km is not None
-                else (f"{n} Zentra loggers" if n > 1 else str(cluster[0].get("location_line") or ""))
-            )
+            if n > 1 and km is not None:
+                location_line = f"Segment km {km:.0f} – {n} ZL6"
+            elif n > 1:
+                location_line = f"{n} Zentra loggers"
+            else:
+                location_line = str(cluster[0].get("location_line") or "")
 
         # Multi-logger: nest ports under each logger; single logger keeps flat ports.
         loggers: list[dict[str, Any]] = []
