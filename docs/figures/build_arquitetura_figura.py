@@ -8,16 +8,16 @@ SVG_PATH = OUT_DIR / "arquitetura_sistema_5_etapas.svg"
 PNG_PATH = OUT_DIR / "arquitetura_sistema_5_etapas.png"
 
 # Layout amplo para tipografia/ícones bem grandes e legíveis
-W, H = 2600, 900
+W, H = 2720, 900
 MARGIN = 32
-PANEL_W = 460
+PANEL_W = 484
 PANEL_H = 830
 GAP = 48
 Y0 = 35
 
 HEADER_ICON_SCALE = 2.55
-ITEM_ICON_SCALE = 2.65
-ITEM_ICON_SLOT = 72  # horizontal space reserved for scaled item icon
+ITEM_ICON_SCALE = 2.55
+ITEM_ICON_SLOT = 90  # espaço horizontal para ícone escalado (evita overlap no texto)
 
 COLORS = ["#2b6de8", "#178f7a", "#b8941f", "#d97706", "#6d28d9"]
 
@@ -130,13 +130,13 @@ def item_icon(kind: str, color: str) -> str:
     sw = 2.6
     icons = {
         "frame": f'<rect x="0" y="2" width="24" height="18" fill="none" stroke="{c}" stroke-width="{sw}"/><path d="M4 8h16M4 13h12" stroke="{c}" stroke-width="2.3"/>',
-        "rain": f'<path d="M2 13 Q2 2 11 2 Q13.5 -1.5 18 2 Q26 2 26 9 Q30 9 30 14 Q30 20 23 20 H7 Q2 20 2 13Z" fill="none" stroke="{c}" stroke-width="{sw}"/><path d="M9 22v6M16 22v8M23 22v5" stroke="{c}" stroke-width="2.5"/>',
+        "rain": f'<path d="M1 12 Q1 2 9 2 Q11.5 -1 15.5 2 Q23 2 23 8.5 Q26.5 8.5 26.5 13 Q26.5 18.5 20.5 18.5 H6.5 Q1 18.5 1 12Z" fill="none" stroke="{c}" stroke-width="{sw}"/><path d="M7 20.5v5M13 20.5v7M19 20.5v4.5" stroke="{c}" stroke-width="2.5"/>',
         "gauge": f'<path d="M12 0v14M3.5 7l8.5 8.5 8.5-8.5" fill="none" stroke="{c}" stroke-width="{sw}"/><circle cx="12" cy="24" r="3.8" fill="none" stroke="{c}" stroke-width="2.5"/>',
         "probe": f'<rect x="2" y="0" width="20" height="26" fill="none" stroke="{c}" stroke-width="{sw}"/><path d="M6 7h12M6 13h12M6 19h8" stroke="{c}" stroke-width="2.3"/>',
         "track": f'<path d="M0 5h26M0 13h26M0 21h16" stroke="{c}" stroke-width="{sw}"/><circle cx="22" cy="21" r="3.8" fill="none" stroke="{c}" stroke-width="2.5"/>',
         "upload": f'<path d="M3 20 L13 4 L23 20" fill="none" stroke="{c}" stroke-width="{sw}"/><path d="M13 6v20" stroke="{c}" stroke-width="{sw}"/>',
         "db": f'<ellipse cx="13" cy="5" rx="11" ry="4.5" fill="none" stroke="{c}" stroke-width="{sw}"/><path d="M2 5v13c0 4.8 22 4.8 22 0V5" fill="none" stroke="{c}" stroke-width="{sw}"/>',
-        "qc": f'<path d="M2 4h20M2 12h20M2 20h12" stroke="{c}" stroke-width="{sw}"/><path d="M17 17l4 4 8-10" fill="none" stroke="{c}" stroke-width="2.8"/>',
+        "qc": f'<path d="M1 4h18M1 12h18M1 20h10" stroke="{c}" stroke-width="{sw}"/><path d="M14 16l3.5 3.5 7-9" fill="none" stroke="{c}" stroke-width="2.8"/>',
         "catalog": f'<rect x="1" y="2" width="24" height="20" fill="none" stroke="{c}" stroke-width="{sw}"/><path d="M6 8h14M6 14h11" stroke="{c}" stroke-width="2.3"/>',
         "server": f'<rect x="1" y="3" width="24" height="18" fill="none" stroke="{c}" stroke-width="{sw}"/><path d="M5 9h16M5 15h11" stroke="{c}" stroke-width="2.3"/>',
         "nodes": f'<circle cx="7" cy="13" r="4" fill="none" stroke="{c}" stroke-width="2.5"/><circle cx="20" cy="5" r="4" fill="none" stroke="{c}" stroke-width="2.5"/><circle cx="20" cy="21" r="4" fill="none" stroke="{c}" stroke-width="2.5"/><path d="M10.5 11.5l6-4.5M10.5 14.5l6 4.5" stroke="{c}" stroke-width="2.3"/>',
@@ -149,7 +149,7 @@ def item_icon(kind: str, color: str) -> str:
         "map": f'<rect x="0" y="2" width="26" height="20" fill="none" stroke="{c}" stroke-width="{sw}"/><path d="M4 16l6-6 5 4 6-7" fill="none" stroke="{c}" stroke-width="2.5"/><circle cx="21" cy="7" r="2.3" fill="{c}"/>',
         "dash": f'<rect x="0" y="1" width="12" height="10" fill="none" stroke="{c}" stroke-width="2.3"/><rect x="14" y="1" width="12" height="10" fill="none" stroke="{c}" stroke-width="2.3"/><rect x="0" y="14" width="26" height="10" fill="none" stroke="{c}" stroke-width="2.3"/>',
         "report": f'<path d="M5 0h14l6 6v18H5Z" fill="none" stroke="{c}" stroke-width="{sw}"/><path d="M19 0v6h6M9 13h12M9 18h9" stroke="{c}" stroke-width="2.2"/>',
-        "query": f'<circle cx="12" cy="12" r="8.5" fill="none" stroke="{c}" stroke-width="{sw}"/><path d="M18 18l8 8" stroke="{c}" stroke-width="2.8"/>',
+        "query": f'<circle cx="11" cy="11" r="8" fill="none" stroke="{c}" stroke-width="{sw}"/><path d="M16.5 16.5l7 7" stroke="{c}" stroke-width="2.8"/>',
     }
     return icons[kind]
 
