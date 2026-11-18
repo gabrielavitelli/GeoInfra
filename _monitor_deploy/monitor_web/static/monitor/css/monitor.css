@@ -3895,11 +3895,41 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
 }
 .efc-sensores__actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
   margin-top: auto;
   padding-top: 0.55rem;
 }
+.efc-sensores__expand-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid #d6cbb8;
+  background: #faf7f2;
+  color: #44403c;
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+  font: 650 0.8rem/1 "IBM Plex Sans", "Segoe UI", sans-serif;
+  cursor: pointer;
+}
+.efc-sensores__expand-btn:hover,
+.efc-sensores__expand-btn[aria-expanded="true"] {
+  border-color: #c4b6a0;
+  background: #f3ebe0;
+  color: #1c1917;
+}
+.efc-sensores__expand-ico {
+  display: inline-block;
+  transition: transform 0.18s ease;
+}
+.efc-sensores__expand-btn[aria-expanded="true"] .efc-sensores__expand-ico {
+  transform: rotate(180deg);
+}
 .efc-sensores__details-btn {
-  width: 100%;
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 7.5rem;
   border: 1px solid #2a364a;
   background: #0e1622;
   color: #e2e8f0;
@@ -3914,6 +3944,51 @@ body.efc-era5-compact .efc-era5-enso-accordion .efc-plot {
   border-color: rgba(56, 189, 248, 0.45);
   color: #f8fafc;
   background: #152033;
+}
+.efc-sensores__details-btn--sm {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.72rem;
+  border-radius: 8px;
+}
+.efc-sensores__ports {
+  list-style: none;
+  margin: 0.55rem 0 0;
+  padding: 0.4rem 0 0;
+  border-top: 1px dashed #e7dfd2;
+  display: grid;
+  gap: 0.35rem;
+}
+.efc-sensores__ports[hidden] {
+  display: none !important;
+}
+.efc-sensores__port-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.45rem;
+  align-items: center;
+  padding: 0.42rem 0.5rem;
+  border-radius: 8px;
+  background: #faf7f2;
+  border: 1px solid #ebe6de;
+}
+.efc-sensores__port-name {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: #1c1917;
+}
+.efc-sensores__port-var {
+  display: block;
+  font-size: 0.72rem;
+  color: #78716c;
+}
+.efc-sensores__port-val {
+  font-size: 0.84rem;
+  color: #1f77b4;
+  font-variant-numeric: tabular-nums;
 }
 .efc-sensores__detail,
 .efc-sensores__detail--gallery {

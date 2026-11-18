@@ -4318,6 +4318,27 @@
     var ZENTRA_KEY = "efc_map_zentra_on";
     var climaOn = false;
     var climaPoints = null;
+    var orthoOn = false;
+    var langPt =
+      (document.documentElement.lang || "").toLowerCase().indexOf("pt") === 0 ||
+      !!(document.body && document.body.getAttribute("data-lang") === "pt");
+    var basemapLabel = strip.querySelector("[data-basemap-label]");
+
+    function setBasemapLabel(on) {
+      orthoOn = !!on;
+      if (!basemapLabel) return;
+      var txt = orthoOn
+        ? langPt
+          ? "Ortofoto"
+          : "Orthophoto"
+        : langPt
+          ? "Satélite"
+          : "Satellite";
+      basemapLabel.textContent = txt;
+      basemapLabel.classList.toggle("is-ortho", orthoOn);
+      basemapLabel.setAttribute("data-mode", orthoOn ? "ortho" : "sat");
+    }
+    setBasemapLabel(false);
 
     function setBasemap(mode) {
       mode = mode === "sat" ? "sat" : "3d";
@@ -4329,6 +4350,106 @@
       });
       postToMap({ type: "efc-map-basemap", mode: mode });
     }
+
+    function parseTaludes() {
+      var raw = strip.getAttribute("data-taludes") || "[]";
+      try {
+        var parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (eT) {
+        return [];
+      }
+    }
+
+    function initTaludesMenu() {
+      var toggle = strip.querySelector("[data-taludes-toggle]");
+      var list = strip.querySelector("[data-taludes-list]");
+      if (!toggle || !list || list.dataset.bound === "1") return;
+      list.dataset.bound = "1";
+      var sites = parseTaludes();
+      list.innerHTML = "";
+      if (!sites.length) {
+        var empty = document.createElement("li");
+        empty.innerHTML =
+          '<button type="button" class="efc-layer-strip__taludes-item" disabled>' +
+          (langPt ? "Nenhum talude disponível" : "No sites available") +
+          "</button>";
+        list.appendChild(empty);
+      } else {
+        sites.forEach(function (site) {
+          var li = document.createElement("li");
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "efc-layer-strip__taludes-item";
+          btn.setAttribute("role", "option");
+          var kind =
+            site.kind === "tunnel"
+              ? langPt
+                ? "Túnel / corte"
+                : "Tunnel / cut"
+              : langPt
+                ? "Talude Zentra"
+                : "Zentra slope";
+          var kmTxt =
+            site.km != null && isFinite(Number(site.km))
+              ? " · km " + Math.round(Number(site.km))
+              : "";
+          btn.innerHTML =
+            "<span>" +
+            String(site.label || site.id || "Site") +
+            "</span><small>" +
+            kind +
+            kmTxt +
+            "</small>";
+          btn.addEventListener("click", function () {
+            var lat = Number(site.lat);
+            var lon = Number(site.lon);
+            if (!isFinite(lat) || !isFinite(lon)) return;
+            setOverlayLayer("zentra", true);
+            var zoom = Number(site.zoom) || 15.5;
+            postToMap({
+              type: "efc-map-focus-zentra",
+              lat: lat,
+              lon: lon,
+              zid: (site.location_ids && site.location_ids[0]) || "",
+              km: site.km,
+              zoom: zoom,
+            });
+            // Also nudge 2D Folium path via goto-km when available.
+            if (site.km != null && isFinite(Number(site.km))) {
+              postToMap({
+                type: "efc-map-goto-km",
+                km: Number(site.km),
+                lat: lat,
+                lon: lon,
+              });
+            }
+            list.hidden = true;
+            toggle.setAttribute("aria-expanded", "false");
+          });
+          li.appendChild(btn);
+          list.appendChild(li);
+        });
+      }
+      function closeMenu() {
+        list.hidden = true;
+        toggle.setAttribute("aria-expanded", "false");
+      }
+      toggle.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        var open = list.hidden;
+        list.hidden = !open;
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+      document.addEventListener("click", function (ev) {
+        if (!list.hidden && !strip.contains(ev.target)) closeMenu();
+      });
+      document.addEventListener("keydown", function (ev) {
+        if (ev.key === "Escape") closeMenu();
+      });
+    }
+    initTaludesMenu();
 
     function setOverlayLayer(name, on) {
       var key = name === "zentra" ? ZENTRA_KEY : name === "stations" ? STATIONS_KEY : null;
@@ -4549,12 +4670,19 @@
         setOverlayLayer("zentra", prefZentra);
         applyFocusFromUrl();
       }
-      if (ev.data.type === "efc-map-zoom" && Number(ev.data.zoom) >= 14.5) {
-        // Zoomed near sensors: ensure Esri orthophoto basemap (2D sat or 3D sat tiles).
-        if (prefBase !== "3d") setBasemap("sat");
+      if (ev.data.type === "efc-map-zoom") {
+        var z = Number(ev.data.zoom);
+        if (isFinite(z) && z >= 14.5) {
+          // Zoomed near sensors: ensure Esri orthophoto basemap (2D sat or 3D sat tiles).
+          if (prefBase !== "3d") setBasemap("sat");
+          setBasemapLabel(true);
+        } else if (isFinite(z)) {
+          setBasemapLabel(false);
+        }
       }
-      if (ev.data.type === "efc-map-ortho" && ev.data.on) {
-        if (prefBase !== "3d") setBasemap("sat");
+      if (ev.data.type === "efc-map-ortho") {
+        setBasemapLabel(!!ev.data.on);
+        if (ev.data.on && prefBase !== "3d") setBasemap("sat");
       }
     });
   }
@@ -5979,6 +6107,19 @@
     var statusSel = page.querySelector("[data-sensor-filter-status]");
     var emptyEl = page.querySelector("[data-sensor-filter-empty]");
     var cards = page.querySelectorAll(".efc-sensores__card[data-location-id]");
+
+    page.querySelectorAll("[data-sensor-expand]").forEach(function (btn) {
+      btn.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        var card = btn.closest(".efc-sensores__card");
+        var ports = card && card.querySelector("[data-sensor-ports]");
+        if (!ports) return;
+        var open = ports.hidden;
+        ports.hidden = !open;
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+    });
 
     function applyFilters() {
       var q = ((search && search.value) || "").trim().toLowerCase();

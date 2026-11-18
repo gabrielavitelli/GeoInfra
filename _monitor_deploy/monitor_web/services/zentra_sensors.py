@@ -642,10 +642,223 @@ def build_zentra_sensor_rows(
                 "last_ts": last_ts.isoformat() if isinstance(last_ts, datetime) else None,
                 "freshness": _freshness_label(last_ts, lang_pt=lang_pt),
                 "map_url_qs": f"focus=zentra&lat={lat:.5f}&lon={lon:.5f}&zid={loc}",
+                "port_children": [],
+                "avg_port_count": 0,
             }
         )
     rows.sort(key=lambda x: (x.get("km") is None, x.get("km") or 0, x["name"]))
+    enrich_sensor_rows_with_port_averages(rows, lang_pt=lang_pt)
     return rows
+
+
+def enrich_sensor_rows_with_port_averages(
+    rows: list[dict[str, Any]],
+    *,
+    lang_pt: bool = True,
+) -> list[dict[str, Any]]:
+    """Attach per-port children + replace primary with mean VWC across depths/ports.
+
+    Collapsed Sensores cards show the ponto average; expand reveals each TEROS
+    port (depth) as a child row with its own Ver detalhes target.
+    """
+    if not rows:
+        return rows
+    try:
+        from monitor_web.services.sensor_series import latest_port_readings_by_location
+    except Exception as exc:
+        logger.warning("port average enrichment unavailable: %s", exc)
+        return rows
+    try:
+        by_loc = latest_port_readings_by_location(
+            variables=("soil_vwc", "water_potential_kpa")
+        )
+    except Exception as exc:
+        logger.warning("latest_port_readings_by_location failed: %s", exc)
+        return rows
+    for row in rows:
+        loc = str(row.get("location_id") or "")
+        readings = by_loc.get(loc) or []
+        children: list[dict[str, Any]] = []
+        vwc_vals: list[float] = []
+        for r in readings:
+            var = str(r.get("variable") or "")
+            val = r.get("value")
+            try:
+                fv = float(val) if val is not None else None
+            except (TypeError, ValueError):
+                fv = None
+            if fv is None:
+                continue
+            txt = _fmt_value(var, fv)
+            if txt is None:
+                continue
+            port = r.get("port")
+            sensor = str(r.get("sensor") or "").strip() or "—"
+            if lang_pt:
+                label = f"Porta {port} · {sensor}" if port is not None else sensor
+            else:
+                label = f"Port {port} · {sensor}" if port is not None else sensor
+            children.append(
+                {
+                    "port": port,
+                    "sensor": sensor,
+                    "variable": var,
+                    "label": label,
+                    "var_label": VAR_LABELS_PT.get(var, var),
+                    "value": fv,
+                    "value_txt": txt,
+                    "unit": VAR_UNITS.get(var, ""),
+                    "datetime": r.get("datetime"),
+                }
+            )
+            if var == "soil_vwc":
+                vwc_vals.append(fv)
+        row["port_children"] = children
+        row["avg_port_count"] = len(vwc_vals)
+        if len(vwc_vals) >= 2:
+            avg = sum(vwc_vals) / len(vwc_vals)
+            txt = _fmt_value("soil_vwc", avg)
+            if txt is not None:
+                row["primary"] = {
+                    "variable": "soil_vwc",
+                    "label": ("VWC médio" if lang_pt else "Mean VWC"),
+                    "value": avg,
+                    "value_txt": txt,
+                    "unit": VAR_UNITS.get("soil_vwc", ""),
+                    "date": None,
+                    "is_average": True,
+                    "n_ports": len(vwc_vals),
+                }
+        elif len(vwc_vals) == 1 and not row.get("primary"):
+            txt = _fmt_value("soil_vwc", vwc_vals[0])
+            if txt is not None:
+                row["primary"] = {
+                    "variable": "soil_vwc",
+                    "label": VAR_LABELS_PT.get("soil_vwc", "VWC"),
+                    "value": vwc_vals[0],
+                    "value_txt": txt,
+                    "unit": VAR_UNITS.get("soil_vwc", ""),
+                    "date": None,
+                    "is_average": False,
+                    "n_ports": 1,
+                }
+    return rows
+
+
+def build_taludes_monitorados(
+    rows: list[dict[str, Any]] | None = None,
+    *,
+    lang_pt: bool = True,
+    main_line=None,
+    cum_km=None,
+    cluster_m: float = 120.0,
+) -> list[dict[str, Any]]:
+    """Chooser sites for Visão Geral → Taludes Monitorados (fly-to).
+
+    Clusters nearby Zentra loggers into one talude/ponto site, then appends
+    known tunnel / rock-cut midpoints from the 3D overlay catalog.
+    """
+    if rows is None:
+        rows = build_zentra_sensor_rows(
+            lang_pt=lang_pt, main_line=main_line, cum_km=cum_km, corridor_only=True
+        )
+    sites: list[dict[str, Any]] = []
+    # Geographic clusters of Zentra sensors.
+    pending = [
+        r
+        for r in (rows or [])
+        if r.get("lat") is not None
+        and r.get("lon") is not None
+        and abs(float(r["lat"])) > 0.1
+        and abs(float(r["lon"])) > 0.1
+    ]
+    used: set[int] = set()
+
+    def _dist_m(a: dict[str, Any], b: dict[str, Any]) -> float:
+        # Equirectangular approx — fine for ~100 m clusters near equator.
+        lat1, lon1 = math.radians(float(a["lat"])), math.radians(float(a["lon"]))
+        lat2, lon2 = math.radians(float(b["lat"])), math.radians(float(b["lon"]))
+        x = (lon2 - lon1) * math.cos((lat1 + lat2) / 2.0)
+        y = lat2 - lat1
+        return math.sqrt(x * x + y * y) * 6371000.0
+
+    for i, seed in enumerate(pending):
+        if i in used:
+            continue
+        cluster = [seed]
+        used.add(i)
+        for j, other in enumerate(pending):
+            if j in used:
+                continue
+            if _dist_m(seed, other) <= cluster_m:
+                cluster.append(other)
+                used.add(j)
+        lats = [float(c["lat"]) for c in cluster]
+        lons = [float(c["lon"]) for c in cluster]
+        kms = [float(c["km"]) for c in cluster if c.get("km") is not None]
+        lat = sum(lats) / len(lats)
+        lon = sum(lons) / len(lons)
+        km = round(sum(kms) / len(kms), 1) if kms else None
+        n = len(cluster)
+        if lang_pt:
+            if km is not None:
+                label = f"Talude km {km:.0f}"
+                if n > 1:
+                    label += f" · {n} sensores"
+            else:
+                label = f"Ponto Zentra ({n})" if n > 1 else f"Zentra {cluster[0].get('name')}"
+        else:
+            if km is not None:
+                label = f"Slope km {km:.0f}"
+                if n > 1:
+                    label += f" · {n} sensors"
+            else:
+                label = f"Zentra site ({n})" if n > 1 else f"Zentra {cluster[0].get('name')}"
+        sites.append(
+            {
+                "id": f"zentra-cluster-{km if km is not None else i}",
+                "kind": "talude",
+                "label": label,
+                "lat": round(lat, 6),
+                "lon": round(lon, 6),
+                "km": km,
+                "zoom": 15.8,
+                "n_sensors": n,
+                "location_ids": [str(c.get("location_id") or "") for c in cluster],
+            }
+        )
+    # Tunnel / rock-cut midpoints from 3D overlay catalog.
+    try:
+        from monitor_web.services.map_3d_overlay import _TUNNEL_KM_RANGES
+        from lib_efc import position_at_km
+
+        if main_line is not None and cum_km is not None:
+            for km0, km1, tunnel_label in _TUNNEL_KM_RANGES:
+                mid = (float(km0) + float(km1)) / 2.0
+                pos = position_at_km(mid, main_line, cum_km)
+                if pos is None:
+                    continue
+                if lang_pt:
+                    tlabel = f"{tunnel_label} km {km0:.0f}–{km1:.0f}"
+                else:
+                    tlabel = f"{tunnel_label} km {km0:.0f}–{km1:.0f}"
+                sites.append(
+                    {
+                        "id": f"tunnel-{km0:.0f}-{km1:.0f}",
+                        "kind": "tunnel",
+                        "label": tlabel,
+                        "lat": round(float(pos[0]), 6),
+                        "lon": round(float(pos[1]), 6),
+                        "km": round(mid, 1),
+                        "zoom": 14.5,
+                        "n_sensors": 0,
+                        "location_ids": [],
+                    }
+                )
+    except Exception as exc:
+        logger.warning("taludes tunnel sites skipped: %s", exc)
+    sites.sort(key=lambda s: (s.get("km") is None, s.get("km") or 0, s.get("label") or ""))
+    return sites
 
 
 def zentra_popup_html(row: dict[str, Any], *, lang_pt: bool = True) -> str:
