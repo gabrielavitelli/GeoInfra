@@ -120,11 +120,22 @@
               <span class="efc-sensores__primary-ico" aria-hidden="true">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.2C12 2.2 5.5 9.2 5.5 14a6.5 6.5 0 0 0 13 0C18.5 9.2 12 2.2 12 2.2z"/></svg>
               </span>
-              <span class="efc-sensores__primary-label">{{ row.primary.label }}</span>
+              <span class="efc-sensores__primary-label">{{ row.primary.label }}{% if row.primary.is_average and row.primary.n_ports %} · {{ row.primary.n_ports }} {% if lang_pt %}portas{% else %}ports{% endif %}{% endif %}</span>
               <b class="efc-sensores__primary-val">{{ row.primary.value_txt }}{% if row.primary.unit %} {{ row.primary.unit }}{% endif %}</b>
             </p>
             {% endif %}
             <div class="efc-sensores__actions">
+              {% if row.port_children %}
+              <button type="button"
+                      class="efc-sensores__expand-btn"
+                      data-sensor-expand
+                      aria-expanded="false"
+                      aria-controls="efc-sensor-ports-{{ row.location_id }}"
+                      title="{% if lang_pt %}Ver portas / profundidades{% else %}Show ports / depths{% endif %}">
+                <span class="efc-sensores__expand-ico" aria-hidden="true">▾</span>
+                <span class="efc-sensores__expand-label">{% if lang_pt %}Portas{% else %}Ports{% endif %} ({{ row.port_children|length }})</span>
+              </button>
+              {% endif %}
               <button type="button"
                       class="efc-sensores__details-btn"
                       data-sensor-pick
@@ -137,6 +148,31 @@
                 {% if lang_pt %}Ver detalhes →{% else %}View details →{% endif %}
               </button>
             </div>
+            {% if row.port_children %}
+            <ul class="efc-sensores__ports" id="efc-sensor-ports-{{ row.location_id }}" data-sensor-ports hidden>
+              {% for child in row.port_children %}
+              <li class="efc-sensores__port-row">
+                <div class="efc-sensores__port-meta">
+                  <span class="efc-sensores__port-name">{{ child.label }}</span>
+                  <span class="efc-sensores__port-var">{{ child.var_label }}</span>
+                </div>
+                <b class="efc-sensores__port-val">{{ child.value_txt }}{% if child.unit %} {{ child.unit }}{% endif %}</b>
+                <button type="button"
+                        class="efc-sensores__details-btn efc-sensores__details-btn--sm"
+                        data-sensor-pick
+                        data-location-id="{{ row.location_id }}"
+                        data-source="zentra"
+                        data-lat="{{ row.lat|unlocalize }}"
+                        data-lon="{{ row.lon|unlocalize }}"
+                        data-name="{{ row.name }} · {{ child.label }}"
+                        data-km="{% if row.km is not None %}{{ row.km|unlocalize }}{% endif %}"
+                        data-port="{{ child.port }}">
+                  {% if lang_pt %}Séries{% else %}Series{% endif %}
+                </button>
+              </li>
+              {% endfor %}
+            </ul>
+            {% endif %}
           </div>
         </article>
         {% empty %}

@@ -128,3 +128,76 @@ def test_build_rows_uses_gcs_when_bq_client_missing(tmp_path: Path, monkeypatch)
     assert len(rows) == 1
     assert rows[0]["location_id"] == "zentra_z6_35939"
     assert rows[0]["status"] == "active"
+
+
+def test_enrich_sensor_rows_mean_vwc_across_ports(tmp_path: Path, monkeypatch):
+    from monitor_web.services.zentra_sensors import enrich_sensor_rows_with_port_averages
+
+    readings = tmp_path / "readings.ndjson"
+    lines = []
+    for port, val in ((1, 0.20), (2, 0.30), (3, 0.10)):
+        lines.append(
+            json.dumps(
+                {
+                    "location_id": "zentra_z6_35939",
+                    "port_num": port,
+                    "sensor_name": "TEROS 12",
+                    "measurement": "Water Content",
+                    "value": val,
+                    "datetime": "2026-11-18T12:00:00-03:00",
+                }
+            )
+        )
+    readings.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    monkeypatch.setenv("ZENTRA_READINGS_GCS_URI", str(readings))
+    monkeypatch.delenv("ZENTRA_SKIP_GCS_FALLBACK", raising=False)
+
+    rows = [
+        {
+            "location_id": "zentra_z6_35939",
+            "name": "z6-35939",
+            "primary": None,
+            "port_children": [],
+            "avg_port_count": 0,
+        }
+    ]
+    enrich_sensor_rows_with_port_averages(rows, lang_pt=True)
+    assert rows[0]["avg_port_count"] == 3
+    assert rows[0]["primary"]["is_average"] is True
+    assert abs(rows[0]["primary"]["value"] - 0.2) < 1e-9
+    assert rows[0]["primary"]["label"] == "VWC médio"
+    assert len(rows[0]["port_children"]) == 3
+
+
+def test_build_taludes_monitorados_clusters_nearby():
+    from monitor_web.services.zentra_sensors import build_taludes_monitorados
+
+    rows = [
+        {
+            "location_id": "zentra_a",
+            "name": "a",
+            "lat": -4.2600,
+            "lon": -46.5343,
+            "km": 374.0,
+        },
+        {
+            "location_id": "zentra_b",
+            "name": "b",
+            "lat": -4.2601,
+            "lon": -46.5344,
+            "km": 374.1,
+        },
+        {
+            "location_id": "zentra_far",
+            "name": "far",
+            "lat": -23.55,
+            "lon": -46.73,
+            "km": None,
+        },
+    ]
+    sites = build_taludes_monitorados(rows, lang_pt=True, main_line=None, cum_km=None)
+    # Two geographic clusters (corridor pair + SP), no tunnels without rail.
+    assert len(sites) == 2
+    labels = [s["label"] for s in sites]
+    assert any("Talude km 374" in lab for lab in labels)
+    assert any(s["n_sensors"] == 2 for s in sites)

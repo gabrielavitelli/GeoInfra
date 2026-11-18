@@ -62,7 +62,7 @@ MAP_KM_STEP = max(2, int(os.environ.get("MONITOR_MAP_KM_STEP", "10") or "10"))
 # v53: suscetibilidade raster 4096px (pixels GeoTIFF); inclui bust via env.
 _susc_bust = (os.environ.get("SUSCETIBILIDADE_CACHE_BUST") or "").strip()
 # v56: lazy 3D + parallel catalogs + clima_series-only map accum (fast cold).
-MAP_CACHE_VER = (os.environ.get("MONITOR_MAP_CACHE_VER") or "folium_v56_mapfast").strip()
+MAP_CACHE_VER = (os.environ.get("MONITOR_MAP_CACHE_VER") or "folium_v62_taludes_ortho").strip()
 if _susc_bust:
     MAP_CACHE_VER = f"{MAP_CACHE_VER}_{_susc_bust}"
 
@@ -1796,6 +1796,7 @@ def _map_html_for_day(
 
 
 def build_map_fragment(request) -> dict:
+    import json
     import time
 
     t0 = time.perf_counter()
@@ -1807,6 +1808,18 @@ def build_map_fragment(request) -> dict:
     accum = p["accum_hours"]
 
     use_bq = bq_locations_probe(dataset)
+    taludes_json = "[]"
+    try:
+        from monitor_web.services.home import _railway
+        from monitor_web.services.zentra_sensors import build_taludes_monitorados
+
+        main_line, cum_km, _, _ = _railway()
+        taludes = build_taludes_monitorados(
+            lang_pt=lang_pt, main_line=main_line, cum_km=cum_km
+        )
+        taludes_json = json.dumps(taludes, separators=(",", ":"), ensure_ascii=False)
+    except Exception:
+        taludes_json = "[]"
     ctx = {
         "lang_pt": lang_pt,
         "use_bq": use_bq,
@@ -1815,6 +1828,7 @@ def build_map_fragment(request) -> dict:
         "map_html": "",
         "map_error": None,
         "panel_operational": "",
+        "taludes_monitorados_json": taludes_json,
         **map_help_context(
             lang_pt=lang_pt,
             selected_display=chosen.strftime("%d/%m/%Y"),

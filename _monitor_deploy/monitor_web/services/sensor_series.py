@@ -305,6 +305,94 @@ def ports_for_device(sensors: list[str] | None, n_ports: int | None = None) -> l
     return ports
 
 
+def latest_port_readings_by_location(
+    *,
+    variables: tuple[str, ...] = ("soil_vwc", "water_potential_kpa"),
+) -> dict[str, list[dict[str, Any]]]:
+    """Latest reading per (location_id, port_num, variable) from GCS readings.
+
+    Used by Sensores landing to show mean VWC on the ponto card and expandable
+    per-port / per-depth children. Returns::
+
+        location_id → [{port, sensor, variable, value, datetime}, ...]
+    """
+    if not _gcs_fallback_enabled():
+        return {}
+    path = (os.environ.get("ZENTRA_READINGS_GCS_URI") or _DEFAULT_READINGS_GCS).strip()
+    raw = _read_uri_bytes(path)
+    if not raw:
+        return {}
+    want = set(variables)
+    # key: (loc, port, var) → (ts_iso, value, sensor)
+    best: dict[tuple[str, int, str], tuple[str, float, str]] = {}
+    try:
+        for line in raw.decode("utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            loc = str(row.get("location_id") or "").strip()
+            if not loc:
+                continue
+            var = _measurement_to_variable(row.get("measurement"), row.get("mapped_variable"))
+            if not var or var not in want:
+                continue
+            try:
+                port = int(row.get("port_num"))
+            except (TypeError, ValueError):
+                continue
+            try:
+                fv = float(row["value"]) if row.get("value") is not None else None
+            except (TypeError, ValueError):
+                fv = None
+            if fv is None or not math.isfinite(fv):
+                continue
+            if var == "water_potential_kpa" and fv <= _WP_SENTINEL:
+                continue
+            ts_raw = row.get("datetime") or row.get("timestamp")
+            ts_iso = None
+            if isinstance(ts_raw, (int, float)):
+                try:
+                    ts_iso = datetime.fromtimestamp(int(ts_raw), tz=timezone.utc).isoformat()
+                except (OverflowError, OSError, ValueError):
+                    ts_iso = None
+            elif ts_raw:
+                try:
+                    ts_iso = (
+                        datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
+                        .astimezone(timezone.utc)
+                        .isoformat()
+                    )
+                except ValueError:
+                    ts_iso = str(ts_raw)
+            if not ts_iso:
+                continue
+            key = (loc, port, var)
+            prev = best.get(key)
+            if prev is None or ts_iso >= prev[0]:
+                best[key] = (ts_iso, fv, str(row.get("sensor_name") or "").strip())
+    except Exception as exc:
+        logger.warning("latest_port_readings_by_location failed: %s", exc)
+        return {}
+    out: dict[str, list[dict[str, Any]]] = {}
+    for (loc, port, var), (ts_iso, fv, sensor) in best.items():
+        out.setdefault(loc, []).append(
+            {
+                "port": port,
+                "sensor": sensor,
+                "variable": var,
+                "value": fv,
+                "datetime": ts_iso,
+            }
+        )
+    for loc in out:
+        out[loc].sort(key=lambda r: (r.get("variable") or "", r.get("port") or 0))
+    return out
+
+
 def default_variable_for_ports(ports: list[dict[str, Any]]) -> tuple[str, str]:
     """Return (family_id, variable_id) — prefer geotech (VWC / pot.) over meteo."""
     for pref in CHART_VARS_PRIORITY:

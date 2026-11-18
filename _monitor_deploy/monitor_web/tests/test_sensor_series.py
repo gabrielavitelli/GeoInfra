@@ -9,6 +9,7 @@ from monitor_web.services.sensor_series import (
     build_sensor_series_payload,
     default_variable_for_ports,
     families_from_sensors,
+    latest_port_readings_by_location,
     normalize_family,
     ports_for_device,
 )
@@ -35,6 +36,42 @@ def test_ports_for_mixed_device():
 def test_families_from_sensors_logger_always():
     assert families_from_sensors([]) == ["Logger"]
     assert "Logger" in families_from_sensors(["TEROS 12"])
+
+
+def test_latest_port_readings_by_location(tmp_path: Path, monkeypatch):
+    path = tmp_path / "readings.ndjson"
+    rows = [
+        {
+            "location_id": "zentra_z6_x",
+            "port_num": 1,
+            "sensor_name": "TEROS 12",
+            "measurement": "Water Content",
+            "value": 0.11,
+            "datetime": "2026-11-18T10:00:00-03:00",
+        },
+        {
+            "location_id": "zentra_z6_x",
+            "port_num": 1,
+            "sensor_name": "TEROS 12",
+            "measurement": "Water Content",
+            "value": 0.22,
+            "datetime": "2026-11-18T12:00:00-03:00",
+        },
+        {
+            "location_id": "zentra_z6_x",
+            "port_num": 2,
+            "sensor_name": "TEROS 12",
+            "measurement": "Water Content",
+            "value": 0.33,
+            "datetime": "2026-11-18T12:00:00-03:00",
+        },
+    ]
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    monkeypatch.setenv("ZENTRA_READINGS_GCS_URI", str(path))
+    monkeypatch.delenv("ZENTRA_SKIP_GCS_FALLBACK", raising=False)
+    out = latest_port_readings_by_location(variables=("soil_vwc",))
+    ports = {(r["port"], round(r["value"], 2)) for r in out["zentra_z6_x"]}
+    assert ports == {(1, 0.22), (2, 0.33)}
 
 
 def test_measurement_mapping():
