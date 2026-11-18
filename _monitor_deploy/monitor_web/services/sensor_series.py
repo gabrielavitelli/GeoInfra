@@ -827,11 +827,18 @@ def fetch_series_points(
                     continue
                 filtered.append(p)
             dense = filtered
-        # Keep dense only when it actually spans most of the window (or user
-        # picked a custom short range). Otherwise try BQ for longer history.
+        # Prefer dense readings when they encode port_num (TEROS depths) —
+        # BQ clima_series has no port and would either sawtooth-merge or drop
+        # depth traces. Also keep dense when it spans most of the window.
         span = _span_days(dense)
         want = float(max((end - start).days, 1))
-        if dense and (span >= min(want * 0.45, want - 0.5) or want <= 3 or port_num is not None):
+        has_ports = any(p.get("port") is not None and p.get("port") != "" for p in dense)
+        if dense and (
+            has_ports
+            or port_num is not None
+            or span >= min(want * 0.45, want - 0.5)
+            or want <= 3
+        ):
             return dense
 
     bq_out: list[dict[str, Any]] = []
