@@ -41,6 +41,9 @@ def test_popup_html_compact():
     assert "VWC: solo" in html
     assert "km 412" in html
     assert "TEROS 12" in html
+    assert "Ver séries" in html
+    assert "efc-zentra-open-series" in html
+    assert "zentra_z6_35939" in html
 
 
 def test_gcs_devices_fallback_from_raw_json(tmp_path: Path, monkeypatch):

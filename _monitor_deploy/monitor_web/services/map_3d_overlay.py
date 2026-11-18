@@ -160,16 +160,17 @@ def _cinematic_camera(main_line, cum_km) -> dict[str, float] | None:
     if main_line is None or cum_km is None:
         return None
     km_max = float(cum_km[-1])
-    focus_km = min(380.0, max(180.0, km_max * 0.42))
+    # Prefer a mid-corridor overlook with the rail sweeping diagonally.
+    focus_km = min(420.0, max(220.0, km_max * 0.48))
     pos = position_at_km(focus_km, main_line, cum_km)
     if pos is None:
         return None
     return {
         "lat": float(pos[0]),
         "lon": float(pos[1]),
-        "zoom": 6.55,
-        "pitch": 72.0,
-        "bearing": -42.0,
+        "zoom": 6.85,
+        "pitch": 68.0,
+        "bearing": -48.0,
         "km": float(focus_km),
     }
 

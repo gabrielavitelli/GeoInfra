@@ -649,7 +649,7 @@ def build_zentra_sensor_rows(
 
 
 def zentra_popup_html(row: dict[str, Any], *, lang_pt: bool = True) -> str:
-    """Compact Folium popup: series + last value + freshness."""
+    """Compact Folium popup: series + last value + freshness + open CTA."""
     title = row.get("name") or row.get("location_id") or "Zentra"
     loc = row.get("location_id") or ""
     km = row.get("km")
@@ -666,7 +666,11 @@ def zentra_popup_html(row: dict[str, Any], *, lang_pt: bool = True) -> str:
             + (f" {unit}" if unit else "")
         )
     fresh = row.get("freshness") or "—"
-    lines.append(f"<span style='color:#94a3b8'>atualizado {fresh}</span>")
+    lines.append(
+        f"<span style='color:#94a3b8'>"
+        + ("atualizado " if lang_pt else "updated ")
+        + f"{fresh}</span>"
+    )
     sensors = row.get("sensors") or []
     if sensors:
         lines.append(
@@ -674,6 +678,17 @@ def zentra_popup_html(row: dict[str, Any], *, lang_pt: bool = True) -> str:
             + " · ".join(sensors[:4])
             + "</span>"
         )
+    # CTA: click opens series modal via parent/top postMessage (Folium nested iframes).
+    cta = "Ver séries" if lang_pt else "View series"
+    lines.append(
+        "<div style='margin-top:8px'>"
+        f"<button type='button' class='efc-zentra-open-series' "
+        f"data-location-id='{loc}' "
+        "style='cursor:pointer;border:0;border-radius:6px;padding:6px 10px;"
+        "background:#f97316;color:#fff;"
+        "font:600 12px/1.2 IBM Plex Sans,Segoe UI,sans-serif'>"
+        f"{cta}</button></div>"
+    )
     return "<br>".join(lines)
 
 

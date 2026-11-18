@@ -4476,9 +4476,10 @@
     }
 
     // Default satélite (Leaflet 2D) — 3D MapLibre é lazy e só sobe se o user pedir.
-    var prefBase = "sat";
+    // Default: cinematic 3D railway overlook (Esri imagery + rail overlay).
+    var prefBase = "3d";
     try {
-      prefBase = localStorage.getItem(BASE_KEY) || "sat";
+      prefBase = localStorage.getItem(BASE_KEY) || "3d";
     } catch (e5) {}
     setBasemap(prefBase);
     var prefSusc = false;
@@ -4548,8 +4549,11 @@
         setOverlayLayer("zentra", prefZentra);
         applyFocusFromUrl();
       }
-      if (ev.data.type === "efc-map-zoom" && Number(ev.data.zoom) >= 15.5) {
-        // Hi-res Esri tiles already active; keep 2D sat when inspecting sensors.
+      if (ev.data.type === "efc-map-zoom" && Number(ev.data.zoom) >= 14.5) {
+        // Zoomed near sensors: ensure Esri orthophoto basemap (2D sat or 3D sat tiles).
+        if (prefBase !== "3d") setBasemap("sat");
+      }
+      if (ev.data.type === "efc-map-ortho" && ev.data.on) {
         if (prefBase !== "3d") setBasemap("sat");
       }
     });
@@ -5061,13 +5065,20 @@
     var chartTitle =
       (tracesIn[0] && tracesIn[0].chart_title) ||
       sensorChartTitle(v, langPt, (tracesIn[0] && tracesIn[0].label) || v);
+    // Single-port cards: put Porta N in the title (legend hidden).
+    if (tracesIn.length === 1 && tracesIn[0].port != null && tracesIn[0].port !== "") {
+      var portBit = (langPt ? " · Porta " : " · Port ") + String(tracesIn[0].port);
+      if (String(chartTitle).indexOf(portBit) < 0) chartTitle = chartTitle + portBit;
+    }
     if (deviceName) chartTitle = chartTitle + " — " + deviceName;
     var isPrecip = v === "precip_mm";
     var grid = "rgba(148,163,184,.28)";
     var ink = "#1e293b";
     var muted = "#64748b";
     var data = tracesIn.map(function (tr) {
-      var points = tr.points || [];
+      var points = (tr.points || []).slice().sort(function (a, b) {
+        return String(a.t || "").localeCompare(String(b.t || ""));
+      });
       var nm = tr.label || tr.variable || v;
       var col = tr.color || colors[v] || "#1f77b4";
       return {
@@ -5080,7 +5091,7 @@
           return p.v;
         }),
         name: nm,
-        line: isPrecip ? undefined : { color: col, width: 1.8 },
+        line: isPrecip ? undefined : { color: col, width: 1.8, shape: "linear" },
         marker: isPrecip
           ? { color: col, line: { width: 0 } }
           : { size: 4, color: col, opacity: 0.9 },
@@ -5092,6 +5103,7 @@
           "<extra></extra>",
       };
     });
+    var multiPortOverlay = tracesIn.length > 1;
     var layout = {
       title: {
         text: "<b>" + chartTitle + "</b>",
@@ -5105,7 +5117,7 @@
       plot_bgcolor: "#ffffff",
       font: { color: ink, size: 11, family: "IBM Plex Sans, Segoe UI, sans-serif" },
       hovermode: "x unified",
-      showlegend: true,
+      showlegend: multiPortOverlay,
       legend: {
         orientation: "h",
         y: 1.02,
@@ -5263,16 +5275,9 @@
     var envTraces = tracesIn.filter(function (t) {
       return !isHealthVariable(t.variable);
     });
-    // Group env traces by variable so multi-port depths share one card (no sawtooth).
-    var envGroups = [];
-    var envIndex = {};
-    envTraces.forEach(function (tr) {
-      var key = tr.variable || tr.label || "";
-      if (envIndex[key] == null) {
-        envIndex[key] = envGroups.length;
-        envGroups.push([]);
-      }
-      envGroups[envIndex[key]].push(tr);
+    // One card per port+variable — never overlay ports on the same line (sawtooth).
+    var envCards = envTraces.map(function (tr) {
+      return [tr];
     });
     var deviceName = (payload && (payload.name || payload.location_id)) || "";
     galleryEl.innerHTML = "";
@@ -5283,7 +5288,7 @@
     function appendEnvCard(group, idx, total) {
       var cell = document.createElement("div");
       cell.className = "efc-sensor-gallery__cell";
-      if (total === 1 || (total % 2 === 1 && idx === total - 1) || group.length > 1) {
+      if (total === 1 || (total % 2 === 1 && idx === total - 1)) {
         cell.classList.add("efc-sensor-gallery__cell--wide");
       }
       var card = document.createElement("article");
@@ -5298,11 +5303,7 @@
         csv.className = "efc-sensor-card__csv";
         csv.innerHTML =
           '<span class="efc-sensor-card__csv-icon" aria-hidden="true">⇩</span> ' +
-          (group.length > 1
-            ? (tr.label || tr.variable) + " CSV"
-            : langPt
-              ? "Baixar CSV"
-              : "Download CSV");
+          (langPt ? "Baixar CSV" : "Download CSV");
         csv.addEventListener("click", function (ev) {
           ev.preventDefault();
           downloadSensorTraceCsv(tr, deviceName);
@@ -5315,8 +5316,8 @@
 
     ensurePlotlyLoaded()
       .then(function () {
-        envGroups.forEach(function (group, idx) {
-          appendEnvCard(group, idx, envGroups.length);
+        envCards.forEach(function (group, idx) {
+          appendEnvCard(group, idx, envCards.length);
         });
         if (healthPair.length) {
           var cellH = document.createElement("div");
@@ -5343,7 +5344,7 @@
           });
           grid.appendChild(cellH);
           plotHealthSensorCard(plotH, healthPair, deviceName, langPt);
-        } else if (!envGroups.length && healthTraces.length) {
+        } else if (!envCards.length && healthTraces.length) {
           // Fallback: only battery_v or lone health vars.
           healthTraces.forEach(function (tr, idx) {
             appendEnvCard([tr], idx, healthTraces.length);
@@ -5656,39 +5657,10 @@
       if (payload.end) state.end = payload.end;
       if (payload.days) state.days = payload.days;
       syncRangeInputs();
+      // Keep data-span hidden — short ingest windows are obvious from the chart axis.
       if (spanEl) {
-        if (payload.data_start && payload.data_end) {
-          var asked =
-            (payload.start || "") + "→" + (payload.end || "");
-          var got = payload.data_start + "→" + payload.data_end;
-          spanEl.hidden = false;
-          if (asked && got !== asked.replace(/-/g, "-") && payload.data_start === payload.data_end) {
-            spanEl.textContent =
-              (langPt ? "Dados disponíveis apenas em " : "Data only available on ") +
-              payload.data_start +
-              ".";
-          } else if (payload.start && payload.data_start > payload.start) {
-            spanEl.textContent =
-              (langPt
-                ? "Histórico ingerido: "
-                : "Ingested history: ") +
-              payload.data_start +
-              " → " +
-              payload.data_end +
-              (langPt
-                ? " (janela pedida maior que os dados brutos disponíveis)."
-                : " (requested window longer than available raw data).");
-          } else {
-            spanEl.textContent =
-              (langPt ? "Período com dados: " : "Data span: ") +
-              payload.data_start +
-              " → " +
-              payload.data_end;
-          }
-        } else {
-          spanEl.hidden = true;
-          spanEl.textContent = "";
-        }
+        spanEl.hidden = true;
+        spanEl.textContent = "";
       }
       renderExports(payload);
       if (payload.lat != null) state.lat = payload.lat;
@@ -6074,10 +6046,18 @@
   function initSensorMapBridge() {
     if (window.__efcSensorMapBridge) return;
     window.__efcSensorMapBridge = 1;
+    var lastOpenKey = "";
+    var lastOpenAt = 0;
     function handleOpen(p) {
       if (!p) return;
       var locId = p.location_id || p.zid || p.code || "";
       if (!locId && p.lat == null && p.lon == null) return;
+      // Dedupe double delivery (parent + top postMessage) within 600ms.
+      var key = String(locId || "") + "|" + String(p.lat || "") + "|" + String(p.lon || "");
+      var now = Date.now();
+      if (key === lastOpenKey && now - lastOpenAt < 600) return;
+      lastOpenKey = key;
+      lastOpenAt = now;
       try {
         openSensorDetail({
           location_id: locId,
@@ -6090,8 +6070,24 @@
         });
       } catch (eOpen) {
         console.warn("efc-sensor-open failed", eOpen);
+        // Retry once after modal CSS/DOM settles.
+        window.setTimeout(function () {
+          try {
+            openSensorDetail({
+              location_id: locId,
+              source: p.source || "zentra",
+              lat: p.lat,
+              lon: p.lon,
+              name: p.name || "",
+              km: p.km,
+              days: p.days || 30,
+            });
+          } catch (e2) {
+            console.warn("efc-sensor-open retry failed", e2);
+          }
+        }, 120);
       }
-      // Also fly map to sensor in 3D sat
+      // Also fly map to sensor in 3D sat / hi-res ortho.
       try {
         var iframe = document.querySelector("#home-map-panel iframe, .efc-map-frame iframe, #efc-map-iframe");
         if (iframe && iframe.contentWindow && p.lat != null) {
