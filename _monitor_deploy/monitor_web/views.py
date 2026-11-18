@@ -337,6 +337,14 @@ def sensor_series_api(request):
     variable = (request.GET.get("variable") or "").strip() or None
     family = (request.GET.get("family") or request.GET.get("port") or "").strip() or None
     days = request.GET.get("days") or request.GET.get("window") or "7"
+    multi_raw = (request.GET.get("multi") or "").strip().lower()
+    multi = None
+    if multi_raw in ("1", "true", "yes", "multi"):
+        multi = True
+    elif multi_raw in ("0", "false", "no", "single"):
+        multi = False
+    vars_raw = (request.GET.get("variables") or "").strip()
+    variables = [v.strip() for v in vars_raw.split(",") if v.strip()] or None
     if not location_id:
         return JsonResponse(
             {"available": False, "error": "location_id required", "points": []},
@@ -357,6 +365,8 @@ def sensor_series_api(request):
             days=days,
             bq_dataset=dataset,
             lang_pt=lang_pt,
+            multi=multi,
+            variables=variables,
         )
         return JsonResponse(sanitize_for_json(payload))
     except Exception as exc:

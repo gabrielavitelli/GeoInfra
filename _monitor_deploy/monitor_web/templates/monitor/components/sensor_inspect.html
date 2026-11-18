@@ -1,5 +1,5 @@
 {# Shared Zentra/Orion inspection panel — map modal + Sensores aba #}
-<div class="efc-sensor-inspect"
+<div class="efc-sensor-inspect efc-sensor-inspect--premium"
      data-sensor-inspect
      data-series-api="{{ sensor_series_api }}"
      data-lang="{% if lang_pt %}pt{% else %}en{% endif %}"
@@ -16,14 +16,18 @@
     </aside>
     <div class="efc-sensor-inspect__chart-col">
       <div class="efc-sensor-inspect__controls">
-        <label class="efc-sensor-inspect__field">
-          <span>{% if lang_pt %}Porta / série{% else %}Port / series{% endif %}</span>
-          <select data-sensor-family></select>
-        </label>
-        <label class="efc-sensor-inspect__field">
-          <span>{% if lang_pt %}Variável{% else %}Variable{% endif %}</span>
-          <select data-sensor-variable></select>
-        </label>
+        <div class="efc-sensor-inspect__field efc-sensor-inspect__field--ports">
+          <span>{% if lang_pt %}Porta{% else %}Port{% endif %}</span>
+          <div class="efc-sensor-inspect__port-chips" data-sensor-ports role="group"
+               aria-label="{% if lang_pt %}Porta / série{% else %}Port / series{% endif %}"></div>
+          <select data-sensor-family class="efc-sensor-inspect__fallback-select" hidden></select>
+        </div>
+        <div class="efc-sensor-inspect__field efc-sensor-inspect__field--vars">
+          <span>{% if lang_pt %}Séries{% else %}Series{% endif %}</span>
+          <div class="efc-sensor-inspect__var-chips" data-sensor-vars role="group"
+               aria-label="{% if lang_pt %}Variáveis{% else %}Variables{% endif %}"></div>
+          <select data-sensor-variable class="efc-sensor-inspect__fallback-select" hidden></select>
+        </div>
         <div class="efc-sensor-inspect__windows" role="group"
              aria-label="{% if lang_pt %}Janela{% else %}Window{% endif %}">
           <button type="button" data-sensor-days="1" class="efc-sensor-inspect__win">24h</button>
@@ -32,7 +36,9 @@
         </div>
         <span class="efc-sensor-inspect__fresh" data-sensor-fresh></span>
       </div>
-      <div class="efc-sensor-inspect__chart" data-sensor-chart></div>
+      <div class="efc-sensor-inspect__chart-card">
+        <div class="efc-sensor-inspect__chart" data-sensor-chart></div>
+      </div>
       <p class="efc-sensor-inspect__hint" data-sensor-hint hidden></p>
     </div>
   </div>

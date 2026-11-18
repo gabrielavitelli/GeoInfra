@@ -35,8 +35,21 @@ Prod Cloud Run = **Django** `monitor_web`, **não** Streamlit.
 
 Branch: `cursor/zentra-sensor-detail-9ef8` (inclui pluvio + map 3D + sensor detail).
 
-Sensores vêm de BigQuery (`climaticsystem.efc_clima.zentra_devices`). Sem ADC / BQ falha → **fallback GCS**
-`gs://efc-clima-data/obs/zentra/zentra_devices_latest.json` (mesmo catálogo do ingest).
+Sensores vêm de BigQuery (`climaticsystem.efc_clima.zentra_devices` + `clima_series`).
+Sem ADC / BQ falha → **fallback GCS** (mesmo catálogo do ingest):
+
+| Env | Default |
+|-----|---------|
+| `USE_BQ` | `1` (obrigatório no preview prod-like) |
+| `GOOGLE_CLOUD_PROJECT` | `climaticsystem` |
+| `BQ_DATASET` | `efc_clima` |
+| `ZENTRA_DEVICES_GCS_URI` | `gs://efc-clima-data/obs/zentra/zentra_devices_latest.json` |
+| `ZENTRA_LOCATIONS_GCS_URI` | `gs://efc-clima-data/obs/zentra/zentra_locations_latest.json` |
+| `ZENTRA_SERIES_GCS_URI` | `gs://efc-clima-data/obs/zentra/zentra_clima_series_latest.ndjson` |
+| `ZENTRA_READINGS_GCS_URI` | `gs://efc-clima-data/obs/zentra/zentra_readings_latest.ndjson` |
+| `ZENTRA_SKIP_GCS_FALLBACK` | unset (set `1` to force BQ-only) |
+
+ADC: `gcloud auth application-default login` + `gcloud auth application-default set-quota-project climaticsystem`.
 
 ### Verificar ADC + contar Zentra (mesma função da view)
 
