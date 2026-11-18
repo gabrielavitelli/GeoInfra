@@ -4821,7 +4821,9 @@
   }
 
   function bindSensorInspect(root) {
-    if (!root || root.__efcSensorBound) return null;
+    if (!root) return null;
+    if (root.__efcSensorApi) return root.__efcSensorApi;
+    if (root.__efcSensorBound) return null;
     root.__efcSensorBound = 1;
     var apiBase = sensorSeriesApiUrl(root);
     var langPt = (root.getAttribute("data-lang") || "pt") !== "en";
@@ -5044,7 +5046,7 @@
       });
     });
 
-    return {
+    var api = {
       open: function (opts) {
         opts = opts || {};
         state.location_id = opts.location_id || opts.zid || "";
@@ -5064,6 +5066,8 @@
       },
       reload: load,
     };
+    root.__efcSensorApi = api;
+    return api;
   }
 
   function ensureSensorModal() {
