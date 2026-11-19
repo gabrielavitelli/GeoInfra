@@ -9,7 +9,9 @@ com features GOES + rótulos EWS/UNIPLU — sem deploy.
   mapeadas ao km_efc; UNIPLU no BQ vai até 2025-12-31 (overlap parcial)
 - Subsample ~3/4 do espaço amostral (mantém todos os positivos)
 - Filtro VIF (tol=0.2 ⇒ VIF≤5) antes de treinar o SVM
-- Figuras: ROC/AUC, AG (fitness), SVM (scores), VIF
+- Expansão de volume: densificar km (--dense-km-step) + sintéticos eigen
+  (--train-mult 10 ⇒ ~10× linhas de treino vs base)
+- Figuras: ROC/AUC, AG (fitness), SVM (scores), VIF, eigen-synth
 
 Uso:
   python3 scripts/raijin_health/eval_summer_roc.py \\
@@ -125,6 +127,117 @@ def _subsample(df: pd.DataFrame, keep_frac: float, seed: int) -> pd.DataFrame:
     out = pd.concat([pos, neg], ignore_index=True)
     out = out.sample(frac=1.0, random_state=seed).reset_index(drop=True)
     return out
+
+
+def _interp_feat_cols(df: pd.DataFrame) -> list[str]:
+    cols = []
+    for c in df.columns:
+        if c.startswith("C") and "_h" in c:
+            cols.append(c)
+        elif c.startswith("bq_ecmwf_"):
+            cols.append(c)
+        elif c in (
+            "wn2_precip_mm",
+            "wn2_t2m_c",
+            "wn2_conv_proxy",
+            "merge_mm_24h",
+            "goes_hours_found",
+            "lat",
+            "lon",
+        ):
+            cols.append(c)
+    return cols
+
+
+def _densify_km_grid(df: pd.DataFrame, step: int) -> pd.DataFrame:
+    """Expande malha de km por interpolação linear das features GOES/ECMWF.
+
+    Rótulos (ews_mm / uniplu_mm) vêm do km âncora mais próximo (não se interpola
+    o evento). Linhas novas marcam ``is_densified=1``.
+    """
+    if step is None or step <= 0:
+        out = df.copy()
+        out["is_densified"] = 0
+        return out
+    work = df.copy()
+    work["km_efc"] = pd.to_numeric(work["km_efc"], errors="coerce")
+    work = work.dropna(subset=["km_efc"]).copy()
+    work["km_efc"] = work["km_efc"].astype(int)
+    anchors = np.array(sorted(work["km_efc"].unique()))
+    if len(anchors) < 2:
+        work["is_densified"] = 0
+        return work
+    grid = np.unique(
+        np.concatenate(
+            [anchors, np.arange(int(anchors.min()), int(anchors.max()) + 1, int(step))]
+        )
+    )
+    feat_cols = _interp_feat_cols(work)
+    rows: list[dict] = []
+    for day, g in work.groupby("day", sort=True):
+        g = g.sort_values("km_efc")
+        x = g["km_efc"].to_numpy(dtype=float)
+        # dedup km no mesmo dia
+        _, uniq_idx = np.unique(x, return_index=True)
+        g = g.iloc[uniq_idx]
+        x = g["km_efc"].to_numpy(dtype=float)
+        if len(x) < 2:
+            for _, r in g.iterrows():
+                d = r.to_dict()
+                d["is_densified"] = 0
+                rows.append(d)
+            continue
+        interp = {}
+        for c in feat_cols:
+            yv = pd.to_numeric(g[c], errors="coerce").to_numpy(dtype=float)
+            # preenche NaN locais com vizinho antes de interpolar
+            if np.all(np.isnan(yv)):
+                continue
+            mask = ~np.isnan(yv)
+            if mask.sum() == 0:
+                continue
+            interp[c] = np.interp(grid.astype(float), x[mask], yv[mask])
+        ews = pd.to_numeric(g.get("ews_mm"), errors="coerce").fillna(0).to_numpy(dtype=float)
+        uni = (
+            pd.to_numeric(g["uniplu_mm"], errors="coerce").fillna(0).to_numpy(dtype=float)
+            if "uniplu_mm" in g.columns
+            else np.zeros(len(g))
+        )
+        for i, km in enumerate(grid):
+            j = int(np.argmin(np.abs(x - km)))
+            is_anchor = bool(np.any(np.abs(x - km) < 0.5))
+            rec = {
+                "day": day,
+                "km_efc": int(km),
+                "ews_mm": float(ews[j]),
+                "uniplu_mm": float(uni[j]),
+                "is_densified": 0 if is_anchor else 1,
+            }
+            for c, arr in interp.items():
+                rec[c] = float(arr[i])
+            # copia metadados do âncora
+            for meta in ("init_tag", "hard_negative", "sample_weight", "wn2_has_data", "label"):
+                if meta in g.columns:
+                    rec[meta] = g.iloc[j][meta]
+            rows.append(rec)
+    out = pd.DataFrame(rows)
+    out["label_ews"] = (out["ews_mm"].fillna(0) >= THRESHOLD_MM).astype(int)
+    out["label_uniplu"] = (out["uniplu_mm"].fillna(0) >= THRESHOLD_MM).astype(int)
+    out["label_combo"] = ((out["label_ews"] == 1) | (out["label_uniplu"] == 1)).astype(int)
+    return out
+
+
+def _synth_factor_for_mult(n_train: int, n_base: int, target_mult: float, mode: str) -> float:
+    """Calcula factor eigen para atingir ~target_mult × n_base no fit."""
+    if target_mult <= 1 or n_train <= 0 or n_base <= 0:
+        return 0.0
+    target = target_mult * n_base
+    # com mode=both, factor f ⇒ n_fit ≈ n_train * (1+f)
+    # com mode=pos, só positivos crescem — approx n_fit ≈ n_train + f*n_pos ≈ n_train*(1+f/2) se balanceado
+    if mode == "both":
+        return max(0.0, target / n_train - 1.0)
+    # pos/neg: assume ~metade da classe alvo
+    return max(0.0, 2.0 * (target / n_train - 1.0))
 
 
 def _fill_numeric(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
@@ -781,6 +894,24 @@ def main() -> int:
         default="both",
         help="Quais classes aumentar com sintéticos eigen",
     )
+    ap.add_argument(
+        "--dense-km-step",
+        type=int,
+        default=0,
+        help="Densifica malha de km (ex.: 5) interpolando GOES/ECMWF entre âncoras",
+    )
+    ap.add_argument(
+        "--train-mult",
+        type=float,
+        default=0.0,
+        help="Alvo de volume no fit vs N linhas originais (ex.: 10 ⇒ ~10× com densify+eigen)",
+    )
+    ap.add_argument(
+        "--roc-on",
+        choices=("anchors", "all"),
+        default="anchors",
+        help="ROC só nos km originais (anchors) ou em toda malha densificada",
+    )
     args = ap.parse_args()
     out_dir = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -817,14 +948,26 @@ def main() -> int:
         f"   EWS+={df['label_ews'].sum()} · UNIPLU rows matched={n_u} · "
         f"UNIPLU+={df['label_uniplu'].sum()} · combo+={df['label_combo'].sum()}"
     )
+    n_base = len(df)
 
-    print(f"3) Subsample keep_frac={args.keep_frac} (negativos)…")
-    before = len(df)
-    df_s = _subsample(df, keep_frac=args.keep_frac, seed=args.seed)
+    print(
+        f"3) Densificar malha de km"
+        + (f" (step={args.dense_km_step})" if args.dense_km_step > 0 else " (off)")
+        + "…"
+    )
+    df_d = _densify_km_grid(df, step=args.dense_km_step)
+    print(
+        f"   {n_base} → {len(df_d)} linhas · km={df_d['km_efc'].nunique()} "
+        f"(densificadas={int(df_d['is_densified'].sum())})"
+    )
+
+    print(f"4) Subsample keep_frac={args.keep_frac} (negativos)…")
+    before = len(df_d)
+    df_s = _subsample(df_d, keep_frac=args.keep_frac, seed=args.seed)
     print(f"   {before} → {len(df_s)} linhas (pos={df_s['label_combo'].sum()})")
 
     train_end = "2026-03-31"
-    print(f"4) Filtro VIF (tol={args.vif_tol} → VIF≤{1.0/args.vif_tol:.0f}) antes do SVM…")
+    print(f"5) Filtro VIF (tol={args.vif_tol} → VIF≤{1.0/args.vif_tol:.1f}) antes do SVM…")
     cand = [c for c in df_s.columns if (c.startswith("C") and "_h" in c) or c.startswith("bq_ecmwf_")]
     # prioriza o pool do modelo implantado + extras GOES/ECMWF presentes
     pool = list(dict.fromkeys(list(pack_deployed["features"]) + cand))
@@ -842,9 +985,23 @@ def main() -> int:
     )
     _plot_vif(vif_info, out_dir / "fig_vif_filter.png")
 
+    # volume alvo no fit: densify já expandiu; eigen completa até --train-mult
+    synth_factor = float(args.synth_factor)
+    n_train_est = int((df_s["day"] <= pd.Timestamp(train_end)).sum())
+    if args.train_mult and args.train_mult > 1:
+        auto_f = _synth_factor_for_mult(
+            n_train=n_train_est, n_base=n_base, target_mult=args.train_mult, mode=args.synth_mode
+        )
+        # se densify já passou do alvo, eigen mínimo; senão completa
+        synth_factor = max(synth_factor, auto_f)
+        print(
+            f"   train-mult={args.train_mult:g}× (base={n_base}) → "
+            f"synth-factor auto={synth_factor:.2f} (treino≈{n_train_est})"
+        )
+
     print(
-        f"5) Treinar SVM pós-VIF + gate"
-        + (f" + sintéticos eigen×{args.synth_factor} ({args.synth_mode})" if args.synth_factor > 0 else "")
+        f"6) Treinar SVM pós-VIF + gate"
+        + (f" + sintéticos eigen×{synth_factor:.2f} ({args.synth_mode})" if synth_factor > 0 else "")
         + "…"
     )
     t_gate = float(pack_deployed.get("wn2_precip_min_mm", 10.0))
@@ -854,33 +1011,41 @@ def main() -> int:
         t_gate=t_gate,
         seed=args.seed,
         train_end=train_end,
-        synth_factor=args.synth_factor,
+        synth_factor=synth_factor,
         synth_mode=args.synth_mode,
-        synth_plot=(out_dir / "fig_eigen_synth.png") if args.synth_factor > 0 else None,
+        synth_plot=(out_dir / "fig_eigen_synth.png") if synth_factor > 0 else None,
     )
-    if args.synth_factor > 0:
-        print(
-            f"   treino real={pack['n_train']} → fit={pack['n_train_fit']} "
-            f"(+{pack['synth'].get('n_synth', 0)} synth)"
-        )
+    print(
+        f"   treino real={pack['n_train']} → fit={pack['n_train_fit']} "
+        f"(×{pack['n_train_fit'] / max(n_base, 1):.1f} vs base {n_base}; "
+        f"+{pack.get('synth', {}).get('n_synth', 0)} synth)"
+    )
 
-    print("6) Agregar nível dia + figuras ROC/SVM…")
-    day_df = _aggregate_day(scored)
-    print(f"   dias={len(day_df)} · positivos={int(day_df['label_combo'].sum())}")
+    print("7) Agregar nível dia + figuras ROC/SVM…")
+    if args.roc_on == "all" or "is_densified" not in scored.columns:
+        scored_roc = scored
+    else:
+        scored_roc = scored[scored["is_densified"] == 0]
+    day_df = _aggregate_day(scored_roc)
+    print(
+        f"   dias={len(day_df)} · positivos={int(day_df['label_combo'].sum())} "
+        f"(roc_on={args.roc_on})"
+    )
     metrics = _plot_roc(
         day_df,
         out_dir / "fig_roc_auc_verao.png",
         title=(
             f"ROC (nível dia) — VIF tol={args.vif_tol}→SVM"
-            + (f"+eigen×{args.synth_factor:g}" if args.synth_factor > 0 else "")
+            + (f"+eigen×{synth_factor:.1f}" if synth_factor > 0 else "")
+            + (f"+dense{args.dense_km_step}" if args.dense_km_step > 0 else "")
             + f" · {d0}→{d1}\n"
             f"rótulo EWS∪UNIPLU ≥{THRESHOLD_MM:g} mm · "
-            f"{len(vif_info['kept'])} feats · subsample neg={args.keep_frac:.0%}"
+            f"fit×{pack['n_train_fit'] / max(n_base, 1):.1f} · subsample neg={args.keep_frac:.0%}"
         ),
     )
     _plot_svm(day_df, pack, out_dir / "fig_svm_decision.png")
 
-    print("7) AG compacto sobre pool pós-VIF…")
+    print("8) AG compacto sobre pool pós-VIF…")
     ag = _run_ag_compact(
         df_s,
         vif_info["kept"],
@@ -892,10 +1057,16 @@ def main() -> int:
         "period": {"start": str(d0), "end": str(d1)},
         "model": (
             f"SVM pós-VIF (tol={args.vif_tol}, VIF≤{1.0/args.vif_tol:.1f}) + gate precip"
-            + (f" + eigen-synth×{args.synth_factor} ({args.synth_mode})" if args.synth_factor > 0 else "")
+            + (f" + dense_km={args.dense_km_step}" if args.dense_km_step > 0 else "")
+            + (f" + eigen-synth×{synth_factor:.2f} ({args.synth_mode})" if synth_factor > 0 else "")
         ),
         "base_deployed": "cascade_v2 (referência de features/gate)",
         "label": f"EWS∪UNIPLU ≥ {THRESHOLD_MM} mm/24h",
+        "period_note": (
+            "Features GOES disponíveis só 2026-01-01→2026-05-20 (13 km âncora). "
+            "Expansão de volume = densificar km + sintéticos eigen (não há GOES histórico "
+            "extra no GCS para alongar o calendário)."
+        ),
         "uniplu_note": (
             "UNIPLU no BQ termina em 2025-12-31; overlap com features GOES "
             f"({d0}→{d1}) é limitado — rótulo combo ≈ EWS neste verão."
@@ -910,8 +1081,17 @@ def main() -> int:
             "dropped": vif_info["dropped"],
             "vif_final": vif_info["vif_final"],
         },
+        "expand": {
+            "n_base": n_base,
+            "dense_km_step": args.dense_km_step,
+            "n_after_densify": before,
+            "train_mult_target": args.train_mult,
+            "n_train_fit": pack.get("n_train_fit"),
+            "fit_vs_base": round(pack["n_train_fit"] / max(n_base, 1), 2),
+            "roc_on": args.roc_on,
+        },
         "synth_eigen": {
-            "factor": args.synth_factor,
+            "factor": synth_factor,
             "mode": args.synth_mode,
             "n_train_real": pack.get("n_train"),
             "n_train_fit": pack.get("n_train_fit"),
