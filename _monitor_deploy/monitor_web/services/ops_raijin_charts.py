@@ -410,7 +410,7 @@ def build_combined_los_rain(
     _MAX_MONTHLY_MM = 800.0  # >~Amazon wet-month extremes → treat as bad tip sum
     if months and series:
         for i, _m in enumerate(months):
-            vals = []
+            raw: list[float] = []
             for s in series:
                 y = s.get("y") or []
                 if i < len(y) and y[i] is not None:
@@ -418,8 +418,12 @@ def build_combined_los_rain(
                         fv = float(y[i])
                     except (TypeError, ValueError):
                         continue
-                    if 0.0 <= fv <= _MAX_MONTHLY_MM:
-                        vals.append(fv)
+                    if fv >= 0.0:
+                        raw.append(fv)
+            # Prefer sane values; if all inflated, clip then median.
+            vals = [v for v in raw if v <= _MAX_MONTHLY_MM]
+            if not vals and raw:
+                vals = [min(v, _MAX_MONTHLY_MM) for v in raw]
             if not vals:
                 rain_y.append(0.0)
                 continue
