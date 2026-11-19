@@ -78,12 +78,14 @@ def load_monthly_precip(
         return empty
     pfx = _pfx(dataset)
     # Prefer observed networks; exclude MERGE grid to keep chart readable.
+    # Daily-first: clima_series may hold multiple rows/day (hourly tips).
+    # Sum within day, then sum days into month — avoids blind hourly inflation.
     sql = f"""
-    WITH daily AS (
+    WITH day_sum AS (
       SELECT
-        DATE_TRUNC(date, MONTH) AS month,
+        date,
         location_id,
-        source,
+        ANY_VALUE(source) AS source,
         SUM(value) AS precip_mm
       FROM `{pfx}.clima_series`
       WHERE variable = 'precip_mm'
@@ -92,23 +94,32 @@ def load_monthly_precip(
         AND date <= CURRENT_DATE()
         AND date >= DATE '2020-01-01'
         AND date < DATE '2100-01-01'
-      GROUP BY 1, 2, 3
+      GROUP BY date, location_id
+    ),
+    monthly AS (
+      SELECT
+        DATE_TRUNC(date, MONTH) AS month,
+        location_id,
+        ANY_VALUE(source) AS source,
+        SUM(precip_mm) AS precip_mm
+      FROM day_sum
+      GROUP BY 1, 2
     ),
     ranked AS (
       SELECT location_id, SUM(precip_mm) AS total_mm
-      FROM daily
+      FROM monthly
       GROUP BY location_id
       ORDER BY total_mm DESC
       LIMIT @max_stations
     )
     SELECT
-      FORMAT_DATE('%Y-%m', d.month) AS ym,
-      d.location_id,
-      d.source,
-      d.precip_mm
-    FROM daily d
+      FORMAT_DATE('%Y-%m', m.month) AS ym,
+      m.location_id,
+      m.source,
+      m.precip_mm
+    FROM monthly m
     JOIN ranked r USING (location_id)
-    ORDER BY ym, d.location_id
+    ORDER BY ym, m.location_id
     """
     try:
         from google.cloud import bigquery
