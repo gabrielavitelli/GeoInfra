@@ -58,31 +58,49 @@ def main() -> int:
         "blocker": None,
         "next_steps": [],
     }
+    # Frescor operacional = tabela raijin_alerts (não o CSV histórico do trainkit).
+    from google.cloud import bigquery
+
+    bq = bigquery.Client(project=PROJECT)
+    row = list(
+        bq.query(
+            f"""
+            SELECT CAST(MAX(day) AS STRING) AS max_day,
+                   COUNTIF(day >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)) AS n_7d
+            FROM `{PROJECT}.efc_clima.raijin_alerts`
+            """
+        ).result()
+    )[0]
+    report["raijin_alerts_max_day"] = row["max_day"]
+    report["raijin_alerts_n_7d"] = int(row["n_7d"] or 0)
+
     if not report["goes_ready"]:
         report["blocker"] = "GOES ABI ausente (data/goes_abi vazio)"
         report["next_steps"] = [
-            "Rodar ml/goes_threshold/download_goes_abi.py para dias recentes",
-            "Rebuild features (build_cascade_dataset / extract_features)",
-            "python gcp/raijin_operational_score.py --day-start … --day-end … --load-bq",
-            "Criar Cloud Scheduler diário para o score",
+            "python scripts/raijin_health/daily_job.py  # baixa GOES + score",
+            "Ou: deploy job raijin-score + scheduler diário",
         ]
-    elif not report["features_v2_exists"]:
-        report["blocker"] = "CSV de features ausente"
-        report["next_steps"] = ["Rebuild features a partir de GOES+GFS+EWS"]
-    else:
-        report["blocker"] = (
-            "Features existem mas cobrem só até ~2026-05; rebuild necessário "
-            "antes de religar score diário"
-        )
+    elif not report["model_v2_exists"]:
+        report["blocker"] = "Modelo cascade_v2 ausente no GCS"
+    elif not report["raijin_alerts_max_day"]:
+        report["blocker"] = "raijin_alerts sem dias recentes — rode operational_score --load-bq"
         report["next_steps"] = [
-            "Rebuild features com GOES+GFS+EWS para janela recente",
-            "Score + load BQ raijin_alerts",
-            "Agendar job diário",
+            "python scripts/raijin_health/operational_score.py --day-start … --day-end … --load-bq"
         ]
+    else:
+        from datetime import date as _date
+
+        lag = (_date.today() - _date.fromisoformat(str(report["raijin_alerts_max_day"])[:10])).days
+        report["raijin_alerts_lag_days"] = lag
+        if lag <= 2:
+            report["blocker"] = None
+            report["next_steps"] = []
+        else:
+            report["blocker"] = f"raijin_alerts defasado ({lag}d) — rode daily_job / scheduler"
+            report["next_steps"] = ["gcloud run jobs execute raijin-score --region=us-central1 --wait"]
 
     print(json.dumps(report, indent=2 if args.pretty else None))
-    # Exit 0 always for diagnostic; blocker is in JSON
-    return 0
+    return 0 if report["blocker"] is None else 2
 
 
 if __name__ == "__main__":
