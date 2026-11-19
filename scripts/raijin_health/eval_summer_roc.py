@@ -212,6 +212,9 @@ def _densify_km_grid(df: pd.DataFrame, step: int) -> pd.DataFrame:
                 "ews_mm": float(ews[j]),
                 "uniplu_mm": float(uni[j]),
                 "is_densified": 0 if is_anchor else 1,
+                "is_synth_goes": int(g.iloc[j]["is_synth_goes"])
+                if "is_synth_goes" in g.columns
+                else 0,
             }
             for c, arr in interp.items():
                 rec[c] = float(arr[i])
@@ -238,6 +241,181 @@ def _synth_factor_for_mult(n_train: int, n_base: int, target_mult: float, mode: 
         return max(0.0, target / n_train - 1.0)
     # pos/neg: assume ~metade da classe alvo
     return max(0.0, 2.0 * (target / n_train - 1.0))
+
+
+def _load_merge_km_daily(kms: list[int], d0: str, d1: str) -> pd.DataFrame:
+    """day × km_efc × merge_mm (precip_24h) nos railway_km_*."""
+    if not kms:
+        return pd.DataFrame(columns=["day", "km_efc", "merge_mm"])
+    locs = [f"railway_km_{int(k)}" for k in kms]
+    client = bigquery.Client(project=PROJECT)
+    sql = f"""
+    SELECT s.date AS day, s.location_id, s.value AS merge_mm
+    FROM `{PROJECT}.efc_clima.clima_series` s
+    WHERE s.source = 'merge' AND s.variable = 'precip_24h_mm'
+      AND s.date BETWEEN @d0 AND @d1
+      AND s.location_id IN UNNEST(@locs)
+    """
+    raw = client.query(
+        sql,
+        job_config=bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("d0", "DATE", d0),
+                bigquery.ScalarQueryParameter("d1", "DATE", d1),
+                bigquery.ArrayQueryParameter("locs", "STRING", locs),
+            ]
+        ),
+    ).to_dataframe(create_bqstorage_client=False)
+    if raw.empty:
+        return pd.DataFrame(columns=["day", "km_efc", "merge_mm"])
+    raw["day"] = pd.to_datetime(raw["day"]).dt.normalize()
+    raw["km_efc"] = raw["location_id"].str.replace("railway_km_", "", regex=False).astype(int)
+    return raw.groupby(["day", "km_efc"], as_index=False)["merge_mm"].max()
+
+
+def _sample_class_features(
+    X_bank: np.ndarray,
+    n: int,
+    *,
+    seed: int,
+    eig_floor: float = 1e-6,
+) -> np.ndarray:
+    """Amostra n vetores ~ N(μ, Σ) via autovalores/autovetores do banco da classe."""
+    rng = np.random.default_rng(seed)
+    if len(X_bank) == 0 or n <= 0:
+        return np.zeros((0, X_bank.shape[1] if X_bank.ndim == 2 else 0))
+    if len(X_bank) == 1:
+        return np.repeat(X_bank, n, axis=0)
+    mu = X_bank.mean(axis=0)
+    Xc = X_bank - mu
+    cov = (Xc.T @ Xc) / max(len(X_bank) - 1, 1)
+    cov = 0.5 * (cov + cov.T)
+    evals, evecs = np.linalg.eigh(cov)
+    evals = np.clip(evals, eig_floor, None)
+    order = np.argsort(evals)[::-1]
+    evals, evecs = evals[order], evecs[:, order]
+    z = rng.normal(size=(n, len(evals)))
+    return mu + (z * np.sqrt(evals)) @ evecs.T
+
+
+def _extend_calendar_synth_goes(
+    df_goes: pd.DataFrame,
+    feat_cols: list[str],
+    *,
+    uni: pd.DataFrame,
+    merge: pd.DataFrame,
+    seed: int = 42,
+) -> pd.DataFrame:
+    """Une calendário GOES real + dias extras (UNIPLU/MERGE) com GOES sintético eigen.
+
+    Rótulo do dia extra: UNIPLU∪MERGE ≥49. Features GOES/ECMWF amostradas da
+    distribuição empírico-espectral da mesma classe nos dias com GOES real.
+    """
+    base = df_goes.copy()
+    base["day"] = pd.to_datetime(base["day"]).dt.normalize()
+    base["km_efc"] = pd.to_numeric(base["km_efc"], errors="coerce").astype(int)
+    base["is_synth_goes"] = 0
+    if "label_combo" not in base.columns:
+        base["label_ews"] = (
+            pd.to_numeric(base.get("ews_mm"), errors="coerce").fillna(0) >= THRESHOLD_MM
+        ).astype(int)
+        base["label_uniplu"] = 0
+        base["label_combo"] = base["label_ews"]
+
+    # banco de features por classe (GOES real)
+    filled = _fill_numeric(base, feat_cols)
+    X_all = filled[feat_cols].values.astype(float)
+    y_all = filled["label_combo"].values.astype(int)
+    banks = {0: X_all[y_all == 0], 1: X_all[y_all == 1]}
+    # fallback se uma classe tiver pouco dado
+    for lab in (0, 1):
+        if len(banks[lab]) < 3:
+            banks[lab] = X_all
+
+    # calendário candidato: uni ∪ merge
+    parts = []
+    if uni is not None and not uni.empty:
+        u = uni.copy()
+        u["day"] = pd.to_datetime(u["day"]).dt.normalize()
+        parts.append(u.rename(columns={"uniplu_mm": "precip_mm"})[["day", "km_efc", "precip_mm"]])
+    if merge is not None and not merge.empty:
+        m = merge.copy()
+        m["day"] = pd.to_datetime(m["day"]).dt.normalize()
+        parts.append(m.rename(columns={"merge_mm": "precip_mm"})[["day", "km_efc", "precip_mm"]])
+    if not parts:
+        return base
+
+    cal = pd.concat(parts, ignore_index=True)
+    cal = cal.groupby(["day", "km_efc"], as_index=False)["precip_mm"].max()
+    cal = cal[cal["day"].dt.month.isin(SUMMER_MONTHS)].copy()
+    # remove pares já cobertos por GOES real
+    key = set(zip(base["day"].astype(str), base["km_efc"].astype(int)))
+    cal["k"] = list(zip(cal["day"].astype(str), cal["km_efc"].astype(int)))
+    cal = cal[~cal["k"].isin(key)].drop(columns=["k"])
+    if cal.empty:
+        return base
+
+    cal["label_combo"] = (cal["precip_mm"] >= THRESHOLD_MM).astype(int)
+    # amostra features sintéticas
+    rows = []
+    for lab, g in cal.groupby("label_combo"):
+        Xs = _sample_class_features(banks[int(lab)], len(g), seed=seed + int(lab) * 17)
+        for i, (_, r) in enumerate(g.iterrows()):
+            rec = {
+                "day": r["day"],
+                "km_efc": int(r["km_efc"]),
+                "ews_mm": 0.0,
+                "uniplu_mm": float(r["precip_mm"]) if "uniplu_mm" in str(parts) else np.nan,
+                "merge_mm_24h": float(r["precip_mm"]),
+                "label_ews": 0,
+                "label_uniplu": int(lab),
+                "label_combo": int(lab),
+                "is_synth_goes": 1,
+                "is_densified": 0,
+            }
+            for j, c in enumerate(feat_cols):
+                rec[c] = float(Xs[i, j])
+            rows.append(rec)
+    extra = pd.DataFrame(rows)
+    out = pd.concat([base, extra], ignore_index=True, sort=False)
+    return out
+
+
+def _balance_per_class(
+    df: pd.DataFrame,
+    feat_cols: list[str],
+    *,
+    per_class: int,
+    seed: int = 42,
+) -> tuple[np.ndarray, np.ndarray, dict]:
+    """Monta X,y de treino com ~per_class positivos e ~per_class negativos (eigen)."""
+    work = _fill_numeric(df, feat_cols)
+    X = work[feat_cols].values.astype(float)
+    y = work["label_combo"].values.astype(int)
+    Xs, ys = [], []
+    meta = {}
+    rng_seed = seed
+    for lab in (0, 1):
+        Xl = X[y == lab]
+        n_real = len(Xl)
+        if n_real == 0:
+            raise RuntimeError(f"classe {lab} vazia — não dá para balancear")
+        need = max(int(per_class), n_real)
+        # mantém todos os reais + completa com eigen até need
+        n_syn = max(0, need - n_real)
+        if n_syn > 0:
+            syn = _sample_class_features(Xl, n_syn, seed=rng_seed + lab)
+            Xc = np.vstack([Xl, syn])
+        else:
+            # subsample se já tem demais
+            rng = np.random.default_rng(rng_seed + lab)
+            idx = rng.choice(n_real, size=need, replace=False)
+            Xc = Xl[idx]
+            n_syn = 0
+        Xs.append(Xc)
+        ys.append(np.full(len(Xc), lab, dtype=int))
+        meta[str(lab)] = {"n_real": int(n_real), "n_out": int(len(Xc)), "n_synth": int(n_syn)}
+    return np.vstack(Xs), np.concatenate(ys), meta
 
 
 def _fill_numeric(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
@@ -442,22 +620,32 @@ def _fit_svm_cascade(
     synth_factor: float = 0.0,
     synth_mode: str = "both",
     synth_plot: Path | None = None,
+    balance_per_class: int = 0,
 ) -> tuple[pd.DataFrame, dict]:
     """Treina SVM (RBF) nas features pós-VIF (fit só até train_end) + gate precip."""
     work = _fill_numeric(df, feat_cols)
+    # treino temporal: se extendermos calendário, train_end pode ser tarde —
+    # usa tudo com GOES synth/real até train_end
     train_mask = work["day"] <= pd.Timestamp(train_end)
     if train_mask.sum() < 20 or work.loc[train_mask, "label_combo"].nunique() < 2:
-        # fallback: usa tudo se a janela de treino for insuficiente
         train_mask = pd.Series(True, index=work.index)
     y_tr = work.loc[train_mask, "label_combo"].values.astype(int)
     X_tr = work.loc[train_mask, feat_cols].values.astype(float)
     scaler = StandardScaler()
     Xs_tr = scaler.fit_transform(X_tr)
-    # sintéticos só no espaço já padronizado do treino (não entram na ROC)
-    Xs_fit, y_fit, synth_meta = _eigen_synthetic(
-        Xs_tr, y_tr, factor=synth_factor, mode=synth_mode, seed=seed
-    )
-    if synth_plot is not None and synth_factor > 0:
+    if balance_per_class and balance_per_class > 0:
+        Xs_fit, y_fit, balance_meta = _balance_arrays(
+            Xs_tr, y_tr, per_class=balance_per_class, seed=seed
+        )
+        synth_meta = {
+            "balance_per_class": balance_meta,
+            "n_synth": int(max(0, len(y_fit) - len(y_tr))),
+        }
+    else:
+        Xs_fit, y_fit, synth_meta = _eigen_synthetic(
+            Xs_tr, y_tr, factor=synth_factor, mode=synth_mode, seed=seed
+        )
+    if synth_plot is not None and (synth_factor > 0 or balance_per_class > 0):
         _plot_eigen_synth(Xs_tr, y_tr, Xs_fit, y_fit, synth_plot)
     clf = SVC(
         C=1.0,
@@ -469,9 +657,17 @@ def _fit_svm_cascade(
     clf.fit(Xs_fit, y_fit)
     X_all = scaler.transform(work[feat_cols].values.astype(float))
     scores = clf.decision_function(X_all)
-    # limiar Youden só nas amostras REAIS de treino (evita vazar holdout / synth)
-    scores_tr = clf.decision_function(Xs_tr)
-    fpr, tpr, thr = roc_curve(y_tr, scores_tr)
+    # limiar Youden: só linhas com GOES real (não synth_goes), no treino
+    real_tr = train_mask.copy()
+    if "is_synth_goes" in work.columns:
+        real_tr = real_tr & (work["is_synth_goes"] == 0)
+    if real_tr.sum() >= 10 and work.loc[real_tr, "label_combo"].nunique() > 1:
+        X_you = scaler.transform(work.loc[real_tr, feat_cols].values.astype(float))
+        y_you = work.loc[real_tr, "label_combo"].values.astype(int)
+        scores_you = clf.decision_function(X_you)
+    else:
+        y_you, scores_you = y_tr, clf.decision_function(Xs_tr)
+    fpr, tpr, thr = roc_curve(y_you, scores_you)
     youden = tpr - fpr
     t_svm = float(thr[int(np.argmax(youden))]) if len(thr) else 0.0
     precip = _gate_precip(work)
@@ -489,9 +685,41 @@ def _fit_svm_cascade(
         "train_end": train_end,
         "n_train": int(train_mask.sum()),
         "n_train_fit": int(len(y_fit)),
+        "n_train_pos_fit": int(np.sum(y_fit == 1)),
+        "n_train_neg_fit": int(np.sum(y_fit == 0)),
         "synth": synth_meta,
     }
     return work, pack
+
+
+def _balance_arrays(
+    X: np.ndarray,
+    y: np.ndarray,
+    *,
+    per_class: int,
+    seed: int,
+) -> tuple[np.ndarray, np.ndarray, dict]:
+    """50/50: cada classe com ``per_class`` amostras (reais + eigen)."""
+    Xs, ys = [], []
+    meta = {}
+    for lab in (0, 1):
+        Xl = X[y == lab]
+        n_real = len(Xl)
+        if n_real == 0:
+            raise RuntimeError(f"classe {lab} vazia")
+        need = max(int(per_class), 1)
+        if n_real >= need:
+            rng = np.random.default_rng(seed + lab)
+            Xl_use = Xl[rng.choice(n_real, size=need, replace=False)]
+            n_syn = 0
+        else:
+            syn = _sample_class_features(Xl, need - n_real, seed=seed + lab)
+            Xl_use = np.vstack([Xl, syn])
+            n_syn = need - n_real
+        Xs.append(Xl_use)
+        ys.append(np.full(len(Xl_use), lab, dtype=int))
+        meta[str(lab)] = {"n_real": int(n_real), "n_out": int(len(Xl_use)), "n_synth": int(n_syn)}
+    return np.vstack(Xs), np.concatenate(ys), meta
 
 
 def _score_deployed(df: pd.DataFrame, pack: dict) -> pd.DataFrame:
@@ -872,7 +1100,7 @@ def main() -> int:
     ap.add_argument(
         "--uniplu-catalog",
         type=Path,
-        default=Path("/tmp/zentra_monitor_work/data/merge_uniplu_efc/uniplu_efc_catalog_r20km.csv"),
+        default=Path(__file__).resolve().parent / "data" / "uniplu_efc_catalog_r20km.csv",
     )
     ap.add_argument("--ag-gen", type=int, default=12)
     ap.add_argument("--ag-pop", type=int, default=12)
@@ -912,6 +1140,19 @@ def main() -> int:
         default="anchors",
         help="ROC só nos km originais (anchors) ou em toda malha densificada",
     )
+    ap.add_argument(
+        "--extend-start",
+        type=str,
+        default="",
+        help="Início do calendário extra de rótulos UNIPLU/MERGE (ex.: 2024-10-01); "
+        "dias sem GOES ganham features sintéticas eigen",
+    )
+    ap.add_argument(
+        "--balance-per-class",
+        type=int,
+        default=0,
+        help="Força ~50/50 no fit: N positivos e N negativos (reais+eigen). Ex.: 2000",
+    )
     args = ap.parse_args()
     out_dir = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -928,12 +1169,14 @@ def main() -> int:
     d0, d1 = df["day"].min().date(), df["day"].max().date()
     print(f"   Período features verão: {d0} → {d1} · {len(df)} linhas · {df['km_efc'].nunique()} km")
 
-    print("2) Rótulos EWS + UNIPLU…")
+    print("2) Rótulos EWS + UNIPLU (+ MERGE se extend)…")
     df["ews_mm"] = pd.to_numeric(df.get("ews_mm"), errors="coerce")
     df["label_ews"] = (df["ews_mm"].fillna(0) >= THRESHOLD_MM).astype(int)
+    kms0 = sorted(df["km_efc"].dropna().astype(int).unique())
+    extend_d0 = args.extend_start.strip() or "2025-01-01"
     uni = _load_uniplu_near_kms(
-        kms=sorted(df["km_efc"].dropna().astype(int).unique()),
-        d0="2025-01-01",
+        kms=kms0,
+        d0=extend_d0,
         d1=str(d1),
         catalog=args.uniplu_catalog,
     )
@@ -950,14 +1193,44 @@ def main() -> int:
     )
     n_base = len(df)
 
+    # pool de features GOES/ECMWF para extensão / densify
+    feat_pool = [
+        c
+        for c in df.columns
+        if (c.startswith("C") and "_h" in c) or c.startswith("bq_ecmwf_")
+    ]
+    feat_pool = list(dict.fromkeys(list(pack_deployed["features"]) + feat_pool))
+    feat_pool = [c for c in feat_pool if c in df.columns]
+
+    if args.extend_start.strip():
+        print(f"2b) Estender calendário {args.extend_start}→{d1} (rótulos reais + GOES synth)…")
+        merge = _load_merge_km_daily(kms0, args.extend_start, str(d1))
+        # UNIPLU completo na janela extend (já carregado acima em `uni`)
+        before_ext = len(df)
+        df = _extend_calendar_synth_goes(
+            df, feat_pool, uni=uni, merge=merge, seed=args.seed
+        )
+        n_ev_days = (
+            df.groupby("day")["label_combo"].max().sum() if len(df) else 0
+        )
+        print(
+            f"   {before_ext} → {len(df)} linhas · dias={df['day'].nunique()} · "
+            f"dias evento={int(n_ev_days)} · synth_goes={int(df['is_synth_goes'].sum())}"
+        )
+        n_base_goes = n_base
+        n_base = len(df)
+    else:
+        n_base_goes = n_base
+
     print(
         f"3) Densificar malha de km"
         + (f" (step={args.dense_km_step})" if args.dense_km_step > 0 else " (off)")
         + "…"
     )
+    before_dense = len(df)
     df_d = _densify_km_grid(df, step=args.dense_km_step)
     print(
-        f"   {n_base} → {len(df_d)} linhas · km={df_d['km_efc'].nunique()} "
+        f"   {before_dense} → {len(df_d)} linhas · km={df_d['km_efc'].nunique()} "
         f"(densificadas={int(df_d['is_densified'].sum())})"
     )
 
@@ -1011,21 +1284,25 @@ def main() -> int:
         t_gate=t_gate,
         seed=args.seed,
         train_end=train_end,
-        synth_factor=synth_factor,
+        synth_factor=0.0 if args.balance_per_class > 0 else synth_factor,
         synth_mode=args.synth_mode,
-        synth_plot=(out_dir / "fig_eigen_synth.png") if synth_factor > 0 else None,
+        synth_plot=(out_dir / "fig_eigen_synth.png")
+        if (synth_factor > 0 or args.balance_per_class > 0)
+        else None,
+        balance_per_class=args.balance_per_class,
     )
     print(
-        f"   treino real={pack['n_train']} → fit={pack['n_train_fit']} "
-        f"(×{pack['n_train_fit'] / max(n_base, 1):.1f} vs base {n_base}; "
-        f"+{pack.get('synth', {}).get('n_synth', 0)} synth)"
+        f"   treino rows={pack['n_train']} → fit={pack['n_train_fit']} "
+        f"(pos={pack.get('n_train_pos_fit')} neg={pack.get('n_train_neg_fit')}; "
+        f"×{pack['n_train_fit'] / max(n_base, 1):.1f} vs base {n_base})"
     )
 
     print("7) Agregar nível dia + figuras ROC/SVM…")
-    if args.roc_on == "all" or "is_densified" not in scored.columns:
-        scored_roc = scored
-    else:
-        scored_roc = scored[scored["is_densified"] == 0]
+    scored_roc = scored
+    if args.roc_on != "all" and "is_densified" in scored_roc.columns:
+        scored_roc = scored_roc[scored_roc["is_densified"] == 0]
+    if "is_synth_goes" in scored_roc.columns:
+        scored_roc = scored_roc[scored_roc["is_synth_goes"] == 0]
     day_df = _aggregate_day(scored_roc)
     print(
         f"   dias={len(day_df)} · positivos={int(day_df['label_combo'].sum())} "
