@@ -205,46 +205,69 @@ def _band_map(ds) -> dict[str, str]:
     return out
 
 
+def _extract_one_nc(
+    hour: int,
+    path: Path,
+    km_coords: dict[int, tuple[float, float]],
+) -> tuple[int, dict[int, dict[str, float]]]:
+    """Amostra só os pixels dos km (sem carregar raster 2D inteiro na RAM)."""
+    import xarray as xr
+
+    out: dict[int, dict[str, float]] = defaultdict(dict)
+    try:
+        # decode_cf=False acelera; CMI já vem numérico útil
+        ds = xr.open_dataset(path, decode_times=False)
+    except Exception as exc:
+        print(f"    open fail {path.name}: {exc}")
+        return hour, out
+    try:
+        lon_origin = float(ds["goes_imager_projection"].longitude_of_projection_origin)
+        bmap = _band_map(ds)
+        if not bmap:
+            return hour, out
+        sample = next(iter(bmap.values()))
+        da0 = ds[sample]
+        if "y" not in da0.dims or "x" not in da0.dims:
+            return hour, out
+        y_coords = da0["y"].values
+        x_coords = da0["x"].values
+        km_ix: dict[int, tuple[int, int]] = {}
+        for km, (lat, lon) in km_coords.items():
+            x_t, y_t = _latlon_to_goes_xy(lat, lon, lon_origin)
+            iy = int(np.abs(y_coords - y_t).argmin())
+            ix = int(np.abs(x_coords - x_t).argmin())
+            km_ix[km] = (iy, ix)
+        for bid, var in bmap.items():
+            if "y" not in ds[var].dims:
+                continue
+            da = ds[var]
+            for km, (iy, ix) in km_ix.items():
+                v = float(da.isel(y=iy, x=ix).values)
+                out[km][f"{bid}_h{hour:02d}"] = v if np.isfinite(v) else np.nan
+    finally:
+        ds.close()
+    return hour, out
+
+
 def _extract_day(
     files: list[tuple[int, Path]],
     km_coords: dict[int, tuple[float, float]],
     day: date,
+    *,
+    extract_workers: int = 4,
 ) -> list[dict]:
-    import xarray as xr
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     band_cols: dict[int, dict[str, float]] = defaultdict(dict)
     hours_found: dict[int, int] = defaultdict(int)
-    for hour, path in files:
-        try:
-            ds = xr.open_dataset(path)
-        except Exception as exc:
-            print(f"    open fail {path.name}: {exc}")
-            continue
-        try:
-            lon_origin = float(ds["goes_imager_projection"].longitude_of_projection_origin)
-            bmap = _band_map(ds)
-            if not bmap:
-                continue
-            sample = next(iter(bmap.values()))
-            da0 = ds[sample]
-            if "y" not in da0.dims or "x" not in da0.dims:
-                continue
-            y_coords = da0["y"].values
-            x_coords = da0["x"].values
-            km_ix = {}
-            for km, (lat, lon) in km_coords.items():
-                x_t, y_t = _latlon_to_goes_xy(lat, lon, lon_origin)
-                iy = int(np.abs(y_coords - y_t).argmin())
-                ix = int(np.abs(x_coords - x_t).argmin())
-                km_ix[km] = (iy, ix)
-            arrays = {bid: ds[var].values for bid, var in bmap.items() if "y" in ds[var].dims}
-            for km, (iy, ix) in km_ix.items():
-                for bid, arr in arrays.items():
-                    v = float(arr[iy, ix])
-                    band_cols[km][f"{bid}_h{hour:02d}"] = v if np.isfinite(v) else np.nan
-                hours_found[km] += 1
-        finally:
-            ds.close()
+    with ThreadPoolExecutor(max_workers=max(1, min(extract_workers, len(files) or 1))) as pool:
+        futs = [pool.submit(_extract_one_nc, h, p, km_coords) for h, p in files]
+        for fut in as_completed(futs):
+            hour, partial = fut.result()
+            for km, bands in partial.items():
+                if bands:
+                    band_cols[km].update(bands)
+                    hours_found[km] += 1
     rows = []
     for km, bands in band_cols.items():
         rec = {
@@ -263,13 +286,19 @@ def _process_one_day(
     km_coords: dict[int, tuple[float, float]],
     tmp_root: Path,
     hour_workers: int,
+    extract_workers: int = 4,
 ) -> list[dict]:
-    """Download paralelo das 4 horas → extract → apaga NetCDF."""
+    """Download paralelo das 4 horas → extract ponto → apaga NetCDF."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     import s3fs
 
-    fs = s3fs.S3FileSystem(anon=True)
+    fs = s3fs.S3FileSystem(
+        anon=True,
+        default_block_size=16 * 1024 * 1024,
+        default_fill_cache=False,
+        use_listings_cache=True,
+    )
     day_dir = tmp_root / d.isoformat()
     day_dir.mkdir(parents=True, exist_ok=True)
 
@@ -293,7 +322,7 @@ def _process_one_day(
     rows: list[dict] = []
     try:
         if files:
-            rows = _extract_day(files, km_coords, d)
+            rows = _extract_day(files, km_coords, d, extract_workers=extract_workers)
     except Exception as exc:
         print(f"  extract fail {d}: {exc}")
     finally:
@@ -339,8 +368,14 @@ def main() -> int:
     ap.add_argument(
         "--day-workers",
         type=int,
-        default=2,
-        help="Dias em paralelo (2–3 ok; sobe banda/CPU)",
+        default=4,
+        help="Dias em paralelo (máquina forte: 4–8)",
+    )
+    ap.add_argument(
+        "--extract-workers",
+        type=int,
+        default=4,
+        help="Extract paralelo das 4h NetCDF por dia",
     )
     ap.add_argument(
         "--resume",
@@ -389,7 +424,9 @@ def main() -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
 
     def _job(d: date) -> tuple[date, list[dict]]:
-        return d, _process_one_day(d, km_coords, tmp_root, args.hour_workers)
+        return d, _process_one_day(
+            d, km_coords, tmp_root, args.hour_workers, args.extract_workers
+        )
 
     with ThreadPoolExecutor(max_workers=max(1, args.day_workers)) as pool:
         futs = {pool.submit(_job, d): d for d in days}
