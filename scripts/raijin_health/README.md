@@ -30,12 +30,27 @@ gcloud builds submit --config=scripts/raijin_health/cloudbuild.yaml \
 gcloud run jobs execute raijin-score --region=us-central1 --wait
 ```
 
+## Campeão operacional (deploy)
+
+Treino/export + upload GCS (features só as do score ops; limiar holdout FAR≤0.25):
+
+```bash
+python3 scripts/raijin_health/train_export_champion.py \
+  --hist-goes /path/to/features_goes_hist_202410_202512.csv \
+  --out-joblib /tmp/cascade_v2_model_champion.joblib \
+  --balance-per-class 2000 --far-max 0.25 --upload-gcs
+```
+
+Job diário: Cloud Scheduler `raijin-score-daily` (`0 9 * * *` UTC) → Cloud Run Job `raijin-score`
+(GOES NOAA → GCS → SVM+gate → `efc_clima.raijin_alerts`).
+
 ## Estado conhecido (2026-11-19)
 
 | Peça | Status |
 |------|--------|
 | Limiares EWS (sino) | OK — Orion horário |
 | MERGE 6h → BQ | Recuperado; scheduler `efc-ingestion-merge-daily` 08:15 UTC |
-| ML `raijin_alerts` | Religado (`cascade_v2_ops`) — max_day 19/11; 100 TP / 71 FP em 17/11 |
-| GOES | ABI G19 staged `gs://…/data/goes_abi/2026-11-1{7,8,9}/` |
+| ML `raijin_alerts` | Campeão VIF+hist+balance no GCS; holdout POD≈0.60 FAR≈0.18; lag 0 |
+| Scheduler score | `raijin-score-daily` ENABLED `0 9 * * *` UTC |
+| GOES | ABI G19 staged `gs://…/data/goes_abi/` (job diário) |
 
