@@ -1,0 +1,62 @@
+uf,cod,nome,lat,lon,time_step_min,dist_km,km_efc,location_id
+MA,211130010A,São Luís (CEMADEN),-2.71773,-44.31898,10,0.45,29,railway_km_29
+MA,210047701A,Alto Alegre do Pindaré (CEMADEN),-3.66732,-45.84769,10,0.48,282,railway_km_282
+MA,345014,Alto Alegre do Pindaré (Hidroweb diário),-3.6656,-45.8431,1440,0.53,282,railway_km_282
+PA,150553601A,Parauapebas (CEMADEN),-5.9953,-49.8894,10,0.61,880,railway_km_880
+MA,644019,Bom Jesus das Selvas (Hidroweb diário),-4.2175,-46.4906,1440,0.63,386,railway_km_386
+MA,210005501A,Açailândia (CEMADEN),-4.913605,-47.420719,10,0.69,534,railway_km_534
+PA,150420806A,Marabá (CEMADEN),-5.3011,-49.0801,10,0.98,743,railway_km_743
+MA,211227401A,Tufilândia (CEMADEN),-3.67103,-45.633175,10,1.13,258,railway_km_258
+PA,549011,Marabá (Hidroweb diário),-5.4967,-49.2228,1440,1.95,773,railway_km_773
+MA,211130004A,São Luís (CEMADEN),-2.56503,-44.31181,10,2.01,12,railway_km_12
+PA,29100000,Marabá (Telemetria),-5.4867,-49.2214,15,2.38,772,railway_km_772
+PA,29110000,Marabá (Telemetria),-5.4886,-49.2233,60,2.48,773,railway_km_773
+MA,210005503A,Açailândia (CEMADEN),-4.949666,-47.476183,10,2.5,541,railway_km_541
+MA,446001,Bom Jesus das Selvas (Hidroweb diário),-4.4094,-46.7492,1440,2.61,422,railway_km_422
+PA,A240,Maraba (INMET subdiário),-5.36638888,-49.05111111,60,2.74,750,railway_km_750
+PA,150420801A,Marabá (CEMADEN),-5.354,-49.103,10,2.98,748,railway_km_748
+PA,150420805A,Marabá (CEMADEN),-5.3766,-49.1197,10,3.17,754,railway_km_754
+PA,A230,Serra dos Carajas (INMET subdiário),-6.07749999,-50.14222221,60,4.11,913,railway_km_913
+PA,29050000,Marabá (Telemetria),-5.3386,-49.1244,15,4.44,746,railway_km_746
+PA,82562,Maraba (INMET diário),-5.37,-49.13,1440,4.52,754,railway_km_754
+PA,150420803A,Marabá (CEMADEN),-5.3705,-49.1323,10,4.72,754,railway_km_754
+MA,345006,Pindaré-mirim (Hidroweb diário),-3.6583,-45.4431,1440,4.75,232,railway_km_232
+MA,447002,Imperatriz (Hidroweb diário),-4.8297,-47.2692,1440,5.33,512,railway_km_512
+MA,210005502A,Açailândia (CEMADEN),-4.930669,-47.494001,10,5.39,541,railway_km_541
+PA,SBMA,Marabá (ICEA),-5.3677777777777775,-49.13777777777778,60,5.4,754,railway_km_754
+MA,447004,Açailândia (Hidroweb diário),-4.9308,-47.4967,1440,5.56,542,railway_km_542
+MA,446000,Bom Jesus das Selvas (Hidroweb diário),-4.2989,-46.4936,1440,5.97,394,railway_km_394
+MA,344012,Miranda do Norte (Hidroweb diário),-3.5497,-44.5833,1440,6.13,133,railway_km_133
+PA,150553604A,Parauapebas (CEMADEN),-6.0557,-49.8867,10,6.72,881,railway_km_881
+MA,210675501A,Miranda do Norte (CEMADEN),-3.56219,-44.58606,10,6.88,134,railway_km_134
+MA,211130006A,São Luís (CEMADEN),-2.53849,-44.27258,10,7.26,12,railway_km_12
+MA,211153202A,São Pedro da Água Branca (CEMADEN),-5.086944,-48.423256,10,7.26,666,railway_km_666
+MA,211130003A,São Luís (CEMADEN),-2.56128,-44.25571,10,7.72,13,railway_km_13
+MA,211290201A,Vitória do Mearim (CEMADEN),-3.46153,-44.87424,10,7.8,165,railway_km_165
+MA,210850401A,Pindaré-mirim (CEMADEN),-3.605747,-45.342028,10,8.33,220,railway_km_220
+MA,211130009A,São Luís (CEMADEN),-2.59811,-44.23692,10,8.59,0,railway_km_0
+MA,210177201A,Bela Vista do Maranhão (CEMADEN),-3.742019,-45.25045,10,9.01,214,railway_km_214
+MA,SBSL,São Luís (ICEA),-2.5869444444444447,-44.236111111111114,60,9.04,16,railway_km_16
+MA,211130007A,São Luís (CEMADEN),-2.49873,-44.28156,10,9.96,12,railway_km_12
+MA,210232501A,Buriticupu (CEMADEN),-4.31779,-46.45999,10,10.23,394,railway_km_394
+PA,150553602A,Parauapebas (CEMADEN),-6.0914,-49.9045,10,10.33,883,railway_km_883
+PA,29070100,Parauapebas (Telemetria),-6.0914,-49.9044,15,10.33,883,railway_km_883
+PA,649004,Parauapebas (Hidroweb diário),-6.0914,-49.9044,1440,10.33,883,railway_km_883
+MA,211130008A,São Luís (CEMADEN),-2.55193,-44.22401,10,11.39,13,railway_km_13
+MA,A238,Buriticupu (INMET subdiário),-4.32055554,-46.44944444,60,11.39,394,railway_km_394
+PA,29040000,São João do Araguaia (Telemetria),-5.3497,-48.8806,60,11.48,719,railway_km_719
+MA,210100401A,Arari (CEMADEN),-3.45135,-44.77961,10,12.04,161,railway_km_161
+PA,150750801A,São João do Araguaia (CEMADEN),-5.361,-48.7911,10,12.16,709,railway_km_709
+MA,345000,Bela Vista do Maranhão (Hidroweb diário),-3.765,-45.2203,1440,12.49,213,railway_km_213
+PA,SBCJ,Parauapebas (ICEA),-6.114999999999999,-50.00138888888889,60,12.88,889,railway_km_889
+MA,33380010,Bela Vista do Maranhão (Telemetria),-3.7722,-45.2181,15,13.32,213,railway_km_213
+MA,A203,Sao Luis (INMET subdiário),-2.52666666,-44.21361111,60,13.57,13,railway_km_13
+MA,211130005A,São Luís (CEMADEN),-2.59289,-44.19027,10,13.72,18,railway_km_18
+MA,82280,Sao Luis (INMET diário),-2.53,-44.21,1440,13.76,13,railway_km_13
+MA,210663101A,Matões do Norte (CEMADEN),-3.63165,-44.55179,10,15.04,137,railway_km_137
+MA,210750602A,Paço do Lumiar (CEMADEN),-2.5463,-44.185172,10,15.7,13,railway_km_13
+PA,549004,Marabá (Hidroweb diário),-5.9347,-49.6767,1440,15.84,863,railway_km_863
+MA,210540101A,Itapecuru Mirim (CEMADEN),-3.39619,-44.35254,10,16.54,104,railway_km_104
+MA,210690401A,Monção (CEMADEN),-3.49137,-45.25196,10,16.68,203,railway_km_203
+MA,210750603A,Paço do Lumiar (CEMADEN),-2.536006,-44.16409,10,18.27,13,railway_km_13
+PA,548002,Bom Jesus do Tocantins (Hidroweb diário),-5.0514,-48.6336,1440,19.03,680,railway_km_680
