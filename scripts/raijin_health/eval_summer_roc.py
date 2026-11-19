@@ -208,6 +208,117 @@ def _vif_filter(
     }
 
 
+def _eigen_synthetic(
+    X: np.ndarray,
+    y: np.ndarray,
+    *,
+    factor: float = 1.0,
+    mode: str = "both",
+    seed: int = 42,
+    eig_floor: float = 1e-6,
+) -> tuple[np.ndarray, np.ndarray, dict]:
+    """Gera amostras sintéticas via decomposição espectral da covariância.
+
+    Para cada classe: Σ = V Λ Vᵀ, amostra z∼N(0,I),
+    x' = μ + V · √Λ · z  (Gaussian no espaço das componentes principais).
+
+    ``factor`` = quantas sintéticas por amostra real (1.0 ⇒ dobra a classe).
+    ``mode``: ``both`` | ``pos`` | ``neg``.
+    """
+    if factor <= 0:
+        return X, y, {"n_synth": 0, "per_class": {}}
+    rng = np.random.default_rng(seed)
+    classes = []
+    if mode in ("both", "pos"):
+        classes.append(1)
+    if mode in ("both", "neg"):
+        classes.append(0)
+    Xs, ys = [X], [y]
+    meta_per: dict = {}
+    for lab in classes:
+        Xl = X[y == lab]
+        if len(Xl) < 3:
+            meta_per[str(lab)] = {"n_real": int(len(Xl)), "n_synth": 0, "skip": "n<3"}
+            continue
+        mu = Xl.mean(axis=0)
+        Xc = Xl - mu
+        # covariância amostral; eigh em Gram simétrica
+        cov = (Xc.T @ Xc) / max(len(Xl) - 1, 1)
+        cov = 0.5 * (cov + cov.T)
+        evals, evecs = np.linalg.eigh(cov)
+        evals = np.clip(evals, eig_floor, None)
+        # ordem decrescente
+        order = np.argsort(evals)[::-1]
+        evals, evecs = evals[order], evecs[:, order]
+        n_syn = max(1, int(round(len(Xl) * float(factor))))
+        z = rng.normal(size=(n_syn, len(evals)))
+        # x' = μ + V √Λ zᵀ
+        synth = mu + (z * np.sqrt(evals)) @ evecs.T
+        Xs.append(synth)
+        ys.append(np.full(n_syn, lab, dtype=int))
+        meta_per[str(lab)] = {
+            "n_real": int(len(Xl)),
+            "n_synth": int(n_syn),
+            "top_eigenvalues": [float(v) for v in evals[:5]],
+            "explained_var_top5": float(evals[:5].sum() / evals.sum()),
+        }
+    X_out = np.vstack(Xs)
+    y_out = np.concatenate(ys)
+    return X_out, y_out, {"n_synth": int(len(y_out) - len(y)), "per_class": meta_per}
+
+
+def _plot_eigen_synth(
+    X_real: np.ndarray,
+    y_real: np.ndarray,
+    X_aug: np.ndarray,
+    y_aug: np.ndarray,
+    out: Path,
+) -> None:
+    """Projeção PC1×PC2: reais vs sintéticos."""
+    mu = X_real.mean(axis=0)
+    Xc = X_real - mu
+    cov = (Xc.T @ Xc) / max(len(X_real) - 1, 1)
+    cov = 0.5 * (cov + cov.T)
+    evals, evecs = np.linalg.eigh(cov)
+    order = np.argsort(evals)[::-1]
+    W = evecs[:, order[:2]]
+    ev = evals[order[:2]]
+    n_real = len(X_real)
+    Pr = (X_real - mu) @ W
+    # sintéticos = linhas depois das reais no conjunto aumentado
+    if len(X_aug) > n_real:
+        Ps = (X_aug[n_real:] - mu) @ W
+        ys = y_aug[n_real:]
+    else:
+        Ps = np.zeros((0, 2))
+        ys = np.array([], dtype=int)
+
+    fig, ax = plt.subplots(figsize=(6.6, 5.4))
+    for lab, color, name in [(0, "#64748b", "Neg real"), (1, "#dc2626", "Pos real")]:
+        m = y_real == lab
+        ax.scatter(Pr[m, 0], Pr[m, 1], s=28, c=color, alpha=0.75, label=f"{name} (n={m.sum()})")
+    for lab, color, name in [(0, "#94a3b8", "Neg synth"), (1, "#fca5a5", "Pos synth")]:
+        m = ys == lab
+        if m.any():
+            ax.scatter(
+                Ps[m, 0],
+                Ps[m, 1],
+                s=18,
+                c=color,
+                alpha=0.45,
+                marker="x",
+                label=f"{name} (n={m.sum()})",
+            )
+    ax.set_xlabel(f"PC1 (λ={ev[0]:.2g})")
+    ax.set_ylabel(f"PC2 (λ={ev[1]:.2g})")
+    ax.set_title("Sintéticos por autovalores/autovetores (espaço PCA)")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(out, dpi=160, bbox_inches="tight")
+    plt.close(fig)
+
+
 def _fit_svm_cascade(
     df: pd.DataFrame,
     feat_cols: list[str],
@@ -215,6 +326,9 @@ def _fit_svm_cascade(
     t_gate: float = 10.0,
     seed: int = 42,
     train_end: str = "2026-03-31",
+    synth_factor: float = 0.0,
+    synth_mode: str = "both",
+    synth_plot: Path | None = None,
 ) -> tuple[pd.DataFrame, dict]:
     """Treina SVM (RBF) nas features pós-VIF (fit só até train_end) + gate precip."""
     work = _fill_numeric(df, feat_cols)
@@ -226,6 +340,12 @@ def _fit_svm_cascade(
     X_tr = work.loc[train_mask, feat_cols].values.astype(float)
     scaler = StandardScaler()
     Xs_tr = scaler.fit_transform(X_tr)
+    # sintéticos só no espaço já padronizado do treino (não entram na ROC)
+    Xs_fit, y_fit, synth_meta = _eigen_synthetic(
+        Xs_tr, y_tr, factor=synth_factor, mode=synth_mode, seed=seed
+    )
+    if synth_plot is not None and synth_factor > 0:
+        _plot_eigen_synth(Xs_tr, y_tr, Xs_fit, y_fit, synth_plot)
     clf = SVC(
         C=1.0,
         gamma="scale",
@@ -233,10 +353,10 @@ def _fit_svm_cascade(
         class_weight="balanced",
         random_state=seed,
     )
-    clf.fit(Xs_tr, y_tr)
+    clf.fit(Xs_fit, y_fit)
     X_all = scaler.transform(work[feat_cols].values.astype(float))
     scores = clf.decision_function(X_all)
-    # limiar Youden só no período de treino (evita vazar holdout)
+    # limiar Youden só nas amostras REAIS de treino (evita vazar holdout / synth)
     scores_tr = clf.decision_function(Xs_tr)
     fpr, tpr, thr = roc_curve(y_tr, scores_tr)
     youden = tpr - fpr
@@ -255,6 +375,8 @@ def _fit_svm_cascade(
         "wn2_precip_min_mm": t_gate,
         "train_end": train_end,
         "n_train": int(train_mask.sum()),
+        "n_train_fit": int(len(y_fit)),
+        "synth": synth_meta,
     }
     return work, pack
 
@@ -647,6 +769,18 @@ def main() -> int:
         default=0.2,
         help="Tolerância VIF (0.2 ⇒ remove features com VIF>5 antes do SVM)",
     )
+    ap.add_argument(
+        "--synth-factor",
+        type=float,
+        default=0.0,
+        help="Sintéticos por autovalores/autovetores: 1.0 dobra cada classe no treino",
+    )
+    ap.add_argument(
+        "--synth-mode",
+        choices=("both", "pos", "neg"),
+        default="both",
+        help="Quais classes aumentar com sintéticos eigen",
+    )
     args = ap.parse_args()
     out_dir = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -708,7 +842,11 @@ def main() -> int:
     )
     _plot_vif(vif_info, out_dir / "fig_vif_filter.png")
 
-    print("5) Treinar SVM na features pós-VIF + gate precip…")
+    print(
+        f"5) Treinar SVM pós-VIF + gate"
+        + (f" + sintéticos eigen×{args.synth_factor} ({args.synth_mode})" if args.synth_factor > 0 else "")
+        + "…"
+    )
     t_gate = float(pack_deployed.get("wn2_precip_min_mm", 10.0))
     scored, pack = _fit_svm_cascade(
         df_s,
@@ -716,7 +854,15 @@ def main() -> int:
         t_gate=t_gate,
         seed=args.seed,
         train_end=train_end,
+        synth_factor=args.synth_factor,
+        synth_mode=args.synth_mode,
+        synth_plot=(out_dir / "fig_eigen_synth.png") if args.synth_factor > 0 else None,
     )
+    if args.synth_factor > 0:
+        print(
+            f"   treino real={pack['n_train']} → fit={pack['n_train_fit']} "
+            f"(+{pack['synth'].get('n_synth', 0)} synth)"
+        )
 
     print("6) Agregar nível dia + figuras ROC/SVM…")
     day_df = _aggregate_day(scored)
@@ -725,7 +871,9 @@ def main() -> int:
         day_df,
         out_dir / "fig_roc_auc_verao.png",
         title=(
-            f"ROC (nível dia) — VIF tol={args.vif_tol}→SVM · {d0}→{d1}\n"
+            f"ROC (nível dia) — VIF tol={args.vif_tol}→SVM"
+            + (f"+eigen×{args.synth_factor:g}" if args.synth_factor > 0 else "")
+            + f" · {d0}→{d1}\n"
             f"rótulo EWS∪UNIPLU ≥{THRESHOLD_MM:g} mm · "
             f"{len(vif_info['kept'])} feats · subsample neg={args.keep_frac:.0%}"
         ),
@@ -742,7 +890,10 @@ def main() -> int:
 
     summary = {
         "period": {"start": str(d0), "end": str(d1)},
-        "model": f"SVM pós-VIF (tol={args.vif_tol}, VIF≤{1.0/args.vif_tol:.0f}) + gate precip",
+        "model": (
+            f"SVM pós-VIF (tol={args.vif_tol}, VIF≤{1.0/args.vif_tol:.1f}) + gate precip"
+            + (f" + eigen-synth×{args.synth_factor} ({args.synth_mode})" if args.synth_factor > 0 else "")
+        ),
         "base_deployed": "cascade_v2 (referência de features/gate)",
         "label": f"EWS∪UNIPLU ≥ {THRESHOLD_MM} mm/24h",
         "uniplu_note": (
@@ -758,6 +909,13 @@ def main() -> int:
             "kept": vif_info["kept"],
             "dropped": vif_info["dropped"],
             "vif_final": vif_info["vif_final"],
+        },
+        "synth_eigen": {
+            "factor": args.synth_factor,
+            "mode": args.synth_mode,
+            "n_train_real": pack.get("n_train"),
+            "n_train_fit": pack.get("n_train_fit"),
+            "detail": pack.get("synth"),
         },
         "n_before_subsample": before,
         "n_after_subsample": len(df_s),
@@ -780,6 +938,7 @@ def main() -> int:
             "fig_ag_fitness.png",
             "fig_svm_decision.png",
             "fig_vif_filter.png",
+            *(["fig_eigen_synth.png"] if args.synth_factor > 0 else []),
         ],
     }
     (out_dir / "eval_summary.json").write_text(
