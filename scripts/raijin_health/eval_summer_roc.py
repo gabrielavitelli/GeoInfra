@@ -8,7 +8,8 @@ com features GOES + rótulos EWS/UNIPLU — sem deploy.
 - Rótulo UNIPLU: precip_mm ≥ 49 nas estações do catálogo EFC (r≤20 km),
   mapeadas ao km_efc; UNIPLU no BQ vai até 2025-12-31 (overlap parcial)
 - Subsample ~3/4 do espaço amostral (mantém todos os positivos)
-- Figuras: ROC/AUC, AG (fitness), SVM (scores)
+- Filtro VIF (tol=0.2 ⇒ VIF≤5) antes de treinar o SVM
+- Figuras: ROC/AUC, AG (fitness), SVM (scores), VIF
 
 Uso:
   python3 scripts/raijin_health/eval_summer_roc.py \\
@@ -126,26 +127,146 @@ def _subsample(df: pd.DataFrame, keep_frac: float, seed: int) -> pd.DataFrame:
     return out
 
 
-def _score_deployed(df: pd.DataFrame, pack: dict) -> pd.DataFrame:
-    feat_cols = list(pack["features"])
+def _fill_numeric(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     work = df.copy()
-    for c in feat_cols:
+    for c in cols:
         if c not in work.columns:
             work[c] = np.nan
         work[c] = pd.to_numeric(work[c], errors="coerce")
         med = work[c].median(skipna=True)
         work[c] = work[c].fillna(0.0 if pd.isna(med) else float(med))
-    X = pack["scaler"].transform(work[feat_cols].values.astype(float))
-    work["svm_score"] = pack["model"].decision_function(X)
-    t_svm = float(pack["svm_threshold"])
-    t_gate = float(pack.get("wn2_precip_min_mm", 10.0))
-    # Gate: WN2 se houver; senão MERGE/ECMWF do CSV
+    return work
+
+
+def _gate_precip(work: pd.DataFrame) -> pd.Series:
     precip = pd.to_numeric(work.get("wn2_precip_mm"), errors="coerce")
     if "merge_mm_24h" in work.columns:
         precip = precip.fillna(pd.to_numeric(work["merge_mm_24h"], errors="coerce"))
     if "bq_ecmwf_precip_24h_mm" in work.columns:
         precip = precip.fillna(pd.to_numeric(work["bq_ecmwf_precip_24h_mm"], errors="coerce"))
-    precip = precip.fillna(0.0)
+    return precip.fillna(0.0)
+
+
+def _vif_values(X: np.ndarray) -> np.ndarray:
+    """VIF = 1 / (1 − R²) via regressão linear de cada coluna nas demais."""
+    n, p = X.shape
+    if p < 2:
+        return np.ones(p)
+    # padroniza para estabilidade numérica
+    mu = X.mean(axis=0)
+    sd = X.std(axis=0)
+    sd = np.where(sd < 1e-12, 1.0, sd)
+    Z = (X - mu) / sd
+    vifs = np.ones(p)
+    for i in range(p):
+        y = Z[:, i]
+        A = np.delete(Z, i, axis=1)
+        # mínimos quadrados; se singular, VIF alto
+        try:
+            coef, *_ = np.linalg.lstsq(A, y, rcond=None)
+            yhat = A @ coef
+            ss_res = float(np.sum((y - yhat) ** 2))
+            ss_tot = float(np.sum((y - y.mean()) ** 2))
+            r2 = 1.0 - ss_res / ss_tot if ss_tot > 1e-12 else 1.0
+            r2 = min(max(r2, 0.0), 1.0 - 1e-12)
+            vifs[i] = 1.0 / (1.0 - r2)
+        except np.linalg.LinAlgError:
+            vifs[i] = np.inf
+    return vifs
+
+
+def _vif_filter(
+    df: pd.DataFrame,
+    feat_cols: list[str],
+    *,
+    tol: float = 0.2,
+    min_features: int = 3,
+) -> dict:
+    """Remove features colineares até tolerância ≥ tol (VIF ≤ 1/tol).
+
+    ``tol=0.2`` ⇒ VIF máximo permitido = 5.0 (critério clássico de multicolinearidade).
+    """
+    max_vif = 1.0 / float(tol) if tol > 0 else np.inf
+    cols = list(feat_cols)
+    work = _fill_numeric(df, cols)
+    dropped: list[dict] = []
+    while len(cols) > min_features:
+        X = work[cols].values.astype(float)
+        vifs = _vif_values(X)
+        i_max = int(np.nanargmax(vifs))
+        if float(vifs[i_max]) <= max_vif + 1e-9:
+            break
+        dropped.append({"feature": cols[i_max], "vif": float(vifs[i_max])})
+        cols.pop(i_max)
+    final_vifs = _vif_values(work[cols].values.astype(float))
+    return {
+        "kept": cols,
+        "dropped": dropped,
+        "tol": float(tol),
+        "max_vif": float(max_vif),
+        "vif_final": {c: float(v) for c, v in zip(cols, final_vifs)},
+    }
+
+
+def _fit_svm_cascade(
+    df: pd.DataFrame,
+    feat_cols: list[str],
+    *,
+    t_gate: float = 10.0,
+    seed: int = 42,
+    train_end: str = "2026-03-31",
+) -> tuple[pd.DataFrame, dict]:
+    """Treina SVM (RBF) nas features pós-VIF (fit só até train_end) + gate precip."""
+    work = _fill_numeric(df, feat_cols)
+    train_mask = work["day"] <= pd.Timestamp(train_end)
+    if train_mask.sum() < 20 or work.loc[train_mask, "label_combo"].nunique() < 2:
+        # fallback: usa tudo se a janela de treino for insuficiente
+        train_mask = pd.Series(True, index=work.index)
+    y_tr = work.loc[train_mask, "label_combo"].values.astype(int)
+    X_tr = work.loc[train_mask, feat_cols].values.astype(float)
+    scaler = StandardScaler()
+    Xs_tr = scaler.fit_transform(X_tr)
+    clf = SVC(
+        C=1.0,
+        gamma="scale",
+        kernel="rbf",
+        class_weight="balanced",
+        random_state=seed,
+    )
+    clf.fit(Xs_tr, y_tr)
+    X_all = scaler.transform(work[feat_cols].values.astype(float))
+    scores = clf.decision_function(X_all)
+    # limiar Youden só no período de treino (evita vazar holdout)
+    scores_tr = clf.decision_function(Xs_tr)
+    fpr, tpr, thr = roc_curve(y_tr, scores_tr)
+    youden = tpr - fpr
+    t_svm = float(thr[int(np.argmax(youden))]) if len(thr) else 0.0
+    precip = _gate_precip(work)
+    work["svm_score"] = scores
+    work["gate_precip_mm"] = precip
+    work["pred_cascade"] = ((work["svm_score"] >= t_svm) & (precip >= t_gate)).astype(int)
+    work["t_svm"] = t_svm
+    work["t_gate"] = t_gate
+    pack = {
+        "scaler": scaler,
+        "model": clf,
+        "features": list(feat_cols),
+        "svm_threshold": t_svm,
+        "wn2_precip_min_mm": t_gate,
+        "train_end": train_end,
+        "n_train": int(train_mask.sum()),
+    }
+    return work, pack
+
+
+def _score_deployed(df: pd.DataFrame, pack: dict) -> pd.DataFrame:
+    feat_cols = list(pack["features"])
+    work = _fill_numeric(df, feat_cols)
+    X = pack["scaler"].transform(work[feat_cols].values.astype(float))
+    work["svm_score"] = pack["model"].decision_function(X)
+    t_svm = float(pack["svm_threshold"])
+    t_gate = float(pack.get("wn2_precip_min_mm", 10.0))
+    precip = _gate_precip(work)
     work["gate_precip_mm"] = precip
     work["pred_cascade"] = (
         (work["svm_score"] >= t_svm) & (precip >= t_gate)
@@ -458,7 +579,51 @@ def _plot_svm(scored: pd.DataFrame, pack: dict, out: Path) -> None:
     ax2.set_title("SVM — score × gate precip (cascata)")
     ax2.legend(fontsize=8)
     ax2.grid(True, alpha=0.25)
-    fig.suptitle("Modelo implantado cascade_v2 — espaço de decisão SVM", fontsize=11, fontweight="bold")
+    fig.suptitle(
+        "SVM pós-VIF (tol=0.2 → VIF≤5) — espaço de decisão + gate precip",
+        fontsize=11,
+        fontweight="bold",
+    )
+    fig.tight_layout()
+    fig.savefig(out, dpi=160, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _plot_vif(vif_info: dict, out: Path) -> None:
+    """Barras dos VIF finais + contagem de drops."""
+    items = sorted(vif_info["vif_final"].items(), key=lambda kv: kv[1], reverse=True)
+    names = [k for k, _ in items]
+    vals = [v for _, v in items]
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.6), gridspec_kw={"width_ratios": [2.2, 1]})
+    ax = axes[0]
+    colors = ["#dc2626" if v > vif_info["max_vif"] else "#1d4ed8" for v in vals]
+    ax.barh(range(len(names)), vals, color=colors, height=0.7)
+    ax.axvline(vif_info["max_vif"], color="#dc2626", ls="--", lw=1.4, label=f"VIF máx={vif_info['max_vif']:.0f}")
+    ax.set_yticks(range(len(names)))
+    ax.set_yticklabels(names, fontsize=7)
+    ax.invert_yaxis()
+    ax.set_xlabel("VIF")
+    ax.set_title(f"VIF final · {len(names)} features mantidas (tol={vif_info['tol']})")
+    ax.legend(fontsize=8)
+    ax.grid(True, axis="x", alpha=0.25)
+
+    ax2 = axes[1]
+    ax2.axis("off")
+    dropped = vif_info["dropped"]
+    lines = [
+        f"tol={vif_info['tol']}  ⇒  VIF≤{vif_info['max_vif']:.0f}",
+        f"removidas: {len(dropped)}",
+        f"mantidas: {len(names)}",
+        "",
+        "Top drops (VIF ao remover):",
+    ]
+    for d in dropped[:12]:
+        lines.append(f"  · {d['feature']}: {d['vif']:.1f}")
+    if len(dropped) > 12:
+        lines.append(f"  … +{len(dropped) - 12} outras")
+    ax2.text(0.02, 0.98, "\n".join(lines), va="top", ha="left", fontsize=9, family="monospace",
+             transform=ax2.transAxes)
+    fig.suptitle("Filtro VIF antes do SVM", fontsize=11, fontweight="bold")
     fig.tight_layout()
     fig.savefig(out, dpi=160, bbox_inches="tight")
     plt.close(fig)
@@ -476,6 +641,12 @@ def main() -> int:
     )
     ap.add_argument("--ag-gen", type=int, default=12)
     ap.add_argument("--ag-pop", type=int, default=12)
+    ap.add_argument(
+        "--vif-tol",
+        type=float,
+        default=0.2,
+        help="Tolerância VIF (0.2 ⇒ remove features com VIF>5 antes do SVM)",
+    )
     args = ap.parse_args()
     out_dir = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -485,7 +656,7 @@ def main() -> int:
     print("1) Baixando features + modelo implantado…")
     feat_path = _download(FEATURES_BLOB, work / "features_cascade_v2.csv")
     model_path = _download(MODEL_BLOB, work / "cascade_v2_model.joblib")
-    pack = joblib.load(model_path)
+    pack_deployed = joblib.load(model_path)
     df = pd.read_csv(feat_path, parse_dates=["day"])
     df["day"] = pd.to_datetime(df["day"]).dt.normalize()
     df = df[df["day"].dt.month.isin(SUMMER_MONTHS)].copy()
@@ -495,10 +666,8 @@ def main() -> int:
     print("2) Rótulos EWS + UNIPLU…")
     df["ews_mm"] = pd.to_numeric(df.get("ews_mm"), errors="coerce")
     df["label_ews"] = (df["ews_mm"].fillna(0) >= THRESHOLD_MM).astype(int)
-    # UNIPLU: janela estendida cobrindo fim de 2025 + features 2026
     uni = _load_uniplu_near_kms(
         kms=sorted(df["km_efc"].dropna().astype(int).unique()),
-        # maior janela chuvosa com UNIPLU disponível no BQ (até 2025-12-31)
         d0="2025-01-01",
         d1=str(d1),
         catalog=args.uniplu_catalog,
@@ -520,41 +689,76 @@ def main() -> int:
     df_s = _subsample(df, keep_frac=args.keep_frac, seed=args.seed)
     print(f"   {before} → {len(df_s)} linhas (pos={df_s['label_combo'].sum()})")
 
-    print("4) Score com modelo implantado…")
-    scored = _score_deployed(df_s, pack)
+    train_end = "2026-03-31"
+    print(f"4) Filtro VIF (tol={args.vif_tol} → VIF≤{1.0/args.vif_tol:.0f}) antes do SVM…")
+    cand = [c for c in df_s.columns if (c.startswith("C") and "_h" in c) or c.startswith("bq_ecmwf_")]
+    # prioriza o pool do modelo implantado + extras GOES/ECMWF presentes
+    pool = list(dict.fromkeys(list(pack_deployed["features"]) + cand))
+    pool = [c for c in pool if c in df_s.columns]
+    # VIF só na janela de treino (sem vazar abr–mai)
+    df_vif = df_s[df_s["day"] <= pd.Timestamp(train_end)].copy()
+    if len(df_vif) < 30:
+        df_vif = df_s
+    vif_info = _vif_filter(df_vif, pool, tol=args.vif_tol, min_features=3)
+    print(
+        f"   pool={len(pool)} → kept={len(vif_info['kept'])} · "
+        f"dropped={len(vif_info['dropped'])} · max_vif_final="
+        f"{max(vif_info['vif_final'].values()) if vif_info['vif_final'] else float('nan'):.2f}"
+        f" · VIF fit≤{train_end}"
+    )
+    _plot_vif(vif_info, out_dir / "fig_vif_filter.png")
 
-    print("5) Agregar nível dia (protocolo do treino) + figuras…")
+    print("5) Treinar SVM na features pós-VIF + gate precip…")
+    t_gate = float(pack_deployed.get("wn2_precip_min_mm", 10.0))
+    scored, pack = _fit_svm_cascade(
+        df_s,
+        vif_info["kept"],
+        t_gate=t_gate,
+        seed=args.seed,
+        train_end=train_end,
+    )
+
+    print("6) Agregar nível dia + figuras ROC/SVM…")
     day_df = _aggregate_day(scored)
     print(f"   dias={len(day_df)} · positivos={int(day_df['label_combo'].sum())}")
     metrics = _plot_roc(
         day_df,
         out_dir / "fig_roc_auc_verao.png",
         title=(
-            f"ROC (nível dia) — cascade_v2 implantado · {d0}→{d1}\n"
-            f"rótulo EWS∪UNIPLU ≥{THRESHOLD_MM:g} mm "
-            f"(UNIPLU BQ ≤2025-12-31 → combo≈EWS) · subsample neg={args.keep_frac:.0%}"
+            f"ROC (nível dia) — VIF tol={args.vif_tol}→SVM · {d0}→{d1}\n"
+            f"rótulo EWS∪UNIPLU ≥{THRESHOLD_MM:g} mm · "
+            f"{len(vif_info['kept'])} feats · subsample neg={args.keep_frac:.0%}"
         ),
     )
     _plot_svm(day_df, pack, out_dir / "fig_svm_decision.png")
 
-    print("6) AG compacto (figura)…")
-    # candidate feature pool = all GOES+bq cols present (AG explores ~35% mask ≈ 3/4 reduction of active set)
-    cand = [c for c in df_s.columns if (c.startswith("C") and "_h" in c) or c.startswith("bq_ecmwf_")]
+    print("7) AG compacto sobre pool pós-VIF…")
     ag = _run_ag_compact(
         df_s,
-        cand,
+        vif_info["kept"],
         GAConfig(population=args.ag_pop, n_generations=args.ag_gen, random_seed=args.seed),
     )
-    _plot_ag(ag, list(pack["features"]), out_dir / "fig_ag_fitness.png")
+    _plot_ag(ag, list(pack_deployed["features"]), out_dir / "fig_ag_fitness.png")
 
     summary = {
         "period": {"start": str(d0), "end": str(d1)},
-        "model": "cascade_v2 (implantado)",
+        "model": f"SVM pós-VIF (tol={args.vif_tol}, VIF≤{1.0/args.vif_tol:.0f}) + gate precip",
+        "base_deployed": "cascade_v2 (referência de features/gate)",
         "label": f"EWS∪UNIPLU ≥ {THRESHOLD_MM} mm/24h",
         "uniplu_note": (
             "UNIPLU no BQ termina em 2025-12-31; overlap com features GOES "
             f"({d0}→{d1}) é limitado — rótulo combo ≈ EWS neste verão."
         ),
+        "vif": {
+            "tol": vif_info["tol"],
+            "max_vif": vif_info["max_vif"],
+            "n_pool": len(pool),
+            "n_kept": len(vif_info["kept"]),
+            "n_dropped": len(vif_info["dropped"]),
+            "kept": vif_info["kept"],
+            "dropped": vif_info["dropped"],
+            "vif_final": vif_info["vif_final"],
+        },
         "n_before_subsample": before,
         "n_after_subsample": len(df_s),
         "keep_frac_negatives": args.keep_frac,
@@ -563,15 +767,19 @@ def main() -> int:
             "best_fitness_auc_cv": ag["best_fitness"],
             "n_selected": len(ag["selected_features"]),
             "selected_features": ag["selected_features"],
-            "overlap_with_deployed": sorted(set(ag["selected_features"]) & set(pack["features"])),
+            "overlap_with_deployed": sorted(
+                set(ag["selected_features"]) & set(pack_deployed["features"])
+            ),
             "generations": ag["n_generations"],
             "population": ag["population"],
         },
-        "deployed_features": list(pack["features"]),
+        "deployed_features": list(pack_deployed["features"]),
+        "svm_features_post_vif": list(pack["features"]),
         "figures": [
             "fig_roc_auc_verao.png",
             "fig_ag_fitness.png",
             "fig_svm_decision.png",
+            "fig_vif_filter.png",
         ],
     }
     (out_dir / "eval_summary.json").write_text(
