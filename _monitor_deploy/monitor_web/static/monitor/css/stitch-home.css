@@ -1597,13 +1597,18 @@
   height: 180px;
   margin-bottom: 0.45rem;
 }
+.efc-ops-chart__plot--tall {
+  min-height: 280px;
+  height: 300px;
+}
 .efc-ops-chart__note {
   margin: 0.35rem 0 0;
   padding: 0 0.15rem;
   font: 500 0.68rem/1.35 "IBM Plex Sans", "Segoe UI", sans-serif;
   color: #94a3b8;
 }
-.efc-ops-chart--hyp3 {
-  border-color: rgba(56, 189, 248, 0.28);
-  background: linear-gradient(165deg, rgba(8, 47, 73, 0.45), rgba(15, 23, 42, 0.7));
+.efc-ops-chart--hyp3,
+.efc-ops-chart--combined {
+  border-color: rgba(249, 115, 22, 0.32);
+  background: linear-gradient(165deg, rgba(67, 20, 7, 0.4), rgba(15, 23, 42, 0.72));
 }

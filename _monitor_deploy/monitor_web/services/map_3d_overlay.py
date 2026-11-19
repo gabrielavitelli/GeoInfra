@@ -6,9 +6,18 @@ import math
 from typing import Any
 
 # Cortes rochosos (ativos Vale) + trechos tratados como túnel visual no 3D.
+# km ranges from official Vale alignment; fly-to uses `_TUNNEL_FOCUS` estaca coords.
 _TUNNEL_KM_RANGES: tuple[tuple[float, float, str], ...] = (
     (372.56, 373.535, "Corte rochoso"),
     (374.085, 375.2, "Corte rochoso"),
+)
+
+# Midpoints from official KML estacas (EFC.kmz.kml ESTACAS_*), not SHP haversine km.
+# 373+100 → first cut; 374+600 → second cut (near Zentra cluster ~km 375).
+_TUNNEL_FOCUS: tuple[tuple[float, float, float, float, float, str], ...] = (
+    # km0, km1, focus_km, lat, lon, label
+    (372.56, 373.535, 373.1, -4.245103, -46.528032, "Corte rochoso"),
+    (374.085, 375.2, 374.6, -4.257259, -46.533335, "Corte rochoso"),
 )
 
 
@@ -86,27 +95,60 @@ def _tunnel_features(main_line, cum_km) -> list[dict[str, Any]]:
     from lib_efc import position_at_km
 
     feats: list[dict[str, Any]] = []
-    if main_line is None or cum_km is None:
-        return feats
-    for km0, km1, label in _TUNNEL_KM_RANGES:
+    # Prefer official estaca focus points even when rail polyline is missing.
+    focus_by_range = {
+        (round(float(a), 3), round(float(b), 3)): (fk, lat, lon, lab)
+        for a, b, fk, lat, lon, lab in _TUNNEL_FOCUS
+    }
+    ranges = list(_TUNNEL_KM_RANGES)
+    if not ranges and _TUNNEL_FOCUS:
+        ranges = [(a, b, lab) for a, b, _fk, _la, _lo, lab in _TUNNEL_FOCUS]
+    for km0, km1, label in ranges:
         coords: list[list[float]] = []
         step = 0.12
         km = float(km0)
         while km <= float(km1) + 1e-9:
-            pos = position_at_km(km, main_line, cum_km)
+            pos = (
+                position_at_km(km, main_line, cum_km)
+                if main_line is not None and cum_km is not None
+                else None
+            )
             if pos is not None:
                 coords.append([float(pos[1]), float(pos[0])])
             km += step
+        key = (round(float(km0), 3), round(float(km1), 3))
+        focus = focus_by_range.get(key)
+        if len(coords) < 2 and focus is not None:
+            # Fallback segment around official estaca so portals still draw.
+            _fk, lat, lon, _lab = focus
+            coords = [
+                [float(lon) - 0.0008, float(lat) - 0.0006],
+                [float(lon), float(lat)],
+                [float(lon) + 0.0008, float(lat) + 0.0006],
+            ]
         if len(coords) < 2:
             continue
         feats.append(
             {
                 "type": "Feature",
                 "geometry": {"type": "LineString", "coordinates": coords},
-                "properties": {"label": label, "kind": "tunnel"},
+                "properties": {
+                    "label": label,
+                    "kind": "tunnel",
+                    "km0": float(km0),
+                    "km1": float(km1),
+                },
             }
         )
-        for pt in (coords[0], coords[-1]):
+        portal_pts = [coords[0], coords[-1]]
+        if focus is not None:
+            portal_pts.append([float(focus[2]), float(focus[1])])  # lon, lat
+        seen: set[tuple[float, float]] = set()
+        for pt in portal_pts:
+            key_pt = (round(pt[0], 5), round(pt[1], 5))
+            if key_pt in seen:
+                continue
+            seen.add(key_pt)
             feats.append(
                 {
                     "type": "Feature",

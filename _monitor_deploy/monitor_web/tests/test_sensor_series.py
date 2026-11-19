@@ -5,7 +5,9 @@ import json
 from pathlib import Path
 
 from monitor_web.services.sensor_series import (
+    _dedupe_points_one_per_timestamp,
     _measurement_to_variable,
+    _traces_for_variable,
     build_sensor_series_payload,
     default_variable_for_ports,
     families_from_sensors,
@@ -222,3 +224,63 @@ def test_payload_multi_overview_from_gcs(tmp_path: Path, monkeypatch):
     assert "signal_pct" in payload["active_variables"]
     assert payload.get("data_start")
     assert payload.get("freshness")
+
+
+def test_dedupe_points_one_per_timestamp_mean():
+    pts = [
+        {"t": "2026-11-18T18:00:00+00:00", "v": 0.29},
+        {"t": "2026-11-18T18:00:00+00:00", "v": 0.43},
+        {"t": "2026-11-18T18:15:00+00:00", "v": 0.30},
+    ]
+    out = _dedupe_points_one_per_timestamp(pts, prefer="mean")
+    assert len(out) == 2
+    assert abs(out[0]["v"] - 0.36) < 1e-9
+    assert out[0].get("is_average") is True
+    assert out[1]["v"] == 0.30
+
+
+def test_traces_split_ports_no_sawtooth():
+    # Same timestamp, three TEROS ports — must be 3 traces, one Y each.
+    points = []
+    for port, val in ((2, 0.427), (4, 0.289), (6, 0.321)):
+        points.append(
+            {
+                "t": "2026-11-17T18:00:00+00:00",
+                "v": val,
+                "port": port,
+                "sensor": "TEROS 12",
+            }
+        )
+        points.append(
+            {
+                "t": "2026-11-17T18:15:00+00:00",
+                "v": val - 0.001,
+                "port": port,
+                "sensor": "TEROS 12",
+            }
+        )
+    traces = _traces_for_variable(variable="soil_vwc", points=points)
+    assert len(traces) == 3
+    for t in traces:
+        times = [p["t"] for p in t["points"]]
+        assert len(times) == len(set(times))
+        assert t["n_points"] == 2
+
+
+def test_traces_portless_collisions_mean_not_zigzag():
+    # BQ clima_series style: no port, multiple depths at same ingested ts.
+    points = [
+        {"t": "2026-11-17T18:00:00+00:00", "v": 0.427},
+        {"t": "2026-11-17T18:00:00+00:00", "v": 0.289},
+        {"t": "2026-11-17T18:00:00+00:00", "v": 0.321},
+        {"t": "2026-11-17T18:15:00+00:00", "v": 0.426},
+        {"t": "2026-11-17T18:15:00+00:00", "v": 0.289},
+        {"t": "2026-11-17T18:15:00+00:00", "v": 0.321},
+    ]
+    traces = _traces_for_variable(variable="soil_vwc", points=points)
+    assert len(traces) == 1
+    times = [p["t"] for p in traces[0]["points"]]
+    assert len(times) == len(set(times)) == 2
+    assert "médio" in (traces[0].get("label") or "").lower() or "médio" in (
+        traces[0].get("chart_title") or ""
+    ).lower()

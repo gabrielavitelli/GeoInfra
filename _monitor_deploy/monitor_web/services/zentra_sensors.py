@@ -79,6 +79,15 @@ PRIMARY_VARS: tuple[str, ...] = (
     "soil_temp_c",
 )
 
+# Off-corridor org loggers — never invent an EFC km label for these.
+_SITE_ALIASES: dict[str, dict[str, str]] = {
+    "z6-35950": {"pt": "Almeida (SP)", "en": "Almeida (SP)"},
+    "zentra_z6_35950": {"pt": "Almeida (SP)", "en": "Almeida (SP)"},
+}
+
+# Max distance to rail before refusing a km assignment (~on-corridor only).
+_MAX_RAIL_KM_ASSIGN_M = 25_000.0
+
 
 def _bq_dataset(dataset: str | None = None) -> str:
     return (dataset or os.environ.get("BQ_DATASET") or "efc_clima").strip() or "efc_clima"
@@ -503,20 +512,54 @@ def load_zentra_latest_by_location(
     return load_zentra_latest_from_gcs(variables=vars_)
 
 
-def _nearest_km(lat: float, lon: float, main_line, cum_km) -> float | None:
+def _site_alias(device_or_loc: str | None, *, lang_pt: bool = True) -> str | None:
+    key = str(device_or_loc or "").strip().lower()
+    if not key:
+        return None
+    hit = _SITE_ALIASES.get(key)
+    if hit is None and key.startswith("zentra_"):
+        hit = _SITE_ALIASES.get(key.replace("zentra_", "", 1).replace("_", "-", 1))
+    if hit is None:
+        # z6_35950 → z6-35950
+        hit = _SITE_ALIASES.get(key.replace("_", "-"))
+    if not hit:
+        return None
+    return hit["pt"] if lang_pt else hit["en"]
+
+
+def _nearest_km(
+    lat: float,
+    lon: float,
+    main_line,
+    cum_km,
+    *,
+    max_dist_m: float = _MAX_RAIL_KM_ASSIGN_M,
+) -> float | None:
+    """Nearest official rail km, or None when far off-corridor (e.g. SP Almeida)."""
     if main_line is None or cum_km is None or not len(main_line):
         return None
     best_i = 0
-    best_d = None
+    best_d2 = None
     for i, pt in enumerate(main_line):
         try:
-            d = (float(pt[0]) - lat) ** 2 + (float(pt[1]) - lon) ** 2
+            d2 = (float(pt[0]) - lat) ** 2 + (float(pt[1]) - lon) ** 2
         except (TypeError, ValueError, IndexError):
             continue
-        if best_d is None or d < best_d:
-            best_d = d
+        if best_d2 is None or d2 < best_d2:
+            best_d2 = d2
             best_i = i
-    if best_d is None:
+    if best_d2 is None:
+        return None
+    # Equirectangular metres from degree² near equator.
+    try:
+        plat = float(main_line[best_i][0])
+        plon = float(main_line[best_i][1])
+        dist_m = _haversine_m(
+            {"lat": lat, "lon": lon}, {"lat": plat, "lon": plon}
+        )
+    except Exception:
+        dist_m = math.sqrt(best_d2) * 111_320.0
+    if dist_m > float(max_dist_m):
         return None
     try:
         return float(cum_km[best_i])
@@ -621,8 +664,16 @@ def build_zentra_sensor_rows(
             None,
         )
         # Location line: Trecho km N – sensor types (photo-style).
+        # Off-corridor (Almeida/SP): never invent EFC km.
+        alias = _site_alias(name) or _site_alias(loc)
         sensors_short = " · ".join(sensors[:3]) if sensors else ""
-        if km is not None and sensors_short:
+        if alias:
+            location_line = (
+                f"{alias} – {sensors_short}" if sensors_short else alias
+            )
+            if name in (loc, "") or str(name).startswith("z6-"):
+                name = alias
+        elif km is not None and sensors_short:
             location_line = f"Trecho km {km:.0f} – {sensors_short}"
         elif km is not None:
             location_line = f"Trecho km {km:.0f}"
@@ -806,40 +857,66 @@ def cluster_sensor_rows_into_sites(
                 sinal = s
                 break
 
+        alias = None
+        for c in cluster:
+            alias = (
+                _site_alias(c.get("name"), lang_pt=lang_pt)
+                or _site_alias(c.get("location_id"), lang_pt=lang_pt)
+            )
+            if alias:
+                break
         if lang_pt:
-            if km is not None:
+            if alias:
+                name = alias if n == 1 else f"{alias} · {n} loggers"
+                location_line = (
+                    f"{alias} – {n} ZL6" if n > 1 else str(cluster[0].get("location_line") or alias)
+                )
+            elif km is not None:
                 name = f"Talude km {km:.0f}"
                 if n > 1:
                     name += f" · {n} loggers"
+                location_line = (
+                    f"Trecho km {km:.0f} – {n} ZL6"
+                    if n > 1
+                    else str(cluster[0].get("location_line") or "")
+                )
             else:
                 name = (
                     f"Ponto Zentra · {n} loggers"
                     if n > 1
                     else str(cluster[0].get("name") or "Zentra")
                 )
-            if n > 1 and km is not None:
-                location_line = f"Trecho km {km:.0f} – {n} ZL6"
-            elif n > 1:
-                location_line = f"{n} loggers Zentra"
-            else:
-                location_line = str(cluster[0].get("location_line") or "")
+                location_line = (
+                    f"{n} loggers Zentra"
+                    if n > 1
+                    else str(cluster[0].get("location_line") or "")
+                )
         else:
-            if km is not None:
+            if alias:
+                name = alias if n == 1 else f"{alias} · {n} loggers"
+                location_line = (
+                    f"{alias} – {n} ZL6" if n > 1 else str(cluster[0].get("location_line") or alias)
+                )
+            elif km is not None:
                 name = f"Slope km {km:.0f}"
                 if n > 1:
                     name += f" · {n} loggers"
+                location_line = (
+                    f"Segment km {km:.0f} – {n} ZL6"
+                    if n > 1
+                    else str(cluster[0].get("location_line") or "")
+                )
             else:
                 name = (
                     f"Zentra site · {n} loggers"
                     if n > 1
                     else str(cluster[0].get("name") or "Zentra")
                 )
-            if n > 1 and km is not None:
-                location_line = f"Segment km {km:.0f} – {n} ZL6"
-            elif n > 1:
-                location_line = f"{n} Zentra loggers"
-            else:
-                location_line = str(cluster[0].get("location_line") or "")
+                location_line = (
+                    f"{n} Zentra loggers"
+                    if n > 1
+                    else str(cluster[0].get("location_line") or "")
+                )
 
         # Multi-logger: nest ports under each logger; single logger keeps flat ports.
         loggers: list[dict[str, Any]] = []
@@ -1010,8 +1087,9 @@ def build_taludes_monitorados(
     Tunnel / rock-cut sites live in :func:`build_tuneis_monitorados`.
     """
     if rows is None:
+        # Include off-corridor sites (Almeida/SP) — chooser lists every monitored talude.
         rows = build_zentra_sensor_rows(
-            lang_pt=lang_pt, main_line=main_line, cum_km=cum_km, corridor_only=True
+            lang_pt=lang_pt, main_line=main_line, cum_km=cum_km, corridor_only=False
         )
     sites: list[dict[str, Any]] = []
     for i, cluster in enumerate(_cluster_logger_groups(rows or [], cluster_m=cluster_m)):
@@ -1031,29 +1109,46 @@ def build_taludes_monitorados(
         lon = sum(lons) / len(lons)
         km = round(sum(kms) / len(kms), 1) if kms else None
         n = len(cluster)
+        alias = None
+        for c in cluster:
+            alias = (
+                _site_alias(c.get("name"), lang_pt=lang_pt)
+                or _site_alias(c.get("location_id"), lang_pt=lang_pt)
+            )
+            if alias:
+                break
         if lang_pt:
-            if km is not None:
+            if alias:
+                label = alias if n == 1 else f"{alias} · {n} sensores"
+            elif km is not None:
                 label = f"Talude km {km:.0f}"
                 if n > 1:
                     label += f" · {n} sensores"
             else:
                 label = f"Ponto Zentra ({n})" if n > 1 else f"Zentra {cluster[0].get('name')}"
         else:
-            if km is not None:
+            if alias:
+                label = alias if n == 1 else f"{alias} · {n} sensors"
+            elif km is not None:
                 label = f"Slope km {km:.0f}"
                 if n > 1:
                     label += f" · {n} sensors"
             else:
                 label = f"Zentra site ({n})" if n > 1 else f"Zentra {cluster[0].get('name')}"
+        site_key = (
+            f"alias-{alias}"
+            if alias
+            else (f"km-{km}" if km is not None else f"i-{i}")
+        )
         sites.append(
             {
-                "id": f"zentra-cluster-{km if km is not None else i}",
+                "id": f"zentra-cluster-{site_key}",
                 "kind": "talude",
                 "label": label,
                 "lat": round(lat, 6),
                 "lon": round(lon, 6),
                 "km": km,
-                "zoom": 15.8,
+                "zoom": 15.8 if km is not None else 14.5,
                 "n_sensors": n,
                 "location_ids": [str(c.get("location_id") or "") for c in cluster],
             }
@@ -1070,38 +1165,61 @@ def build_tuneis_monitorados(
 ) -> list[dict[str, Any]]:
     """Chooser sites for Visão Geral → Túnel (cortes rochosos / túneis).
 
-    Midpoints from ``map_3d_overlay._TUNNEL_KM_RANGES`` (km 372.56–373.535
-    and 374.085–375.2).
+    Prefer official KML estaca coords from ``map_3d_overlay._TUNNEL_FOCUS``
+    (km ~373.1 and ~374.6 near the Zentra cluster). Falls back to
+    ``position_at_km`` on ``_TUNNEL_KM_RANGES`` only when focus is missing.
     """
     sites: list[dict[str, Any]] = []
     try:
-        from monitor_web.services.map_3d_overlay import _TUNNEL_KM_RANGES
-        from lib_efc import position_at_km
+        from monitor_web.services.map_3d_overlay import _TUNNEL_FOCUS, _TUNNEL_KM_RANGES
 
-        if main_line is None or cum_km is None:
-            return sites
-        for km0, km1, tunnel_label in _TUNNEL_KM_RANGES:
-            mid = (float(km0) + float(km1)) / 2.0
-            pos = position_at_km(mid, main_line, cum_km)
-            if pos is None:
-                continue
-            if lang_pt:
-                tlabel = f"{tunnel_label} km {km0:.0f}–{km1:.0f}"
-            else:
-                tlabel = f"Rock cut km {km0:.0f}–{km1:.0f}"
-            sites.append(
-                {
-                    "id": f"tunnel-{km0:.0f}-{km1:.0f}",
-                    "kind": "tunnel",
-                    "label": tlabel,
-                    "lat": round(float(pos[0]), 6),
-                    "lon": round(float(pos[1]), 6),
-                    "km": round(mid, 1),
-                    "zoom": 14.5,
-                    "n_sensors": 0,
-                    "location_ids": [],
-                }
-            )
+        focus_rows = list(_TUNNEL_FOCUS) if _TUNNEL_FOCUS else []
+        if focus_rows:
+            for km0, km1, focus_km, lat, lon, tunnel_label in focus_rows:
+                if lang_pt:
+                    tlabel = f"{tunnel_label} km {km0:.0f}–{km1:.0f}"
+                else:
+                    tlabel = f"Rock cut km {km0:.0f}–{km1:.0f}"
+                sites.append(
+                    {
+                        "id": f"tunnel-{km0:.0f}-{km1:.0f}",
+                        "kind": "tunnel",
+                        "label": tlabel,
+                        "lat": round(float(lat), 6),
+                        "lon": round(float(lon), 6),
+                        "km": round(float(focus_km), 1),
+                        "zoom": 15.2,
+                        "n_sensors": 0,
+                        "location_ids": [],
+                    }
+                )
+        else:
+            from lib_efc import position_at_km
+
+            if main_line is None or cum_km is None:
+                return sites
+            for km0, km1, tunnel_label in _TUNNEL_KM_RANGES:
+                mid = (float(km0) + float(km1)) / 2.0
+                pos = position_at_km(mid, main_line, cum_km)
+                if pos is None:
+                    continue
+                if lang_pt:
+                    tlabel = f"{tunnel_label} km {km0:.0f}–{km1:.0f}"
+                else:
+                    tlabel = f"Rock cut km {km0:.0f}–{km1:.0f}"
+                sites.append(
+                    {
+                        "id": f"tunnel-{km0:.0f}-{km1:.0f}",
+                        "kind": "tunnel",
+                        "label": tlabel,
+                        "lat": round(float(pos[0]), 6),
+                        "lon": round(float(pos[1]), 6),
+                        "km": round(mid, 1),
+                        "zoom": 15.2,
+                        "n_sensors": 0,
+                        "location_ids": [],
+                    }
+                )
     except Exception as exc:
         logger.warning("tuneis monitorados skipped: %s", exc)
     sites.sort(key=lambda s: (s.get("km") is None, s.get("km") or 0, s.get("label") or ""))

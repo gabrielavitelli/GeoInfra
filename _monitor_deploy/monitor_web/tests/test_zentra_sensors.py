@@ -188,19 +188,32 @@ def test_build_taludes_monitorados_clusters_nearby():
             "km": 374.1,
         },
         {
-            "location_id": "zentra_far",
-            "name": "far",
-            "lat": -23.55,
-            "lon": -46.73,
+            "location_id": "zentra_z6_35950",
+            "name": "z6-35950",
+            "lat": -23.5545,
+            "lon": -46.73128,
             "km": None,
         },
     ]
     sites = build_taludes_monitorados(rows, lang_pt=True, main_line=None, cum_km=None)
-    # Two geographic clusters (corridor pair + SP), no tunnels without rail.
+    # Two geographic clusters (corridor pair + Almeida/SP).
     assert len(sites) == 2
     labels = [s["label"] for s in sites]
     assert any("Talude km 374" in lab for lab in labels)
+    assert any("Almeida" in lab for lab in labels)
     assert any(s["n_sensors"] == 2 for s in sites)
+    assert any(s["n_sensors"] == 1 and s.get("km") is None for s in sites)
+
+
+def test_nearest_km_rejects_far_off_corridor():
+    from monitor_web.services.zentra_sensors import _nearest_km
+
+    # Tiny fake rail near Zentra corridor.
+    main_line = [[-4.26, -46.53], [-4.27, -46.54]]
+    cum_km = [374.0, 375.0]
+    assert _nearest_km(-4.2601, -46.534, main_line, cum_km) is not None
+    # São Paulo Almeida — must not invent EFC km ~862.
+    assert _nearest_km(-23.5545, -46.73128, main_line, cum_km) is None
 
 
 def test_cluster_sensor_rows_into_sites_mean_vwc():
@@ -295,24 +308,15 @@ def test_popup_vars_include_all_env():
 
 
 def test_build_tuneis_monitorados_from_ranges(monkeypatch):
-    import sys
-    import types
-
     from monitor_web.services import zentra_sensors as zs
-    from monitor_web.services.map_3d_overlay import _TUNNEL_KM_RANGES
+    from monitor_web.services.map_3d_overlay import _TUNNEL_FOCUS, _TUNNEL_KM_RANGES
 
-    def _fake_pos(km, main_line, cum_km):
-        return (-4.2, -46.5)
-
-    # lib_efc pulls xarray at import time — stub the module before the helper imports it.
-    fake = types.ModuleType("lib_efc")
-    fake.position_at_km = _fake_pos
-    sys.modules["lib_efc"] = fake
-    monkeypatch.setitem(sys.modules, "lib_efc", fake)
-
-    main_line = [[-4.2, -46.5], [-4.3, -46.5]]
-    cum_km = [370.0, 380.0]
-    sites = zs.build_tuneis_monitorados(lang_pt=True, main_line=main_line, cum_km=cum_km)
-    assert len(sites) == len(_TUNNEL_KM_RANGES)
+    # Official estaca focus coords — no rail / lib_efc required.
+    sites = zs.build_tuneis_monitorados(lang_pt=True, main_line=None, cum_km=None)
+    assert len(sites) == len(_TUNNEL_FOCUS) == len(_TUNNEL_KM_RANGES)
     assert all(s["kind"] == "tunnel" for s in sites)
     assert any("Corte" in s["label"] for s in sites)
+    # Second cut near Zentra (~374.6 / estaca 374+600).
+    near = next(s for s in sites if abs(float(s["km"]) - 374.6) < 0.2)
+    assert abs(float(near["lat"]) - (-4.257259)) < 1e-5
+    assert abs(float(near["lon"]) - (-46.533335)) < 1e-5

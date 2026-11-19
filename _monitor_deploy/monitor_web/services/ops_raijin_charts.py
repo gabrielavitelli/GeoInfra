@@ -368,13 +368,87 @@ def load_hyp3_displacement(
             "z": z,
             "label": "Média LOS (mm) · km × data" if lang_pt else "Mean LOS (mm) · km × date",
         },
-        "note": (
-            f"{len(dates)} datas · {len(kms)} bins km · fonte {source}"
-            if lang_pt
-            else f"{len(dates)} dates · {len(kms)} km bins · {source}"
-        ),
+        # Keep note empty for UI — fluff ("N datas · fonte bq:…") removed.
+        "note": None,
         "source": source,
         "n_rows": len(rows),
+    }
+
+
+def build_combined_los_rain(
+    precip: dict[str, Any],
+    hyp3: dict[str, Any],
+    *,
+    lang_pt: bool = True,
+) -> dict[str, Any]:
+    """One dual-axis chart: mean LOS (line) + corridor rainfall (bars)."""
+    title = (
+        "Deslocamento LOS (HyP3) + chuva"
+        if lang_pt
+        else "LOS displacement (HyP3) + rain"
+    )
+    empty = {
+        "available": False,
+        "title": title,
+        "subtitle": None,
+        "note": None,
+        "los": {"x": [], "y": [], "label": "LOS médio"},
+        "rain": {"x": [], "y": [], "label": "Chuva"},
+    }
+    ts = (hyp3 or {}).get("timeseries") or {}
+    los_x = list(ts.get("x") or [])
+    los_y = list(ts.get("y") or [])
+    los_label = ts.get("label") or (
+        "LOS médio (mm)" if lang_pt else "Mean LOS (mm)"
+    )
+
+    # Aggregate monthly precip across stations → one corridor series.
+    months = list((precip or {}).get("months") or [])
+    rain_y: list[float] = []
+    series = list((precip or {}).get("series") or [])
+    if months and series:
+        for i, _m in enumerate(months):
+            vals = []
+            for s in series:
+                y = s.get("y") or []
+                if i < len(y) and y[i] is not None:
+                    try:
+                        vals.append(float(y[i]))
+                    except (TypeError, ValueError):
+                        pass
+            # Mean across stations (not blind sum of all tips).
+            rain_y.append(round(sum(vals) / len(vals), 1) if vals else 0.0)
+    rain_label = (
+        "Chuva mensal média (mm)" if lang_pt else "Mean monthly rain (mm)"
+    )
+
+    available = bool(los_x or (months and rain_y))
+    if not available:
+        note = None
+        if hyp3 and not hyp3.get("available"):
+            note = hyp3.get("note")
+        elif precip and not precip.get("available"):
+            note = precip.get("note")
+        empty["note"] = note
+        return empty
+
+    return {
+        "available": True,
+        "title": title,
+        "subtitle": None,
+        "note": None,
+        "los": {
+            "x": los_x,
+            "y": los_y,
+            "label": los_label,
+            "unit": "mm",
+        },
+        "rain": {
+            "x": months,
+            "y": rain_y,
+            "label": rain_label,
+            "unit": "mm",
+        },
     }
 
 
@@ -385,9 +459,12 @@ def build_ops_raijin_charts_payload(
 ) -> dict[str, Any]:
     precip = load_monthly_precip(bq_dataset=bq_dataset, lang_pt=lang_pt)
     hyp3 = load_hyp3_displacement(bq_dataset=bq_dataset, lang_pt=lang_pt)
+    combined = build_combined_los_rain(precip, hyp3, lang_pt=lang_pt)
     return {
-        "available": bool(precip.get("available") or hyp3.get("available")),
+        "available": bool(combined.get("available")),
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "combined": combined,
+        # Kept for back-compat / debugging — UI uses ``combined`` only.
         "precip": precip,
         "hyp3": hyp3,
     }

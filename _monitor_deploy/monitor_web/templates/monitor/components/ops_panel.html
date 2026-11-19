@@ -73,22 +73,10 @@
 
   <div class="p-4 efc-stitch-side-panel__charts" data-ops-raijin-charts
        data-url="{% murl 'home_ops_raijin_charts' %}">
-    <h3 class="efc-stitch-side-panel__heading">{% if ctx.lang_pt %}Observação · séries{% else %}Observation · series{% endif %}</h3>
-    <p class="efc-stitch-side-panel__chart-cap">{% if ctx.lang_pt %}Chuva mensal e deslocamento InSAR (HyP3) no trecho dos sensores / túnel.{% else %}Monthly rain and InSAR LOS (HyP3) near sensors / tunnel.{% endif %}</p>
-    <div class="efc-ops-chart" data-ops-chart="precip">
-      <div class="efc-ops-chart__head">
-        <span class="efc-ops-chart__title">{% if ctx.lang_pt %}Acúmulo mensal de chuva{% else %}Monthly rainfall{% endif %}</span>
-      </div>
-      <div class="efc-ops-chart__plot" data-ops-plot="precip" aria-busy="true"></div>
-      <p class="efc-ops-chart__note" data-ops-note="precip">{% if ctx.lang_pt %}Carregando…{% else %}Loading…{% endif %}</p>
-    </div>
-    <div class="efc-ops-chart efc-ops-chart--hyp3" data-ops-chart="hyp3">
-      <div class="efc-ops-chart__head">
-        <span class="efc-ops-chart__title">{% if ctx.lang_pt %}Deslocamento LOS (HyP3){% else %}LOS displacement (HyP3){% endif %}</span>
-      </div>
-      <div class="efc-ops-chart__plot efc-ops-chart__plot--sm" data-ops-plot="hyp3-ts" aria-busy="true"></div>
-      <div class="efc-ops-chart__plot" data-ops-plot="hyp3-hm" aria-busy="true"></div>
-      <p class="efc-ops-chart__note" data-ops-note="hyp3">{% if ctx.lang_pt %}Carregando…{% else %}Loading…{% endif %}</p>
+    <h3 class="efc-stitch-side-panel__heading">{% if ctx.lang_pt %}Deslocamento LOS (HyP3){% else %}LOS displacement (HyP3){% endif %}</h3>
+    <div class="efc-ops-chart efc-ops-chart--combined" data-ops-chart="combined">
+      <div class="efc-ops-chart__plot efc-ops-chart__plot--tall" data-ops-plot="combined" aria-busy="true"></div>
+      <p class="efc-ops-chart__note" data-ops-note="combined">{% if ctx.lang_pt %}Carregando…{% else %}Loading…{% endif %}</p>
     </div>
   </div>
 

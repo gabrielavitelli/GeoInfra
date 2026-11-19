@@ -877,6 +877,130 @@ def _points_from_gcs_readings(
     return out[:limit]
 
 
+def _points_from_bq_readings_staging(
+    *,
+    location_id: str,
+    variable: str,
+    start: date,
+    end: date,
+    bq_dataset: str | None = None,
+    port_num: int | None = None,
+    limit: int = 5000,
+) -> list[dict[str, Any]]:
+    """Per-port points from ``zentra_readings_staging`` (avoids clima_series sawtooth)."""
+    client = _client()
+    if client is None:
+        return []
+    ds = _bq_dataset(bq_dataset)
+    pfx = _pfx(ds)
+    try:
+        from google.cloud import bigquery as bq
+
+        sql = f"""
+            SELECT
+              COALESCE(datetime, TIMESTAMP_SECONDS(CAST(timestamp AS INT64))) AS t,
+              value AS value,
+              port_num AS port,
+              sensor_name AS sensor
+            FROM `{pfx}.zentra_readings_staging`
+            WHERE location_id = @loc
+              AND mapped_variable = @var
+              AND value IS NOT NULL
+              AND COALESCE(datetime, TIMESTAMP_SECONDS(CAST(timestamp AS INT64))) IS NOT NULL
+              AND DATE(COALESCE(datetime, TIMESTAMP_SECONDS(CAST(timestamp AS INT64))),
+                       'America/Sao_Paulo') BETWEEN @start AND @end
+              AND (@port IS NULL OR port_num = @port)
+              AND (@var != 'water_potential_kpa' OR value > {_WP_SENTINEL})
+            ORDER BY t, port_num
+            LIMIT @lim
+        """
+        job = client.query(
+            sql,
+            job_config=bq.QueryJobConfig(
+                query_parameters=[
+                    bq.ScalarQueryParameter("loc", "STRING", location_id),
+                    bq.ScalarQueryParameter("var", "STRING", variable),
+                    bq.ScalarQueryParameter("start", "DATE", start),
+                    bq.ScalarQueryParameter("end", "DATE", end),
+                    bq.ScalarQueryParameter(
+                        "port", "INT64", int(port_num) if port_num is not None else None
+                    ),
+                    bq.ScalarQueryParameter("lim", "INT64", int(limit)),
+                ]
+            ),
+        )
+        out: list[dict[str, Any]] = []
+        for r in job.result():
+            t = r.get("t")
+            v = r.get("value")
+            if v is None or t is None:
+                continue
+            try:
+                fv = float(v)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(fv):
+                continue
+            ts = t.isoformat() if hasattr(t, "isoformat") else str(t)
+            out.append(
+                {
+                    "t": ts,
+                    "v": fv,
+                    "n": 1,
+                    "port": r.get("port"),
+                    "sensor": r.get("sensor"),
+                }
+            )
+        return out
+    except Exception as exc:
+        logger.info("sensor_series BQ readings_staging unavailable: %s", exc)
+        return []
+
+
+def _dedupe_points_one_per_timestamp(
+    points: list[dict[str, Any]],
+    *,
+    prefer: str = "last",
+) -> list[dict[str, Any]]:
+    """Exactly one Y per timestamp (keeps last or mean). Prevents Plotly sawtooth."""
+    if not points:
+        return []
+    buckets: dict[str, list[dict[str, Any]]] = {}
+    order: list[str] = []
+    for p in points:
+        t = str(p.get("t") or "")
+        if not t:
+            continue
+        if t not in buckets:
+            buckets[t] = []
+            order.append(t)
+        buckets[t].append(p)
+    out: list[dict[str, Any]] = []
+    for t in order:
+        group = buckets[t]
+        if len(group) == 1:
+            out.append(group[0])
+            continue
+        vals: list[float] = []
+        for g in group:
+            try:
+                vals.append(float(g["v"]))
+            except (TypeError, ValueError, KeyError):
+                continue
+        if not vals:
+            continue
+        base = dict(group[-1] if prefer == "last" else group[0])
+        if prefer == "mean":
+            base["v"] = sum(vals) / len(vals)
+            base["n"] = len(vals)
+            base["is_average"] = True
+        else:
+            base["v"] = vals[-1]
+            base["n"] = 1
+        out.append(base)
+    return out
+
+
 def fetch_series_points(
     *,
     location_id: str,
@@ -892,8 +1016,8 @@ def fetch_series_points(
     """Raw measurement points — no daily/hourly mean aggregation.
 
     Prefer GCS readings (true ``datetime`` + ``port_num``) for Zentra when they
-    cover the requested window. If the snapshot only has a short span (e.g. 2
-    days) while the user asked for 7d/30d, fall through to BQ ``clima_series``.
+    cover the requested window. Else BQ ``zentra_readings_staging`` (per-port).
+    Portless ``clima_series`` is last resort — it sawtooth-merges TEROS depths.
     """
     if not location_id or not variable:
         return []
@@ -947,6 +1071,20 @@ def fetch_series_points(
             or want <= 3
         ):
             return dense
+
+        # BQ staging has port_num + true datetime (fixes z6-35950 when GCS
+        # snapshot omits the device).
+        staged = _points_from_bq_readings_staging(
+            location_id=location_id,
+            variable=variable,
+            start=start,
+            end=end,
+            bq_dataset=bq_dataset,
+            port_num=port_num,
+            limit=limit,
+        )
+        if staged:
+            return staged
 
     bq_out: list[dict[str, Any]] = []
     if client is not None:
@@ -1167,6 +1305,36 @@ def _traces_for_variable(
         sn = p.get("sensor")
         if sn and pk not in sensor_by_port:
             sensor_by_port[pk] = str(sn)
+
+    def _pack(
+        *,
+        pts: list[dict[str, Any]],
+        port: str | None,
+        label: str,
+        color: str,
+        mean_if_dupes: bool = False,
+    ) -> dict[str, Any]:
+        clean = _dedupe_points_one_per_timestamp(
+            pts, prefer="mean" if mean_if_dupes else "last"
+        )
+        title = chart_title
+        out_label = label
+        if mean_if_dupes and any(p.get("is_average") for p in clean):
+            if variable == "soil_vwc":
+                out_label = "VWC médio" if "médio" not in label.lower() else label
+                title = "Umidade do solo (VWC médio)"
+        return {
+            "variable": variable,
+            "port": port,
+            "label": out_label,
+            "chart_title": title,
+            "unit": unit,
+            "color": color,
+            "axis": "y",
+            "points": clean,
+            "n_points": len(clean),
+        }
+
     # Single undifferentiated series — keep one trace.
     if len(by_port) <= 1 and not (by_port and no_port):
         only_port = next(iter(by_port.keys()), None) if by_port else None
@@ -1175,18 +1343,16 @@ def _traces_for_variable(
         if only_port is not None:
             sn = sensor_by_port.get(only_port)
             label = f"{base_label} · Porta {only_port}" + (f" ({sn})" if sn else "")
+        # Portless multi-value timestamps (BQ clima_series) → mean, not zigzag.
+        mean_dupes = only_port is None
         return [
-            {
-                "variable": variable,
-                "port": only_port,
-                "label": label,
-                "chart_title": chart_title,
-                "unit": unit,
-                "color": VAR_COLORS.get(variable, "#1f77b4"),
-                "axis": "y",
-                "points": pts,
-                "n_points": len(pts),
-            }
+            _pack(
+                pts=pts,
+                port=only_port,
+                label=label,
+                color=VAR_COLORS.get(variable, "#1f77b4"),
+                mean_if_dupes=mean_dupes,
+            )
         ]
     traces: list[dict[str, Any]] = []
     for i, pk in enumerate(sorted(by_port.keys(), key=lambda x: (len(x), x))):
@@ -1194,31 +1360,22 @@ def _traces_for_variable(
         sn = sensor_by_port.get(pk)
         label = f"{base_label} · Porta {pk}" + (f" ({sn})" if sn else "")
         traces.append(
-            {
-                "variable": variable,
-                "port": pk,
-                "label": label,
-                "chart_title": chart_title,
-                "unit": unit,
-                "color": PORT_COLORS[i % len(PORT_COLORS)],
-                "axis": "y",
-                "points": pts,
-                "n_points": len(pts),
-            }
+            _pack(
+                pts=pts,
+                port=pk,
+                label=label,
+                color=PORT_COLORS[i % len(PORT_COLORS)],
+            )
         )
     if no_port:
         traces.append(
-            {
-                "variable": variable,
-                "port": None,
-                "label": f"{base_label} · —",
-                "chart_title": chart_title,
-                "unit": unit,
-                "color": VAR_COLORS.get(variable, "#7f7f7f"),
-                "axis": "y",
-                "points": no_port,
-                "n_points": len(no_port),
-            }
+            _pack(
+                pts=no_port,
+                port=None,
+                label=f"{base_label} · —",
+                color=VAR_COLORS.get(variable, "#7f7f7f"),
+                mean_if_dupes=True,
+            )
         )
     return traces
 

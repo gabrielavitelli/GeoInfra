@@ -4373,27 +4373,31 @@
       var lat = Number(site.lat);
       var lon = Number(site.lon);
       if (!isFinite(lat) || !isFinite(lon)) return;
-      if (site.kind !== "tunnel" && typeof window.__efcSetOverlayLayer === "function") {
+      var isTunnel = site.kind === "tunnel";
+      if (!isTunnel && typeof window.__efcSetOverlayLayer === "function") {
         window.__efcSetOverlayLayer("zentra", true);
       }
-      var zoom = Number(site.zoom) || (site.kind === "tunnel" ? 14.5 : 15.5);
+      var zoom = Number(site.zoom) || (isTunnel ? 15.2 : 15.5);
       writeSharedMapView({
         lat: lat,
         lon: lon,
         zoom: zoom,
-        pitch: 42,
-        bearing: -18,
+        pitch: isTunnel ? 58 : 42,
+        bearing: isTunnel ? -28 : -18,
         mode: "focus",
       });
+      // Tunnel: fly to official estaca lat/lon (not SHP-only km lookup).
       postToMap({
-        type: site.kind === "tunnel" ? "efc-map-goto-km" : "efc-map-focus-zentra",
+        type: isTunnel ? "efc-map-goto-km" : "efc-map-focus-zentra",
         lat: lat,
         lon: lon,
         zid: (site.location_ids && site.location_ids[0]) || "",
         km: site.km,
         zoom: zoom,
+        pitch: isTunnel ? 58 : undefined,
+        bearing: isTunnel ? -28 : undefined,
       });
-      if (site.km != null && isFinite(Number(site.km))) {
+      if (!isTunnel && site.km != null && isFinite(Number(site.km))) {
         postToMap({
           type: "efc-map-goto-km",
           km: Number(site.km),
@@ -4564,164 +4568,104 @@
       return base;
     }
 
-    function plotPrecip(payload) {
-      var el = host.querySelector('[data-ops-plot="precip"]');
+    function plotCombined(payload) {
+      var el = host.querySelector('[data-ops-plot="combined"]');
       if (!el) return;
-      if (!payload || !payload.available || !(payload.series || []).length) {
+      if (!payload || !payload.available) {
         setNote(
-          "precip",
+          "combined",
           (payload && payload.note) ||
-            (langPt ? "Sem dados de chuva mensal." : "No monthly rain data.")
+            (langPt
+              ? "Sem séries LOS / chuva nesta janela."
+              : "No LOS / rain series in this window.")
         );
         el.setAttribute("aria-busy", "false");
         return;
       }
-      var months = payload.months || [];
-      var data = (payload.series || []).map(function (s) {
-        return {
+      var los = payload.los || {};
+      var rain = payload.rain || {};
+      var traces = [];
+      if ((rain.x || []).length && (rain.y || []).length) {
+        traces.push({
           type: "bar",
-          name: s.label || s.id,
-          x: months,
-          y: s.y || [],
-          marker: { color: s.color || "#38bdf8", line: { width: 0 } },
+          name: rain.label || (langPt ? "Chuva" : "Rain"),
+          x: rain.x,
+          y: rain.y,
+          yaxis: "y2",
+          marker: {
+            color: "rgba(56,189,248,0.55)",
+            line: { width: 0 },
+          },
           hovertemplate:
-            "<b>%{fullData.name}</b><br>%{x}<br><b>%{y:.1f}</b> mm<extra></extra>",
-        };
-      });
-      var layout = darkLayout({
-        title: {
-          text: "<b>" + (payload.title || "") + "</b>",
-          font: { size: 13, color: ink, family: "IBM Plex Sans, Segoe UI, sans-serif" },
-          x: 0,
-          xanchor: "left",
-          pad: { t: 2, b: 0 },
-        },
-        barmode: "group",
-        bargap: 0.28,
-        yaxis: {
-          showgrid: true,
-          gridcolor: grid,
-          tickfont: { size: 10, color: muted },
-          title: { text: "mm", font: { size: 11, color: muted } },
-        },
-        margin: { t: 42, r: 8, b: 40, l: 44 },
-      });
-      Plotly.newPlot(el, data, layout, plotlyConfig(el));
-      el.setAttribute("aria-busy", "false");
-      setNote("precip", payload.subtitle || payload.note || "");
-    }
-
-    function plotHyp3(payload) {
-      var elTs = host.querySelector('[data-ops-plot="hyp3-ts"]');
-      var elHm = host.querySelector('[data-ops-plot="hyp3-hm"]');
-      if (!payload || !payload.available) {
-        var msg =
-          (payload && payload.note) ||
-          (langPt
-            ? "HyP3 ainda sem amostras — ingest em andamento."
-            : "HyP3 empty — ingest running.");
-        setNote("hyp3", msg);
-        if (elTs) elTs.setAttribute("aria-busy", "false");
-        if (elHm) elHm.setAttribute("aria-busy", "false");
+            "<b>%{x}</b><br>" +
+            (langPt ? "Chuva" : "Rain") +
+            ": <b>%{y:.1f}</b> mm<extra></extra>",
+        });
+      }
+      if ((los.x || []).length && (los.y || []).length) {
+        traces.push({
+          type: "scatter",
+          mode: "lines+markers",
+          name: los.label || "LOS médio",
+          x: los.x,
+          y: los.y,
+          yaxis: "y",
+          line: { color: "#f97316", width: 2.4 },
+          marker: { size: 7, color: "#fdba74", line: { width: 1, color: "#ea580c" } },
+          hovertemplate:
+            "<b>%{x}</b><br>LOS: <b>%{y:.2f}</b> mm<extra></extra>",
+        });
+      }
+      if (!traces.length) {
+        setNote(
+          "combined",
+          langPt ? "Sem pontos para plotar." : "Nothing to plot."
+        );
+        el.setAttribute("aria-busy", "false");
         return;
       }
-      var ts = payload.timeseries || {};
-      var hm = payload.heatmap || {};
-      var cum = payload.cumulative || {};
-      if (elTs && ts.x && ts.x.length) {
-        var traces = [
-          {
-            type: "scatter",
-            mode: "lines+markers",
-            name: ts.label || "LOS",
-            x: ts.x,
-            y: ts.y,
-            line: { color: "#38bdf8", width: 2 },
-            marker: { size: 6, color: "#7dd3fc" },
-            hovertemplate: "<b>%{x}</b><br>%{y:.2f} mm<extra></extra>",
+      // Title lives once in the panel heading — do not repeat inside Plotly.
+      Plotly.newPlot(
+        el,
+        traces,
+        darkLayout({
+          margin: { t: 28, r: 52, b: 40, l: 48 },
+          showlegend: true,
+          legend: {
+            orientation: "h",
+            y: 1.14,
+            x: 0,
+            font: { size: 10, color: muted },
+            bgcolor: "rgba(0,0,0,0)",
           },
-        ];
-        if (cum.y && cum.y.some(function (v) { return v != null; })) {
-          traces.push({
-            type: "scatter",
-            mode: "lines",
-            name: cum.label || "Acumulado",
-            x: cum.x || ts.x,
-            y: cum.y,
-            line: { color: "#fbbf24", width: 1.6, dash: "dot" },
-            hovertemplate: "<b>%{x}</b><br>%{y:.2f} mm<extra></extra>",
-          });
-        }
-        Plotly.newPlot(
-          elTs,
-          traces,
-          darkLayout({
+          yaxis: {
+            showgrid: true,
+            gridcolor: grid,
+            tickfont: { size: 10, color: "#fdba74" },
             title: {
-              text: "<b>" + (payload.title || "HyP3") + "</b>",
-              font: { size: 13, color: ink },
-              x: 0,
-              xanchor: "left",
+              text: langPt ? "LOS médio (mm)" : "Mean LOS (mm)",
+              font: { size: 11, color: "#fdba74" },
             },
-            yaxis: {
-              showgrid: true,
-              gridcolor: grid,
-              tickfont: { size: 10, color: muted },
-              title: { text: "mm LOS", font: { size: 11, color: muted } },
-            },
-            margin: { t: 40, r: 10, b: 36, l: 46 },
-            showlegend: traces.length > 1,
-          }),
-          plotlyConfig(elTs)
-        );
-        elTs.setAttribute("aria-busy", "false");
-      }
-      if (elHm && hm.z && hm.z.length) {
-        Plotly.newPlot(
-          elHm,
-          [
-            {
-              type: "heatmap",
-              x: hm.x || [],
-              y: hm.y || [],
-              z: hm.z || [],
-              colorscale: [
-                [0, "#0f172a"],
-                [0.35, "#0e7490"],
-                [0.5, "#f8fafc"],
-                [0.65, "#f59e0b"],
-                [1, "#ea580c"],
-              ],
-              zmid: 0,
-              colorbar: {
-                title: { text: "mm", font: { size: 10, color: muted } },
-                tickfont: { size: 9, color: muted },
-                thickness: 10,
-                len: 0.85,
-              },
-              hovertemplate:
-                "km %{y}<br>%{x}<br><b>%{z:.2f}</b> mm<extra></extra>",
-            },
-          ],
-          darkLayout({
+            zeroline: true,
+            zerolinecolor: "rgba(251,191,36,.35)",
+          },
+          yaxis2: {
+            overlaying: "y",
+            side: "right",
+            showgrid: false,
+            tickfont: { size: 10, color: "#7dd3fc" },
             title: {
-              text: "<b>" + (hm.label || "Heatmap km × data") + "</b>",
-              font: { size: 12, color: ink },
-              x: 0,
-              xanchor: "left",
+              text: langPt ? "Chuva (mm)" : "Rain (mm)",
+              font: { size: 11, color: "#7dd3fc" },
             },
-            margin: { t: 36, r: 48, b: 40, l: 48 },
-            showlegend: false,
-            yaxis: {
-              title: { text: "km", font: { size: 10, color: muted } },
-              tickfont: { size: 9, color: muted },
-              autorange: "reversed",
-            },
-          }),
-          plotlyConfig(elHm)
-        );
-        elHm.setAttribute("aria-busy", "false");
-      }
-      setNote("hyp3", payload.note || payload.subtitle || "");
+            rangemode: "tozero",
+          },
+          bargap: 0.35,
+        }),
+        plotlyConfig(el)
+      );
+      el.setAttribute("aria-busy", "false");
+      setNote("combined", "");
     }
 
     ensurePlotlyLoaded()
@@ -4732,17 +4676,12 @@
         });
       })
       .then(function (payload) {
-        plotPrecip(payload && payload.precip);
-        plotHyp3(payload && payload.hyp3);
+        plotCombined((payload && payload.combined) || null);
       })
       .catch(function (err) {
         setNote(
-          "precip",
-          langPt ? "Falha ao carregar chuva." : "Failed to load rain."
-        );
-        setNote(
-          "hyp3",
-          langPt ? "Falha ao carregar HyP3." : "Failed to load HyP3."
+          "combined",
+          langPt ? "Falha ao carregar gráfico." : "Failed to load chart."
         );
         console.warn("ops raijin charts", err);
       });
