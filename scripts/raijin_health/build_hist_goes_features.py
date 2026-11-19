@@ -2,15 +2,19 @@
 """
 Baixa GOES MCMIPC histórico (streaming) e extrai features nos km EWS.
 
-Modo padrão: dias de evento UNIPLU (≥49 mm) + amostra de negativos no
-intervalo --start/--end, 4 horários UTC (0/6/12/18). Baixa → extrai → apaga
-NetCDF (disco ~200 MB pico).
+Padrão rápido/barato:
+  - só dias de evento UNIPLU (--neg-ratio 0)
+  - 4 horas baixadas em paralelo (--hour-workers 4)
+  - 2 dias em paralelo (--day-workers 2)
+  - resume/checkpoint
 
-Uso:
+NOAA S3 é gratuito; custo ≈ tempo + banda. Menos dias/negativos = mais barato.
+
+Uso rápido:
   python3 scripts/raijin_health/build_hist_goes_features.py \\
     --start 2024-10-01 --end 2025-12-31 \\
     --out ~/raijin_eval/features_goes_hist.csv \\
-    --kms-from ~/raijin_eval/../  # ou lista --kms 51,149,...
+    --neg-ratio 0 --hour-workers 4 --day-workers 3 --resume
 """
 from __future__ import annotations
 
@@ -254,6 +258,59 @@ def _extract_day(
     return rows
 
 
+def _process_one_day(
+    d: date,
+    km_coords: dict[int, tuple[float, float]],
+    tmp_root: Path,
+    hour_workers: int,
+) -> list[dict]:
+    """Download paralelo das 4 horas → extract → apaga NetCDF."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    import s3fs
+
+    fs = s3fs.S3FileSystem(anon=True)
+    day_dir = tmp_root / d.isoformat()
+    day_dir.mkdir(parents=True, exist_ok=True)
+
+    def _one_hour(h: int) -> tuple[int, Path | None]:
+        dest = day_dir / f"mcmipc_{h:02d}.nc"
+        try:
+            p = _list_and_download(fs, d, h, dest)
+            return h, p
+        except Exception as exc:
+            print(f"  download fail {d} {h:02d}: {exc}")
+            return h, None
+
+    files: list[tuple[int, Path]] = []
+    with ThreadPoolExecutor(max_workers=max(1, hour_workers)) as pool:
+        futs = [pool.submit(_one_hour, h) for h in HOURS]
+        for fut in as_completed(futs):
+            h, p = fut.result()
+            if p is not None and p.is_file():
+                files.append((h, p))
+    files.sort(key=lambda x: x[0])
+    rows: list[dict] = []
+    try:
+        if files:
+            rows = _extract_day(files, km_coords, d)
+    except Exception as exc:
+        print(f"  extract fail {d}: {exc}")
+    finally:
+        for _, p in files:
+            try:
+                p.unlink(missing_ok=True)
+            except Exception:
+                pass
+        try:
+            for p in day_dir.glob("*"):
+                p.unlink(missing_ok=True)
+            day_dir.rmdir()
+        except Exception:
+            pass
+    return rows
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--start", default="2024-10-01")
@@ -265,9 +322,32 @@ def main() -> int:
         type=Path,
         default=Path(__file__).resolve().parent / "data" / "uniplu_efc_catalog_r20km.csv",
     )
-    ap.add_argument("--neg-ratio", type=float, default=1.0)
+    ap.add_argument(
+        "--neg-ratio",
+        type=float,
+        default=0.0,
+        help="Negativos por evento (0=só eventos → ~metade do tempo/banda)",
+    )
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--max-days", type=int, default=0, help="limite p/ smoke (0=todos)")
+    ap.add_argument(
+        "--hour-workers",
+        type=int,
+        default=4,
+        help="Downloads paralelos por dia (4 horas UTC)",
+    )
+    ap.add_argument(
+        "--day-workers",
+        type=int,
+        default=2,
+        help="Dias em paralelo (2–3 ok; sobe banda/CPU)",
+    )
+    ap.add_argument(
+        "--resume",
+        action="store_true",
+        help="Pula dias já presentes no --out",
+    )
+    ap.add_argument("--checkpoint-every", type=int, default=10, help="Salva CSV a cada N dias ok")
     ap.add_argument("--upload-gcs", action="store_true")
     args = ap.parse_args()
 
@@ -282,53 +362,62 @@ def main() -> int:
     days = _pick_days(events, all_days, args.neg_ratio, args.seed)
     if args.max_days and args.max_days > 0:
         days = days[: args.max_days]
-    print(f"   eventos={len(events)} · selecionados={len(days)} (neg_ratio={args.neg_ratio})")
 
-    import s3fs
-
-    fs = s3fs.S3FileSystem(anon=True)
-    tmp_root = Path(tempfile.mkdtemp(prefix="goes_hist_"))
+    done_days: set[date] = set()
     rows: list[dict] = []
+    if args.resume and args.out.is_file() and args.out.stat().st_size > 0:
+        prev = pd.read_csv(args.out, parse_dates=["day"])
+        done_days = set(pd.to_datetime(prev["day"]).dt.date)
+        rows = prev.to_dict(orient="records")
+        print(f"   resume: {len(done_days)} dias já no CSV")
+    days = [d for d in days if d not in done_days]
+    print(
+        f"   eventos={len(events)} · a processar={len(days)} "
+        f"(neg_ratio={args.neg_ratio} · hour_workers={args.hour_workers} · day_workers={args.day_workers})"
+    )
+    if not days and rows:
+        print(f"Nada novo — já completo: {args.out}")
+        return 0
+    if not days:
+        print("Nenhum dia para baixar.")
+        return 1
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    tmp_root = Path(tempfile.mkdtemp(prefix="goes_hist_"))
     ok_days = 0
-    for i, d in enumerate(days, 1):
-        print(f"[{i}/{len(days)}] {d.isoformat()}")
-        day_dir = tmp_root / d.isoformat()
-        files: list[tuple[int, Path]] = []
-        for h in HOURS:
-            dest = day_dir / f"mcmipc_{h:02d}.nc"
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+
+    def _job(d: date) -> tuple[date, list[dict]]:
+        return d, _process_one_day(d, km_coords, tmp_root, args.hour_workers)
+
+    with ThreadPoolExecutor(max_workers=max(1, args.day_workers)) as pool:
+        futs = {pool.submit(_job, d): d for d in days}
+        for i, fut in enumerate(as_completed(futs), 1):
+            d = futs[fut]
             try:
-                p = _list_and_download(fs, d, h, dest)
+                _, day_rows = fut.result()
             except Exception as exc:
-                print(f"  download fail {h:02d}: {exc}")
-                p = None
-            if p and p.is_file():
-                files.append((h, p))
-        if files:
-            try:
-                rows.extend(_extract_day(files, km_coords, d))
+                print(f"[{i}/{len(days)}] {d} FAIL {exc}")
+                continue
+            if day_rows:
+                rows.extend(day_rows)
                 ok_days += 1
-            except Exception as exc:
-                print(f"  extract fail: {exc}")
-        # limpa NetCDF do dia
-        for _, p in files:
-            try:
-                p.unlink(missing_ok=True)
-            except Exception:
-                pass
-        try:
-            if day_dir.exists():
-                for p in day_dir.glob("*"):
-                    p.unlink(missing_ok=True)
-                day_dir.rmdir()
-        except Exception:
-            pass
+                print(f"[{i}/{len(days)}] {d} OK (+{len(day_rows)} rows) total_ok={ok_days}")
+            else:
+                print(f"[{i}/{len(days)}] {d} vazio")
+            if args.checkpoint_every > 0 and ok_days > 0 and ok_days % args.checkpoint_every == 0:
+                tmp = pd.DataFrame(rows)
+                tmp["day"] = pd.to_datetime(tmp["day"]).dt.normalize()
+                tmp.to_csv(args.out, index=False)
+                print(f"  checkpoint → {args.out} ({len(tmp)} linhas)")
 
     if not rows:
         print("Nenhuma feature extraída.")
         return 1
     out = pd.DataFrame(rows)
     out["day"] = pd.to_datetime(out["day"]).dt.normalize()
-    args.out.parent.mkdir(parents=True, exist_ok=True)
+    out = out.drop_duplicates(subset=["day", "km_efc"], keep="last")
     out.to_csv(args.out, index=False)
     print(f"OK → {args.out} · {len(out)} linhas · {out['day'].nunique()} dias · ok_days={ok_days}")
 
