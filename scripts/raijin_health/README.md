@@ -16,6 +16,6 @@ Exit codes: `0` core OK (GFS + Orion/EWS + MERGE) · `2` core degradado.
 |------|--------|
 | Limiares EWS (sino) | OK — Orion horário |
 | MERGE 6h → BQ | Recuperado; scheduler `efc-ingestion-merge-daily` 08:15 UTC |
-| ML `raijin_alerts` | Parado desde 2026-06-15 — falta rebuild de features (GOES ABI) |
-| GOES | Trainkit tem `download_goes_abi.py`; pasta ABI vazia no GCS |
+| ML `raijin_alerts` | Parado desde 2026-06-15 — falta rebuild de features |
+| GOES | ABI MCMIPC **staged** em `gs://…/data/goes_abi/2026-11-1{7,8,9}/` (G19); falta extract→score |
 
