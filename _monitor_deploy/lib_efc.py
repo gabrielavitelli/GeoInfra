@@ -736,18 +736,56 @@ def _assign_official_km(main_line, estacas):
     return cum_official, markers_all
 
 
+def _load_official_estacas(prefer: Path | None = None) -> list:
+    """Estacas oficiais Vale (km) a partir do KML/KMZ — nunca do SHP sozinho.
+
+    O shapefile ``ferrovia_efc`` não traz estacas; sem este passo o km
+    haversine desloca loggers do trecho ~375 para ~393.
+    """
+    candidates: list[Path] = []
+    if prefer is not None:
+        candidates.append(prefer)
+    for p in (
+        EFC_FULL_KML_PATH,
+        DATA_DIR / "EFC.kmz",
+        DATA_DIR / "EFC.kml",
+        KMZ_PATH,
+        DATA_DIR / "shapefile" / "Expansão EFC.kmz",
+    ):
+        if p not in candidates:
+            candidates.append(p)
+    for p in candidates:
+        if p is None or not p.exists():
+            continue
+        if p.suffix.lower() == ".shp":
+            continue
+        try:
+            _lines, estacas = _parse_kmz_lines_and_estacas(p)
+        except Exception:
+            continue
+        if estacas:
+            return estacas
+    return []
+
+
 def get_railway_data(kmz_path: Path = None):
     """Retorna (main_line, cum_km, markers_dict, all_lines).
     markers_dict = {"100": [...], "50": [...], "10": [...]}  com (km, lat, lon).
-    Usa km oficial das estacas do KML quando disponível."""
+    Usa km oficial das estacas do KML quando disponível (mesmo se a geometria
+    vier do SHP leve)."""
     path = get_railway_geometry_path(kmz_path)
     if path is None or not path.exists():
         return None, None, None, []
     estacas = []
     if path.suffix.lower() == ".shp":
         lines = _parse_shp_lines(path)
+        # SHP sem estacas → km haversine (~393 no trecho Zentra). Completar
+        # com KML oficial (EFC.kmz.kml) para km Vale ~375.
+        estacas = _load_official_estacas()
     else:
         lines, estacas = _parse_kmz_lines_and_estacas(path)
+        if not estacas:
+            estacas = _load_official_estacas(prefer=path)
     lines = _filter_efc_railway_lines(lines)
     if not lines:
         return None, None, None, []

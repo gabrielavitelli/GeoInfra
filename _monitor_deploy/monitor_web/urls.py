@@ -22,6 +22,11 @@ urlpatterns = [
     path("api/home/climate-gfs/", views.home_climate_gfs_api, name="home_climate_gfs"),
     path("api/home/goto-km/", views.home_goto_km_api, name="home_goto_km"),
     path("api/home/charts/", views.home_charts_api, name="home_charts_api"),
+    path(
+        "api/home/ops-raijin-charts/",
+        views.home_ops_raijin_charts_api,
+        name="home_ops_raijin_charts",
+    ),
     path("api/home/sensor-series/", views.sensor_series_api, name="home_sensor_series"),
     path("previsao/", views.previsao_view, name="previsao"),
     path("api/home/previsao-heatmap/", views.previsao_heatmap_api, name="previsao_heatmap_api"),

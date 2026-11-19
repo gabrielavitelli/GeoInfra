@@ -206,7 +206,7 @@ def test_build_taludes_monitorados_clusters_nearby():
 def test_cluster_sensor_rows_into_sites_mean_vwc():
     from monitor_web.services.zentra_sensors import cluster_sensor_rows_into_sites
 
-    # Eight loggers near km 393 (~tens of metres apart) → one site card.
+    # Eight loggers near official Vale km ~375 (~tens of metres apart) → one site card.
     base_lat, base_lon = -4.25998, -46.53486
     rows = []
     for i in range(8):
@@ -216,7 +216,7 @@ def test_cluster_sensor_rows_into_sites_mean_vwc():
                 "name": f"z6-{35930 + i}",
                 "lat": base_lat + i * 0.00005,  # ~5.5 m steps
                 "lon": base_lon + i * 0.00005,
-                "km": 393.0 + i * 0.01,
+                "km": 375.0 + i * 0.01,
                 "status": "active",
                 "status_label": "ATIVO",
                 "sensors": ["TEROS 12"],
@@ -237,7 +237,7 @@ def test_cluster_sensor_rows_into_sites_mean_vwc():
                 "freshness": "hoje",
                 "sinal": "90%",
                 "asset_class": "geotech",
-                "location_line": "Trecho km 393",
+                "location_line": "Trecho km 375",
             }
         )
     # Far SP logger stays its own card.
@@ -269,8 +269,50 @@ def test_cluster_sensor_rows_into_sites_mean_vwc():
     sites = cluster_sensor_rows_into_sites(rows, lang_pt=True, cluster_m=120.0)
     assert len(sites) == 2
     big = next(s for s in sites if s["n_loggers"] == 8)
-    assert "Talude km 393" in big["name"]
+    assert "Talude km 375" in big["name"]
     assert big["primary"]["is_average"] is True
     assert abs(big["primary"]["value"] - (sum(0.20 + i * 0.01 for i in range(8)) / 8)) < 1e-9
     assert len(big["loggers"]) == 8
     assert all(len(lg["port_children"]) == 3 for lg in big["loggers"])
+
+
+def test_popup_vars_include_all_env():
+    from monitor_web.services.zentra_sensors import POPUP_VARS
+
+    needed = {
+        "soil_vwc",
+        "water_potential_kpa",
+        "precip_mm",
+        "soil_temp_c",
+        "temp_c",
+        "rh_pct",
+        "pressure_hpa",
+        "battery_pct",
+        "signal_pct",
+        "battery_v",
+    }
+    assert needed.issubset(set(POPUP_VARS))
+
+
+def test_build_tuneis_monitorados_from_ranges(monkeypatch):
+    import sys
+    import types
+
+    from monitor_web.services import zentra_sensors as zs
+    from monitor_web.services.map_3d_overlay import _TUNNEL_KM_RANGES
+
+    def _fake_pos(km, main_line, cum_km):
+        return (-4.2, -46.5)
+
+    # lib_efc pulls xarray at import time — stub the module before the helper imports it.
+    fake = types.ModuleType("lib_efc")
+    fake.position_at_km = _fake_pos
+    sys.modules["lib_efc"] = fake
+    monkeypatch.setitem(sys.modules, "lib_efc", fake)
+
+    main_line = [[-4.2, -46.5], [-4.3, -46.5]]
+    cum_km = [370.0, 380.0]
+    sites = zs.build_tuneis_monitorados(lang_pt=True, main_line=main_line, cum_km=cum_km)
+    assert len(sites) == len(_TUNNEL_KM_RANGES)
+    assert all(s["kind"] == "tunnel" for s in sites)
+    assert any("Corte" in s["label"] for s in sites)

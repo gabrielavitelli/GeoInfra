@@ -21,13 +21,18 @@ _DEFAULT_DEVICES_GCS = "gs://efc-clima-data/obs/zentra/zentra_devices_latest.jso
 _DEFAULT_LOCATIONS_GCS = "gs://efc-clima-data/obs/zentra/zentra_locations_latest.json"
 _DEFAULT_SERIES_GCS = "gs://efc-clima-data/obs/zentra/zentra_clima_series_latest.ndjson"
 
-# Series shown in map popup (compact) and sensors table.
+# Series shown in map popup (compact) and sensors table — all mapped env vars.
 POPUP_VARS: tuple[str, ...] = (
     "soil_vwc",
     "water_potential_kpa",
     "precip_mm",
+    "soil_temp_c",
+    "temp_c",
+    "rh_pct",
+    "pressure_hpa",
     "battery_pct",
     "signal_pct",
+    "battery_v",
 )
 
 VAR_LABELS_PT: dict[str, str] = {
@@ -36,7 +41,11 @@ VAR_LABELS_PT: dict[str, str] = {
     "precip_mm": "Precip",
     "battery_pct": "Bateria",
     "signal_pct": "Sinal",
+    "battery_v": "Bateria V",
     "soil_temp_c": "Temp solo",
+    "temp_c": "Temp ar",
+    "rh_pct": "UR",
+    "pressure_hpa": "Pressão",
 }
 
 VAR_UNITS: dict[str, str] = {
@@ -45,7 +54,11 @@ VAR_UNITS: dict[str, str] = {
     "precip_mm": "mm",
     "battery_pct": "%",
     "signal_pct": "%",
+    "battery_v": "V",
     "soil_temp_c": "°C",
+    "temp_c": "°C",
+    "rh_pct": "%",
+    "pressure_hpa": "hPa",
 }
 
 STATUS_LABELS_PT: dict[str, str] = {
@@ -993,8 +1006,8 @@ def build_taludes_monitorados(
 ) -> list[dict[str, Any]]:
     """Chooser sites for Visão Geral → Taludes Monitorados (fly-to).
 
-    Clusters nearby Zentra loggers into one talude/ponto site, then appends
-    known tunnel / rock-cut midpoints from the 3D overlay catalog.
+    Clusters nearby Zentra loggers into one talude/ponto site.
+    Tunnel / rock-cut sites live in :func:`build_tuneis_monitorados`.
     """
     if rows is None:
         rows = build_zentra_sensor_rows(
@@ -1045,36 +1058,52 @@ def build_taludes_monitorados(
                 "location_ids": [str(c.get("location_id") or "") for c in cluster],
             }
         )
-    # Tunnel / rock-cut midpoints from 3D overlay catalog.
+    sites.sort(key=lambda s: (s.get("km") is None, s.get("km") or 0, s.get("label") or ""))
+    return sites
+
+
+def build_tuneis_monitorados(
+    *,
+    lang_pt: bool = True,
+    main_line=None,
+    cum_km=None,
+) -> list[dict[str, Any]]:
+    """Chooser sites for Visão Geral → Túnel (cortes rochosos / túneis).
+
+    Midpoints from ``map_3d_overlay._TUNNEL_KM_RANGES`` (km 372.56–373.535
+    and 374.085–375.2).
+    """
+    sites: list[dict[str, Any]] = []
     try:
         from monitor_web.services.map_3d_overlay import _TUNNEL_KM_RANGES
         from lib_efc import position_at_km
 
-        if main_line is not None and cum_km is not None:
-            for km0, km1, tunnel_label in _TUNNEL_KM_RANGES:
-                mid = (float(km0) + float(km1)) / 2.0
-                pos = position_at_km(mid, main_line, cum_km)
-                if pos is None:
-                    continue
-                if lang_pt:
-                    tlabel = f"{tunnel_label} km {km0:.0f}–{km1:.0f}"
-                else:
-                    tlabel = f"{tunnel_label} km {km0:.0f}–{km1:.0f}"
-                sites.append(
-                    {
-                        "id": f"tunnel-{km0:.0f}-{km1:.0f}",
-                        "kind": "tunnel",
-                        "label": tlabel,
-                        "lat": round(float(pos[0]), 6),
-                        "lon": round(float(pos[1]), 6),
-                        "km": round(mid, 1),
-                        "zoom": 14.5,
-                        "n_sensors": 0,
-                        "location_ids": [],
-                    }
-                )
+        if main_line is None or cum_km is None:
+            return sites
+        for km0, km1, tunnel_label in _TUNNEL_KM_RANGES:
+            mid = (float(km0) + float(km1)) / 2.0
+            pos = position_at_km(mid, main_line, cum_km)
+            if pos is None:
+                continue
+            if lang_pt:
+                tlabel = f"{tunnel_label} km {km0:.0f}–{km1:.0f}"
+            else:
+                tlabel = f"Rock cut km {km0:.0f}–{km1:.0f}"
+            sites.append(
+                {
+                    "id": f"tunnel-{km0:.0f}-{km1:.0f}",
+                    "kind": "tunnel",
+                    "label": tlabel,
+                    "lat": round(float(pos[0]), 6),
+                    "lon": round(float(pos[1]), 6),
+                    "km": round(mid, 1),
+                    "zoom": 14.5,
+                    "n_sensors": 0,
+                    "location_ids": [],
+                }
+            )
     except Exception as exc:
-        logger.warning("taludes tunnel sites skipped: %s", exc)
+        logger.warning("tuneis monitorados skipped: %s", exc)
     sites.sort(key=lambda s: (s.get("km") is None, s.get("km") or 0, s.get("label") or ""))
     return sites
 

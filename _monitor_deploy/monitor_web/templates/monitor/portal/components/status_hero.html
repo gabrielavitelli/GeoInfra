@@ -16,7 +16,8 @@
       {% if selected_display %}<p class="dj-hero__meta">{{ selected_display }}</p>{% endif %}
     </div>
     <div class="efc-stitch-hero__chrome dj-hero__chrome" id="efc-status-map-chrome" aria-label="{% if lang_pt %}Controles do mapa{% else %}Map controls{% endif %}"
-         {% if taludes_monitorados_json %}data-taludes="{{ taludes_monitorados_json|escape }}"{% endif %}>
+         {% if taludes_monitorados_json %}data-taludes="{{ taludes_monitorados_json|escape }}"{% endif %}
+         {% if tuneis_monitorados_json %}data-tuneis="{{ tuneis_monitorados_json|escape }}"{% endif %}>
       <span class="efc-stitch-hero__basemap-label" data-basemap-label aria-live="polite"
             title="{% if lang_pt %}Modo da imagem de fundo{% else %}Basemap imagery mode{% endif %}">Satélite</span>
       <div class="efc-stitch-hero__taludes" data-taludes-menu>
@@ -26,11 +27,24 @@
                 aria-haspopup="listbox"
                 aria-expanded="false"
                 aria-controls="efc-taludes-list"
-                title="{% if lang_pt %}Ir para taludes / túneis monitorados{% else %}Jump to monitored slopes / tunnels{% endif %}">
+                title="{% if lang_pt %}Ir para taludes monitorados (Zentra){% else %}Jump to monitored slopes (Zentra){% endif %}">
           {% if lang_pt %}Taludes Monitorados{% else %}Monitored slopes{% endif %}
           <span aria-hidden="true">▾</span>
         </button>
         <ul class="efc-stitch-hero__taludes-list" id="efc-taludes-list" role="listbox" hidden data-taludes-list></ul>
+      </div>
+      <div class="efc-stitch-hero__taludes efc-stitch-hero__tuneis" data-tuneis-menu>
+        <button type="button"
+                class="efc-stitch-hero__taludes-btn efc-stitch-hero__tuneis-btn"
+                data-tuneis-toggle
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                aria-controls="efc-tuneis-list"
+                title="{% if lang_pt %}Ir para cortes rochosos / túneis{% else %}Jump to rock cuts / tunnels{% endif %}">
+          {% if lang_pt %}Túnel{% else %}Tunnel{% endif %}
+          <span aria-hidden="true">▾</span>
+        </button>
+        <ul class="efc-stitch-hero__taludes-list" id="efc-tuneis-list" role="listbox" hidden data-tuneis-list></ul>
       </div>
     </div>
   </div>

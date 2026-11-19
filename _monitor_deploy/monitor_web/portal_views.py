@@ -124,6 +124,7 @@ portal_raijin_alerts_api = monitor_views.home_raijin_alerts_api
 portal_climate_gfs_api = monitor_views.home_climate_gfs_api
 portal_goto_km_api = monitor_views.home_goto_km_api
 portal_charts_api = monitor_views.home_charts_api
+portal_ops_raijin_charts_api = monitor_views.home_ops_raijin_charts_api
 portal_sensor_series_api = monitor_views.sensor_series_api
 portal_previsao_heatmap_api = monitor_views.previsao_heatmap_api
 portal_previsao_charts_api = monitor_views.previsao_charts_api

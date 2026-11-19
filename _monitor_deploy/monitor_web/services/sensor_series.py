@@ -1359,14 +1359,18 @@ def build_sensor_series_payload(
         ranked = [v for v in CHART_VARS_PRIORITY if (not avail or v in avail)]
         if not ranked:
             ranked = [v for v in MULTI_OVERVIEW_VARS if (not avail or v in avail)]
+        # All mapped env vars (no artificial cap) — one Plotly card per
+        # (variable × port) in the gallery; health pair on the gray card.
         env_ranked = [v for v in ranked if v not in HEALTH_VARS]
-        active_vars = env_ranked[:6] if env_ranked else ([var] if var else [])
+        active_vars = list(env_ranked) if env_ranked else ([var] if var else [])
         # Always attempt health pair; empty traces are dropped in _build_traces.
         for hv in HEALTH_VARS:
             if hv not in active_vars:
                 active_vars.append(hv)
+        if avail and "battery_v" in avail and "battery_v" not in active_vars:
+            active_vars.append("battery_v")
         if not active_vars:
-            active_vars = list(avail[:6]) if avail else [var]
+            active_vars = list(avail) if avail else [var]
     elif want_multi and fam_id != "__overview__":
         fam = next((p for p in ports if p["id"] == fam_id), None)
         active_vars = [v["id"] for v in (fam.get("variables") if fam else []) or []]

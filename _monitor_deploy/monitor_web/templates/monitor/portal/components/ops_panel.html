@@ -1,4 +1,5 @@
 {% load humanize %}
+{% load monitor_tags %}
 <div class="dj-module dj-module--metrics dj-module--compact">
   <div class="dj-compact-peaks">
     {% for peak in ctx.peaks %}
@@ -44,6 +45,22 @@
   </div>
 
   {% include "monitor/components/ia_insight.html" with ctx=ctx %}
+
+  <div class="p-3 efc-stitch-side-panel__charts" data-ops-raijin-charts
+       data-url="{% murl 'home_ops_raijin_charts' %}">
+    <h3 class="efc-stitch-side-panel__heading">{% if ctx.lang_pt %}Observação · séries{% else %}Observation · series{% endif %}</h3>
+    <div class="efc-ops-chart" data-ops-chart="precip">
+      <div class="efc-ops-chart__head"><span class="efc-ops-chart__title">{% if ctx.lang_pt %}Acúmulo mensal de chuva{% else %}Monthly rainfall{% endif %}</span></div>
+      <div class="efc-ops-chart__plot" data-ops-plot="precip" aria-busy="true"></div>
+      <p class="efc-ops-chart__note" data-ops-note="precip">…</p>
+    </div>
+    <div class="efc-ops-chart efc-ops-chart--hyp3" data-ops-chart="hyp3">
+      <div class="efc-ops-chart__head"><span class="efc-ops-chart__title">{% if ctx.lang_pt %}Deslocamento LOS (HyP3){% else %}LOS displacement (HyP3){% endif %}</span></div>
+      <div class="efc-ops-chart__plot efc-ops-chart__plot--sm" data-ops-plot="hyp3-ts" aria-busy="true"></div>
+      <div class="efc-ops-chart__plot" data-ops-plot="hyp3-hm" aria-busy="true"></div>
+      <p class="efc-ops-chart__note" data-ops-note="hyp3">…</p>
+    </div>
+  </div>
 
   <div class="dj-compact-sev" role="group" aria-label="{{ ctx.labels.sev_group }}">
     {% for s in ctx.compact_severity|default:ctx.severity %}

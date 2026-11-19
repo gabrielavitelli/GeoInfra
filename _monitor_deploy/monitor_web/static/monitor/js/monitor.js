@@ -2730,6 +2730,7 @@
     if (target.id === "home-exceed-slot") setLoadPct(62);
     if (target.id === "home-indicators") {
       setLoadPct(78);
+      initOpsRaijinCharts(target);
       if (isPortalGraphiteHome()) {
         sessionStorage.removeItem("efc429_home-indicators");
         // Mapa sobe em paralelo no bootstrap; fallback se ainda não partiu.
@@ -4355,10 +4356,10 @@
     }
     window.__efcSetBasemapLabel = setBasemapLabel;
 
-    function parseTaludes() {
+    function parseSiteJson(attrName) {
       var raw =
-        (chrome && chrome.getAttribute("data-taludes")) ||
-        (strip && strip.getAttribute("data-taludes")) ||
+        (chrome && chrome.getAttribute(attrName)) ||
+        (strip && strip.getAttribute(attrName)) ||
         "[]";
       try {
         var parsed = JSON.parse(raw);
@@ -4368,22 +4369,56 @@
       }
     }
 
-    function initTaludesMenu() {
+    function flyToSite(site) {
+      var lat = Number(site.lat);
+      var lon = Number(site.lon);
+      if (!isFinite(lat) || !isFinite(lon)) return;
+      if (site.kind !== "tunnel" && typeof window.__efcSetOverlayLayer === "function") {
+        window.__efcSetOverlayLayer("zentra", true);
+      }
+      var zoom = Number(site.zoom) || (site.kind === "tunnel" ? 14.5 : 15.5);
+      writeSharedMapView({
+        lat: lat,
+        lon: lon,
+        zoom: zoom,
+        pitch: 42,
+        bearing: -18,
+        mode: "focus",
+      });
+      postToMap({
+        type: site.kind === "tunnel" ? "efc-map-goto-km" : "efc-map-focus-zentra",
+        lat: lat,
+        lon: lon,
+        zid: (site.location_ids && site.location_ids[0]) || "",
+        km: site.km,
+        zoom: zoom,
+      });
+      if (site.km != null && isFinite(Number(site.km))) {
+        postToMap({
+          type: "efc-map-goto-km",
+          km: Number(site.km),
+          lat: lat,
+          lon: lon,
+        });
+      }
+    }
+
+    function initSiteChooserMenu(opts) {
       var host = chrome || strip;
       if (!host) return;
-      var toggle = host.querySelector("[data-taludes-toggle]");
-      var list = host.querySelector("[data-taludes-list]");
+      var toggle = host.querySelector(opts.toggleSel);
+      var list = host.querySelector(opts.listSel);
       if (!toggle || !list) return;
       // Allow rebind after HTMX status swap (list node is replaced).
       if (list.dataset.bound === "1" && list.childNodes.length) return;
       list.dataset.bound = "1";
-      var sites = parseTaludes();
+      var sites = parseSiteJson(opts.dataAttr);
       list.innerHTML = "";
       if (!sites.length) {
         var empty = document.createElement("li");
         empty.innerHTML =
           '<button type="button" class="efc-stitch-hero__taludes-item" disabled>' +
-          (langPt ? "Nenhum talude disponível" : "No sites available") +
+          (opts.emptyLabel || (langPt ? "Nenhum site" : "No sites")) +
           "</button>";
         list.appendChild(empty);
       } else {
@@ -4413,37 +4448,7 @@
             kmTxt +
             "</small>";
           btn.addEventListener("click", function () {
-            var lat = Number(site.lat);
-            var lon = Number(site.lon);
-            if (!isFinite(lat) || !isFinite(lon)) return;
-            if (typeof window.__efcSetOverlayLayer === "function") {
-              window.__efcSetOverlayLayer("zentra", true);
-            }
-            var zoom = Number(site.zoom) || 15.5;
-            writeSharedMapView({
-              lat: lat,
-              lon: lon,
-              zoom: zoom,
-              pitch: 42,
-              bearing: -18,
-              mode: "focus",
-            });
-            postToMap({
-              type: "efc-map-focus-zentra",
-              lat: lat,
-              lon: lon,
-              zid: (site.location_ids && site.location_ids[0]) || "",
-              km: site.km,
-              zoom: zoom,
-            });
-            if (site.km != null && isFinite(Number(site.km))) {
-              postToMap({
-                type: "efc-map-goto-km",
-                km: Number(site.km),
-                lat: lat,
-                lon: lon,
-              });
-            }
+            flyToSite(site);
             list.hidden = true;
             toggle.setAttribute("aria-expanded", "false");
           });
@@ -4461,6 +4466,18 @@
         ev.preventDefault();
         ev.stopPropagation();
         var open = list.hidden;
+        // Close sibling chooser menus in the same chrome.
+        host.querySelectorAll("[data-taludes-list],[data-tuneis-list]").forEach(function (other) {
+          if (other !== list) {
+            other.hidden = true;
+            var ot = host.querySelector(
+              other.hasAttribute("data-tuneis-list")
+                ? "[data-tuneis-toggle]"
+                : "[data-taludes-toggle]"
+            );
+            if (ot) ot.setAttribute("aria-expanded", "false");
+          }
+        });
         list.hidden = !open;
         toggle.setAttribute("aria-expanded", open ? "true" : "false");
       });
@@ -4471,7 +4488,264 @@
         if (ev.key === "Escape") closeMenu();
       });
     }
-    initTaludesMenu();
+
+    initSiteChooserMenu({
+      toggleSel: "[data-taludes-toggle]",
+      listSel: "[data-taludes-list]",
+      dataAttr: "data-taludes",
+      emptyLabel: langPt ? "Nenhum talude disponível" : "No sites available",
+    });
+    initSiteChooserMenu({
+      toggleSel: "[data-tuneis-toggle]",
+      listSel: "[data-tuneis-list]",
+      dataAttr: "data-tuneis",
+      emptyLabel: langPt ? "Nenhum túnel disponível" : "No tunnels available",
+    });
+  }
+
+  function initOpsRaijinCharts(root) {
+    var host =
+      (root && root.querySelector && root.querySelector("[data-ops-raijin-charts]")) ||
+      document.querySelector("[data-ops-raijin-charts]");
+    if (!host || host.dataset.bound === "1") return;
+    host.dataset.bound = "1";
+    var url = host.getAttribute("data-url");
+    if (!url) return;
+    var langPt =
+      (document.documentElement.lang || "").toLowerCase().indexOf("pt") === 0 ||
+      !!(document.body && document.body.getAttribute("data-lang") === "pt");
+    var ink = "#e2e8f0";
+    var muted = "#94a3b8";
+    var grid = "rgba(148,163,184,.18)";
+    var paper = "rgba(0,0,0,0)";
+
+    function setNote(key, text) {
+      var el = host.querySelector('[data-ops-note="' + key + '"]');
+      if (el) el.textContent = text || "";
+    }
+
+    function darkLayout(extra) {
+      var base = {
+        paper_bgcolor: paper,
+        plot_bgcolor: paper,
+        font: {
+          color: ink,
+          size: 11,
+          family: "IBM Plex Sans, Segoe UI, sans-serif",
+        },
+        margin: { t: 28, r: 12, b: 36, l: 42 },
+        hovermode: "closest",
+        showlegend: true,
+        legend: {
+          orientation: "h",
+          y: 1.12,
+          x: 0,
+          font: { size: 10, color: muted },
+          bgcolor: "rgba(0,0,0,0)",
+        },
+        xaxis: {
+          showgrid: true,
+          gridcolor: grid,
+          tickfont: { size: 10, color: muted },
+          color: muted,
+        },
+        yaxis: {
+          showgrid: true,
+          gridcolor: grid,
+          tickfont: { size: 10, color: muted },
+          color: muted,
+        },
+      };
+      if (extra) {
+        Object.keys(extra).forEach(function (k) {
+          base[k] = extra[k];
+        });
+      }
+      return base;
+    }
+
+    function plotPrecip(payload) {
+      var el = host.querySelector('[data-ops-plot="precip"]');
+      if (!el) return;
+      if (!payload || !payload.available || !(payload.series || []).length) {
+        setNote(
+          "precip",
+          (payload && payload.note) ||
+            (langPt ? "Sem dados de chuva mensal." : "No monthly rain data.")
+        );
+        el.setAttribute("aria-busy", "false");
+        return;
+      }
+      var months = payload.months || [];
+      var data = (payload.series || []).map(function (s) {
+        return {
+          type: "bar",
+          name: s.label || s.id,
+          x: months,
+          y: s.y || [],
+          marker: { color: s.color || "#38bdf8", line: { width: 0 } },
+          hovertemplate:
+            "<b>%{fullData.name}</b><br>%{x}<br><b>%{y:.1f}</b> mm<extra></extra>",
+        };
+      });
+      var layout = darkLayout({
+        title: {
+          text: "<b>" + (payload.title || "") + "</b>",
+          font: { size: 13, color: ink, family: "IBM Plex Sans, Segoe UI, sans-serif" },
+          x: 0,
+          xanchor: "left",
+          pad: { t: 2, b: 0 },
+        },
+        barmode: "group",
+        bargap: 0.28,
+        yaxis: {
+          showgrid: true,
+          gridcolor: grid,
+          tickfont: { size: 10, color: muted },
+          title: { text: "mm", font: { size: 11, color: muted } },
+        },
+        margin: { t: 42, r: 8, b: 40, l: 44 },
+      });
+      Plotly.newPlot(el, data, layout, plotlyConfig(el));
+      el.setAttribute("aria-busy", "false");
+      setNote("precip", payload.subtitle || payload.note || "");
+    }
+
+    function plotHyp3(payload) {
+      var elTs = host.querySelector('[data-ops-plot="hyp3-ts"]');
+      var elHm = host.querySelector('[data-ops-plot="hyp3-hm"]');
+      if (!payload || !payload.available) {
+        var msg =
+          (payload && payload.note) ||
+          (langPt
+            ? "HyP3 ainda sem amostras — ingest em andamento."
+            : "HyP3 empty — ingest running.");
+        setNote("hyp3", msg);
+        if (elTs) elTs.setAttribute("aria-busy", "false");
+        if (elHm) elHm.setAttribute("aria-busy", "false");
+        return;
+      }
+      var ts = payload.timeseries || {};
+      var hm = payload.heatmap || {};
+      var cum = payload.cumulative || {};
+      if (elTs && ts.x && ts.x.length) {
+        var traces = [
+          {
+            type: "scatter",
+            mode: "lines+markers",
+            name: ts.label || "LOS",
+            x: ts.x,
+            y: ts.y,
+            line: { color: "#38bdf8", width: 2 },
+            marker: { size: 6, color: "#7dd3fc" },
+            hovertemplate: "<b>%{x}</b><br>%{y:.2f} mm<extra></extra>",
+          },
+        ];
+        if (cum.y && cum.y.some(function (v) { return v != null; })) {
+          traces.push({
+            type: "scatter",
+            mode: "lines",
+            name: cum.label || "Acumulado",
+            x: cum.x || ts.x,
+            y: cum.y,
+            line: { color: "#fbbf24", width: 1.6, dash: "dot" },
+            hovertemplate: "<b>%{x}</b><br>%{y:.2f} mm<extra></extra>",
+          });
+        }
+        Plotly.newPlot(
+          elTs,
+          traces,
+          darkLayout({
+            title: {
+              text: "<b>" + (payload.title || "HyP3") + "</b>",
+              font: { size: 13, color: ink },
+              x: 0,
+              xanchor: "left",
+            },
+            yaxis: {
+              showgrid: true,
+              gridcolor: grid,
+              tickfont: { size: 10, color: muted },
+              title: { text: "mm LOS", font: { size: 11, color: muted } },
+            },
+            margin: { t: 40, r: 10, b: 36, l: 46 },
+            showlegend: traces.length > 1,
+          }),
+          plotlyConfig(elTs)
+        );
+        elTs.setAttribute("aria-busy", "false");
+      }
+      if (elHm && hm.z && hm.z.length) {
+        Plotly.newPlot(
+          elHm,
+          [
+            {
+              type: "heatmap",
+              x: hm.x || [],
+              y: hm.y || [],
+              z: hm.z || [],
+              colorscale: [
+                [0, "#0f172a"],
+                [0.35, "#0e7490"],
+                [0.5, "#f8fafc"],
+                [0.65, "#f59e0b"],
+                [1, "#ea580c"],
+              ],
+              zmid: 0,
+              colorbar: {
+                title: { text: "mm", font: { size: 10, color: muted } },
+                tickfont: { size: 9, color: muted },
+                thickness: 10,
+                len: 0.85,
+              },
+              hovertemplate:
+                "km %{y}<br>%{x}<br><b>%{z:.2f}</b> mm<extra></extra>",
+            },
+          ],
+          darkLayout({
+            title: {
+              text: "<b>" + (hm.label || "Heatmap km × data") + "</b>",
+              font: { size: 12, color: ink },
+              x: 0,
+              xanchor: "left",
+            },
+            margin: { t: 36, r: 48, b: 40, l: 48 },
+            showlegend: false,
+            yaxis: {
+              title: { text: "km", font: { size: 10, color: muted } },
+              tickfont: { size: 9, color: muted },
+              autorange: "reversed",
+            },
+          }),
+          plotlyConfig(elHm)
+        );
+        elHm.setAttribute("aria-busy", "false");
+      }
+      setNote("hyp3", payload.note || payload.subtitle || "");
+    }
+
+    ensurePlotlyLoaded()
+      .then(function () {
+        return fetch(url, { credentials: "same-origin" }).then(function (r) {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.json();
+        });
+      })
+      .then(function (payload) {
+        plotPrecip(payload && payload.precip);
+        plotHyp3(payload && payload.hyp3);
+      })
+      .catch(function (err) {
+        setNote(
+          "precip",
+          langPt ? "Falha ao carregar chuva." : "Failed to load rain."
+        );
+        setNote(
+          "hyp3",
+          langPt ? "Falha ao carregar HyP3." : "Failed to load HyP3."
+        );
+        console.warn("ops raijin charts", err);
+      });
   }
 
   function initMapLayerStrip() {
@@ -6369,6 +6643,7 @@
     initMapObservationCaption();
     initMapLegendCollapse();
     initMapLayerStrip();
+    initOpsRaijinCharts(document);
     initSuscetibilidadeLayerPersist();
     if (!isPortalGraphiteHome()) {
       initAccumulatedAlerts();

@@ -220,6 +220,30 @@ def home_charts_api(request):
 
 
 @require_GET
+def home_ops_raijin_charts_api(request):
+    """Painel Alertas Raijin: chuva mensal + deslocamento HyP3 (Plotly JSON)."""
+    lang = get_lang(request)
+    lang_pt = lang == "pt"
+    try:
+        from gcp.monitor_bq_context import monitor_active_bq_dataset
+
+        dataset = monitor_active_bq_dataset()
+    except Exception:
+        dataset = os.environ.get("BQ_DATASET", "efc_clima")
+    try:
+        from monitor_web.services.ops_raijin_charts import build_ops_raijin_charts_payload
+
+        payload = build_ops_raijin_charts_payload(bq_dataset=dataset, lang_pt=lang_pt)
+        return JsonResponse(sanitize_for_json(payload))
+    except Exception as exc:
+        logger.exception("home_ops_raijin_charts_api")
+        return JsonResponse(
+            {"available": False, "error": str(exc), "precip": {}, "hyp3": {}},
+            status=500,
+        )
+
+
+@require_GET
 def previsao_view(request):
     from monitor_i18n import t
 
