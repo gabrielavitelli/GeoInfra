@@ -56,8 +56,8 @@
     </div>
   </section>
 
-  <div class="flex-1 overflow-hidden grid grid-cols-12 gap-0" id="efc-home-main" aria-busy="true">
-    <div class="col-span-8 relative border-r border-outline-variant bg-surface overflow-hidden">
+  <div class="flex-1 overflow-hidden grid grid-cols-12 gap-0 efc-home-main" id="efc-home-main" aria-busy="true">
+    <div class="col-span-8 relative border-r border-outline-variant bg-surface overflow-hidden efc-home-main__map">
       <div class="absolute inset-0 map-mesh opacity-20 pointer-events-none"></div>
       <div id="home-map-panel" class="stitch-map-frame relative absolute inset-0"
            hx-get="{% murl 'home_fragment_map' %}?date={{ selected_date }}&accum={{ accum_hours }}"
@@ -69,9 +69,14 @@
           <p class="efc-map-skel__label">{% if lang_pt %}Carregando mapa…{% else %}Loading map…{% endif %}</p>
         </div>
       </div>
+      <button type="button" class="efc-panel-edge efc-panel-edge--aside" id="efc-aside-collapse"
+              aria-expanded="true" aria-controls="efc-home-aside"
+              title="{% if lang_pt %}Esconder / mostrar painel direito{% else %}Hide / show right panel{% endif %}">
+        <span class="efc-panel-edge__arrow" aria-hidden="true">›</span>
+      </button>
     </div>
 
-    <aside class="col-span-4 bg-surface-container-low flex flex-col overflow-y-auto border-l border-outline-variant/40">
+    <aside id="efc-home-aside" class="col-span-4 bg-surface-container-low flex flex-col overflow-y-auto border-l border-outline-variant/40 efc-home-main__aside">
       <div id="home-alerts-slot" class="px-1 pt-1 pb-4 border-b border-outline-variant/30 efc-stitch-side-panel">
         <h3 class="efc-stitch-side-panel__heading">{% if lang_pt %}Alertas / Trechos{% else %}Alerts / Segments{% endif %}</h3>
         <div class="flex flex-wrap gap-2 efc-skel-chips" aria-hidden="true">

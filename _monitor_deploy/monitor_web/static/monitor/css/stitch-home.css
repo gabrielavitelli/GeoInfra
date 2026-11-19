@@ -1601,14 +1601,102 @@
   min-height: 280px;
   height: 300px;
 }
+.efc-ops-chart__plot--xl {
+  min-height: 360px;
+  height: 380px;
+}
 .efc-ops-chart__note {
   margin: 0.35rem 0 0;
   padding: 0 0.15rem;
-  font: 500 0.68rem/1.35 "IBM Plex Sans", "Segoe UI", sans-serif;
-  color: #94a3b8;
+  font: 500 0.72rem/1.4 "IBM Plex Sans", "Segoe UI", sans-serif;
+  color: #cbd5e1;
 }
 .efc-ops-chart--hyp3,
 .efc-ops-chart--combined {
   border-color: rgba(249, 115, 22, 0.32);
   background: linear-gradient(165deg, rgba(67, 20, 7, 0.4), rgba(15, 23, 42, 0.72));
+}
+.efc-ops-chart--emphasis {
+  border-color: rgba(251, 113, 133, 0.55);
+  box-shadow: 0 0 0 1px rgba(251, 113, 133, 0.12), 0 12px 28px rgba(2, 6, 23, 0.35);
+  background: linear-gradient(165deg, rgba(76, 5, 25, 0.55), rgba(15, 23, 42, 0.88));
+  padding: 0.85rem 0.65rem 0.55rem;
+}
+
+/* Collapse arrows — left nav + right/left aside */
+.efc-panel-edge {
+  position: absolute;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 48px;
+  padding: 0;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.92);
+  color: #e2e8f0;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(2, 6, 23, 0.35);
+}
+.efc-panel-edge__arrow {
+  font-size: 1.15rem;
+  line-height: 1;
+  font-weight: 700;
+}
+.efc-panel-edge--nav {
+  top: 50%;
+  left: 0;
+  transform: translate(-2px, -50%);
+  border-radius: 0 8px 8px 0;
+}
+.efc-layout.is-nav-collapsed .efc-panel-edge--nav .efc-panel-edge__arrow {
+  transform: scaleX(-1);
+}
+.efc-panel-edge--aside {
+  top: 50%;
+  right: 0;
+  transform: translate(50%, -50%);
+  border-radius: 8px;
+}
+.efc-panel-edge--aside-left {
+  left: 0;
+  right: auto;
+  transform: translate(-50%, -50%);
+}
+.efc-home-main.is-aside-collapsed .efc-panel-edge--aside .efc-panel-edge__arrow,
+.efc-home-main.is-aside-collapsed .efc-panel-edge--aside-left .efc-panel-edge__arrow {
+  transform: scaleX(-1);
+}
+.efc-home-main__map {
+  position: relative;
+}
+.efc-layout.is-nav-collapsed .efc-sidebar {
+  width: 0 !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  overflow: hidden !important;
+  opacity: 0;
+  pointer-events: none;
+}
+.efc-layout.is-nav-collapsed .efc-main {
+  max-width: 100%;
+}
+.efc-home-main.is-aside-collapsed > .efc-home-main__aside,
+.efc-home-main.is-aside-collapsed > aside.efc-home-main__aside {
+  display: none !important;
+}
+.efc-home-main.is-aside-collapsed > .efc-home-main__map,
+.efc-home-main.is-aside-collapsed > .col-span-8 {
+  grid-column: 1 / -1;
+  width: 100%;
+  max-width: 100%;
+}
+.dj-situation-grid.is-aside-collapsed .dj-situation-grid__aside {
+  display: none !important;
+}
+.dj-situation-grid.is-aside-collapsed .dj-situation-grid__map {
+  grid-column: 1 / -1;
+  width: 100%;
 }

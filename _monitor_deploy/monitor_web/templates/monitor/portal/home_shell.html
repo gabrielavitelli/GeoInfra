@@ -54,8 +54,8 @@
        hx-swap="none"
        hx-timeout="300000"></div>
 
-  <div class="dj-situation-grid" id="efc-home-main" aria-busy="true">
-    <aside class="dj-situation-grid__aside" aria-label="{% if lang_pt %}Painel lateral{% else %}Side panel{% endif %}">
+  <div class="dj-situation-grid efc-home-main" id="efc-home-main" aria-busy="true">
+    <aside id="efc-home-aside" class="dj-situation-grid__aside efc-home-main__aside" aria-label="{% if lang_pt %}Painel lateral{% else %}Side panel{% endif %}">
       <div id="home-alerts-slot" class="dj-alerts dj-alerts--compact">
         <h3 class="dj-alerts__title">{% if lang_pt %}Trechos em alerta{% else %}Alert segments{% endif %}</h3>
         <div class="dj-alerts__chips">
@@ -80,7 +80,12 @@
       </a>
       {% endif %}
     </aside>
-    <div class="dj-situation-grid__map">
+    <div class="dj-situation-grid__map efc-home-main__map">
+      <button type="button" class="efc-panel-edge efc-panel-edge--aside efc-panel-edge--aside-left" id="efc-aside-collapse"
+              aria-expanded="true" aria-controls="efc-home-aside"
+              title="{% if lang_pt %}Esconder / mostrar painel{% else %}Hide / show side panel{% endif %}">
+        <span class="efc-panel-edge__arrow" aria-hidden="true">‹</span>
+      </button>
       <div id="home-map-panel" class="dj-map-panel">
         <div class="dj-map-panel__placeholder dj-map-panel__placeholder--loading efc-map-skel" aria-hidden="true">
           <div class="dj-skeleton dj-skeleton--map efc-map-skel__block"></div>

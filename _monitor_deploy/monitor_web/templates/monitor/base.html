@@ -1,0 +1,132 @@
+{% load static monitor_tags %}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}{{ page_title|default:"Monitor EFC" }} · GeoInfra{% endblock %}</title>
+  {% if not monitor_is_portal %}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+  {% endif %}
+  <link rel="stylesheet" href="{% static 'monitor/css/monitor.css' %}?v=20260818hm1">
+  <link rel="stylesheet" href="{% static 'monitor/css/django-ui.css' %}?v=20260803speed345">
+  {% if monitor_is_portal %}
+  <link rel="stylesheet" href="{% static 'monitor/css/theme-efc.css' %}?v=20260803speed345">
+  <link rel="stylesheet" href="{% static 'monitor/css/stitch-pages.css' %}?v=20260803speed345" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="{% static 'monitor/css/stitch-pages.css' %}?v=20260803speed345"></noscript>
+  {% else %}
+  <link rel="stylesheet" href="{% static 'monitor/css/stitch-compat.css' %}?v=20260716suscFix">
+  <link rel="stylesheet" href="{% static 'monitor/css/stitch-ui.css' %}?v=20260714sky">
+  <link rel="stylesheet" href="{% static 'monitor/css/stitch-pages.css' %}?v=20260803speed345">
+  {% endif %}
+  {% block extra_head %}{% endblock %}
+  <link rel="stylesheet" href="{% static 'monitor/css/stitch-mobile.css' %}?v={{ monitor_static_bust }}">
+  <script src="{% static 'monitor/js/monitor.js' %}?v={{ monitor_static_bust }}" defer></script>
+</head>
+<body class="efc-body{% if monitor_is_portal %} efc-ui-graphite{% endif %}" data-monitor-login-url="{% murl 'login' %}">
+  <div class="efc-layout" id="efc-layout">
+    <button type="button" class="efc-sidebar-backdrop" id="efc-sidebar-backdrop" aria-label="Fechar menu" tabindex="-1"></button>
+    <button type="button" class="efc-panel-edge efc-panel-edge--nav" id="efc-nav-collapse"
+            aria-expanded="true" aria-controls="efc-sidebar"
+            title="{% if monitor_lang == 'en' %}Hide / show left menu{% else %}Esconder / mostrar menu esquerdo{% endif %}">
+      <span class="efc-panel-edge__arrow" aria-hidden="true">‹</span>
+    </button>
+    <aside class="efc-sidebar" id="efc-sidebar" aria-label="Menu principal">
+      {% if monitor_logo.has_logo %}
+      <div class="efc-logo-wrap">
+        <img src="{% if monitor_logo.logo_url %}{{ monitor_logo.logo_url }}?v=20260818wavelines{% else %}{{ monitor_logo.logo_data_uri }}{% endif %}"
+             alt="{{ monitor_logo.logo_alt }}" class="efc-logo" width="210" height="60" decoding="async">
+      </div>
+      {% endif %}
+
+      <div class="efc-ingestion efc-ingestion--ok efc-ingestion--compact">
+        <div class="efc-ingestion__row">
+          <span class="efc-ingestion__label">{% if monitor_lang == 'en' %}Status{% else %}Status{% endif %}</span>
+          <span class="efc-ingestion__dot-wrap" tabindex="0"
+                aria-label="{% if monitor_lang == 'en' %}Platform data status{% else %}Status dos dados da plataforma{% endif %}">
+            <span class="efc-ingestion__dot" aria-hidden="true"></span>
+            <span class="efc-ingestion__tooltip" role="tooltip">
+              {% for line in monitor_ingestion.tooltip_lines %}
+              <span class="efc-ingestion__tooltip-line">{{ line }}</span>
+              {% empty %}
+              <span class="efc-ingestion__tooltip-line">{% if monitor_lang == 'en' %}Status unavailable{% else %}Status indisponível{% endif %}</span>
+              {% endfor %}
+              {% if monitor_ingestion.next_ingestion and monitor_ingestion.next_ingestion != "—" %}
+              <span class="efc-ingestion__tooltip-line efc-ingestion__tooltip-line--muted">{% if monitor_lang == 'en' %}Next refresh{% else %}Próxima rotina{% endif %}: {{ monitor_ingestion.next_ingestion }}</span>
+              {% endif %}
+            </span>
+          </span>
+        </div>
+        <div class="efc-ingestion__date">{{ monitor_ingestion.latest_ingestion }}</div>
+      </div>
+
+      <nav class="efc-nav efc-nav--main" aria-label="Páginas">
+        {% for item in monitor_nav %}
+        <a href="{% murl item.url_name %}"
+           class="efc-nav__link{% if request.resolver_match.url_name == item.url_name %} is-active{% endif %}"
+           aria-label="{{ item.label }}">
+          <span class="efc-nav__emoji" aria-hidden="true">{{ item.emoji }}</span>
+          <span>{{ item.label }}</span>
+        </a>
+        {% if item.url_name == 'sobre' %}
+        <div class="efc-sidebar-limiares-gap" aria-hidden="true"></div>
+        <section class="efc-sidebar-limiares" id="efc-sidebar-limiares" data-tour-anchor="limiares" aria-label="{% if monitor_lang == 'en' %}Operational thresholds{% else %}Limiares operacionais{% endif %}">
+          <h2 class="efc-sidebar-limiares__title">{% if monitor_lang == 'en' %}Thresholds{% else %}Limiares{% endif %}</h2>
+          <ul class="efc-sidebar-limiares__list">
+            {% for lim in monitor_limiares %}
+            <li class="efc-sidebar-limiares__row">
+              <strong>{{ lim.mm }} mm</strong>
+              <span class="efc-sidebar-limiares__period">{% if monitor_lang == 'en' %}{{ lim.period_en }}{% else %}{{ lim.period_pt }}{% endif %}</span>
+            </li>
+            {% endfor %}
+          </ul>
+          <p class="efc-sidebar-limiares__sources">
+            <span class="efc-sidebar-limiares__src-line">
+              <span class="efc-sidebar-limiares__src-kind">{% if monitor_lang == 'en' %}Observed{% else %}Observado{% endif %}</span>
+              <span class="efc-sidebar-limiares__src-arrow" aria-hidden="true">→</span>
+              BNDMET · ANA · MERGE · GOES
+            </span>
+            <span class="efc-sidebar-limiares__src-line">
+              <span class="efc-sidebar-limiares__src-kind">{% if monitor_lang == 'en' %}Forecast{% else %}Preditivo{% endif %}</span>
+              <span class="efc-sidebar-limiares__src-arrow" aria-hidden="true">→</span>
+              ECMWF · GFS · ICON · WN2
+            </span>
+          </p>
+        </section>
+        {% endif %}
+        {% endfor %}
+      </nav>
+
+      <div class="efc-sidebar-foot">
+        {% if monitor_is_portal and monitor_days_until_expiry is not None %}
+        <p class="efc-sidebar-access-validity" title="{% if monitor_lang == 'en' %}Account validity{% else %}Validade do acesso{% endif %}">
+          {% if monitor_lang == 'en' %}Access valid{% else %}Validade do acesso{% endif %}
+          {{ monitor_days_until_expiry }}
+          {% if monitor_lang == 'en' %}day(s){% else %}dia(s){% endif %}
+        </p>
+        {% endif %}
+        {% if monitor_show_env_badge and monitor_app_env_label %}
+        <p class="efc-sidebar-env-badge efc-sidebar-env-badge--{{ monitor_app_env }}" title="Ambiente da aplicação">{{ monitor_app_env_label }}</p>
+        {% endif %}
+        {% if not monitor_auth_disabled %}
+        <form method="post" action="{% murl 'logout' %}">{% csrf_token %}
+          <button type="submit" class="efc-btn efc-btn--ghost">{% if monitor_lang == 'en' %}Sign out{% else %}Sair{% endif %}</button>
+        </form>
+        {% endif %}
+      </div>
+    </aside>
+
+    <main class="efc-main">
+      <button type="button" class="efc-sidebar-toggle" id="efc-sidebar-toggle" aria-expanded="false" aria-controls="efc-sidebar">
+        <span class="efc-sidebar-toggle__icon" aria-hidden="true">☰</span>
+        <span>Menu</span>
+      </button>
+      {% block content %}{% endblock %}
+      <footer class="efc-footer">{% mt "footer" %}</footer>
+    </main>
+  </div>
+
+</body>
+</html>

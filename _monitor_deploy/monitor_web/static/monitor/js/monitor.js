@@ -2977,7 +2977,78 @@
     var toggle = document.getElementById("efc-sidebar-toggle");
     var backdrop = document.getElementById("efc-sidebar-backdrop");
     var sidebar = document.getElementById("efc-sidebar");
-    if (!layout || !toggle || !sidebar) return;
+    var navEdge = document.getElementById("efc-nav-collapse");
+    var asideEdge = document.getElementById("efc-aside-collapse");
+    var homeMain = document.getElementById("efc-home-main");
+    var NAV_KEY = "efc_nav_collapsed";
+    var ASIDE_KEY = "efc_aside_collapsed";
+
+    function resizeMaps() {
+      try {
+        window.dispatchEvent(new Event("resize"));
+      } catch (e0) {}
+      try {
+        if (window.__efcMap3d && window.__efcMap3d.resize) window.__efcMap3d.resize();
+      } catch (e1) {}
+      try {
+        var plots = document.querySelectorAll("[data-ops-plot]");
+        for (var i = 0; i < plots.length; i++) {
+          if (window.Plotly && plots[i].data) Plotly.Plots.resize(plots[i]);
+        }
+      } catch (e2) {}
+    }
+
+    function setNavCollapsed(on) {
+      if (!layout) return;
+      layout.classList.toggle("is-nav-collapsed", !!on);
+      if (navEdge) {
+        navEdge.setAttribute("aria-expanded", on ? "false" : "true");
+        var arr = navEdge.querySelector(".efc-panel-edge__arrow");
+        if (arr) arr.textContent = on ? "›" : "‹";
+      }
+      try {
+        localStorage.setItem(NAV_KEY, on ? "1" : "0");
+      } catch (eN) {}
+      setTimeout(resizeMaps, 220);
+    }
+
+    function setAsideCollapsed(on) {
+      if (!homeMain) return;
+      homeMain.classList.toggle("is-aside-collapsed", !!on);
+      if (asideEdge) {
+        asideEdge.setAttribute("aria-expanded", on ? "false" : "true");
+        var arr = asideEdge.querySelector(".efc-panel-edge__arrow");
+        var leftish = asideEdge.classList.contains("efc-panel-edge--aside-left");
+        if (arr) {
+          if (leftish) arr.textContent = on ? "›" : "‹";
+          else arr.textContent = on ? "‹" : "›";
+        }
+      }
+      try {
+        localStorage.setItem(ASIDE_KEY, on ? "1" : "0");
+      } catch (eA) {}
+      setTimeout(resizeMaps, 220);
+    }
+
+    if (navEdge && layout) {
+      try {
+        if (localStorage.getItem(NAV_KEY) === "1") setNavCollapsed(true);
+      } catch (eNav0) {}
+      navEdge.addEventListener("click", function () {
+        setNavCollapsed(!layout.classList.contains("is-nav-collapsed"));
+      });
+    }
+    if (asideEdge && homeMain) {
+      try {
+        if (localStorage.getItem(ASIDE_KEY) === "1") setAsideCollapsed(true);
+      } catch (eAs0) {}
+      asideEdge.addEventListener("click", function () {
+        setAsideCollapsed(!homeMain.classList.contains("is-aside-collapsed"));
+      });
+    }
+
+    if (!layout || !sidebar) return;
+    if (!toggle) return;
 
     function setOpen(open) {
       layout.classList.toggle("is-sidebar-open", open);
@@ -4663,50 +4734,51 @@
             size: 11,
             family: "IBM Plex Sans, Segoe UI, sans-serif",
           },
-          margin: { t: 8, r: 48, b: 72, l: 52 },
+          margin: { t: 12, r: 56, b: 88, l: 58 },
           hovermode: "x unified",
           showlegend: true,
           legend: {
             orientation: "h",
-            y: -0.22,
+            y: -0.28,
             x: 0.5,
             xanchor: "center",
-            font: { size: 10, color: muted },
-            bgcolor: "rgba(15,23,42,0.55)",
+            font: { size: 11, color: ink },
+            bgcolor: "rgba(15,23,42,0.72)",
           },
           xaxis: {
             showgrid: true,
             gridcolor: grid,
-            tickfont: { size: 10, color: muted },
-            color: muted,
-            tickangle: -30,
+            tickfont: { size: 11, color: ink },
+            color: ink,
+            tickangle: -28,
             automargin: true,
           },
           yaxis: {
             showgrid: true,
             gridcolor: grid,
-            tickfont: { size: 10, color: muted },
+            tickfont: { size: 11, color: "#fda4af" },
             title: {
               text: axes.y_los || (langPt ? "LOS acum. (mm)" : "Cum. LOS (mm)"),
-              font: { size: 11, color: muted },
+              font: { size: 12, color: "#fda4af" },
             },
             zeroline: true,
-            zerolinecolor: "rgba(248,250,252,.25)",
+            zerolinecolor: "rgba(248,250,252,.35)",
+            zerolinewidth: 1.2,
           },
           yaxis2: {
             overlaying: "y",
             side: "right",
             showgrid: false,
-            tickfont: { size: 10, color: "#7dd3fc" },
+            tickfont: { size: 11, color: "#7dd3fc" },
             title: {
               text:
                 axes.y_rain ||
                 (langPt ? "Chuva (mm/d · mm/mês)" : "Rain (mm/d · mm/month)"),
-              font: { size: 11, color: "#7dd3fc" },
+              font: { size: 12, color: "#7dd3fc" },
             },
             rangemode: "tozero",
           },
-          bargap: 0.25,
+          bargap: 0.22,
         },
         Object.assign({}, plotlyConfig(el), {
           responsive: true,
@@ -4714,7 +4786,15 @@
         })
       );
       el.setAttribute("aria-busy", "false");
-      setNote("combined", "");
+      var methodNote =
+        (payload && payload.method_note) ||
+        (langPt
+          ? "γ≥0,30 · raio 500 m · disco (sem anel)"
+          : "γ≥0.30 · 500 m radius · disk (no ring)");
+      setNote("combined", methodNote);
+      try {
+        Plotly.Plots.resize(el);
+      } catch (eR) {}
     }
 
     function fetchAndPlot() {
@@ -4725,6 +4805,7 @@
           return fetch(url, {
             credentials: "same-origin",
             headers: { Accept: "application/json" },
+            cache: "no-store",
           }).then(function (r) {
             if (!r.ok) throw new Error("HTTP " + r.status);
             return r.json();

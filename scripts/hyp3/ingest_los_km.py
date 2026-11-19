@@ -62,18 +62,25 @@ def _unw_to_los_mm(unw_rad: float) -> float:
 
 
 def _parse_dates_from_filename(name: str) -> tuple[str | None, str | None]:
-    """Extract YYYYMMDD_YYYYMMDD from HyP3 product filename."""
+    """Extract ref/acq dates from HyP3 product or efc-12d job name."""
     import re
 
-    m = re.search(r"(20\d{6})_(20\d{6})", name or "")
+    s = name or ""
+
+    def iso(raw: str) -> str:
+        d = re.sub(r"\D", "", raw)[:8]
+        return f"{d[0:4]}-{d[4:6]}-{d[6:8]}"
+
+    # S1DD_20260929T084140_20261011T084140_… or …_20260929_20261011_…
+    m = re.search(r"(20\d{6})T\d{6}_(20\d{6})T\d{6}", s)
+    if not m:
+        m = re.search(r"(20\d{6})_(20\d{6})", s)
+    if not m:
+        # efc-12d-20260929-20261011-p024d-iw3
+        m = re.search(r"(20\d{6})-(20\d{6})", s)
     if not m:
         return None, None
-    a, b = m.group(1), m.group(2)
-
-    def iso(s: str) -> str:
-        return f"{s[0:4]}-{s[4:6]}-{s[6:8]}"
-
-    return iso(a), iso(b)
+    return iso(m.group(1)), iso(m.group(2))
 
 
 def _railway_km_points(km_lo: float, km_hi: float, step: float = 0.25):
@@ -112,49 +119,102 @@ def _covers_aoi(ds, lon: float = _AOI_LON, lat: float = _AOI_LAT) -> bool:
     )
 
 
-def _sample_mean_by_km(tif_path: Path, km_pts: list[tuple[float, float, float]]) -> list[dict]:
+def _sample_mean_by_km(
+    tif_path: Path,
+    km_pts: list[tuple[float, float, float]],
+    *,
+    corr_path: Path | None = None,
+    radius_m: float = 500.0,
+    gamma_min: float = 0.30,
+    ring_inner_m: float = 0.0,
+) -> list[dict]:
+    """Mean LOS in a circular disk (no ring when ``ring_inner_m=0``).
+
+    Pixels must satisfy coherence γ ≥ ``gamma_min`` when a corr.tif is present.
+    """
     import numpy as np
     import rasterio
+    from rasterio.windows import Window
     from rasterio.warp import transform as T
 
     out: list[dict] = []
+    r_out = max(1.0, float(radius_m))
+    r_in = max(0.0, float(ring_inner_m))
+    g_min = float(gamma_min)
+
     with rasterio.open(tif_path) as ds:
         nodata = ds.nodata
-        for km, lat, lon in km_pts:
-            xx, yy = T("EPSG:4326", ds.crs, [lon], [lat])
-            if not (
-                ds.bounds.left <= xx[0] <= ds.bounds.right
-                and ds.bounds.bottom <= yy[0] <= ds.bounds.top
-            ):
-                continue
-            # 3×3 window mean around the projected point (pixel coords).
-            row, col = ds.index(xx[0], yy[0])
-            r0, r1 = max(0, row - 1), min(ds.height, row + 2)
-            c0, c1 = max(0, col - 1), min(ds.width, col + 2)
-            win = ds.read(1, window=((r0, r1), (c0, c1))).astype("float64")
-            if nodata is not None:
-                win = np.where(win == nodata, np.nan, win)
-            win = np.where(np.isfinite(win), win, np.nan)
-            if not np.isfinite(win).any():
-                continue
-            unw = float(np.nanmean(win))
-            if abs(unw) < 1e-12:
-                # Treat exact zero as likely masked empty; keep but flag.
-                pass
-            out.append(
-                {
-                    "km": float(km),
-                    "lat": lat,
-                    "lon": lon,
-                    "unw_rad": unw,
-                    "los_mm": _unw_to_los_mm(unw),
-                    "n_pix": int(np.isfinite(win).sum()),
-                }
-            )
+        # Pixel size in CRS units (HyP3 UTM → metres).
+        px = abs(float(ds.transform.a)) or 1.0
+        py = abs(float(ds.transform.e)) or px
+        pix_m = 0.5 * (px + py)
+        pad = int(math.ceil(r_out / max(pix_m, 1e-6))) + 2
+
+        corr_ds = rasterio.open(corr_path) if corr_path and corr_path.is_file() else None
+        try:
+            for km, lat, lon in km_pts:
+                xx, yy = T("EPSG:4326", ds.crs, [lon], [lat])
+                if not (
+                    ds.bounds.left <= xx[0] <= ds.bounds.right
+                    and ds.bounds.bottom <= yy[0] <= ds.bounds.top
+                ):
+                    continue
+                row, col = ds.index(xx[0], yy[0])
+                r0, r1 = max(0, row - pad), min(ds.height, row + pad + 1)
+                c0, c1 = max(0, col - pad), min(ds.width, col + pad + 1)
+                if r1 <= r0 or c1 <= c0:
+                    continue
+                win = Window.from_slices((r0, r1), (c0, c1))
+                unw = ds.read(1, window=win).astype("float64")
+                if nodata is not None:
+                    unw = np.where(unw == nodata, np.nan, unw)
+                unw = np.where(np.isfinite(unw), unw, np.nan)
+
+                # Distance grid in metres from the km point (CRS metres).
+                rows = np.arange(r0, r1)[:, None]
+                cols = np.arange(c0, c1)[None, :]
+                xs = ds.transform.c + (cols + 0.5) * ds.transform.a
+                ys = ds.transform.f + (rows + 0.5) * ds.transform.e
+                dist = np.hypot(xs - xx[0], ys - yy[0])
+                mask = (dist <= r_out) & (dist >= r_in) & np.isfinite(unw)
+
+                if corr_ds is not None:
+                    corr = corr_ds.read(1, window=win).astype("float64")
+                    c_nd = corr_ds.nodata
+                    if c_nd is not None:
+                        corr = np.where(corr == c_nd, np.nan, corr)
+                    mask &= np.isfinite(corr) & (corr >= g_min)
+
+                if not mask.any():
+                    continue
+                vals = unw[mask]
+                mean_unw = float(np.mean(vals))
+                out.append(
+                    {
+                        "km": float(km),
+                        "lat": lat,
+                        "lon": lon,
+                        "unw_rad": mean_unw,
+                        "los_mm": _unw_to_los_mm(mean_unw),
+                        "n_pix": int(mask.sum()),
+                        "gamma_min": g_min,
+                        "radius_m": r_out,
+                        "ring_inner_m": r_in,
+                    }
+                )
+        finally:
+            if corr_ds is not None:
+                corr_ds.close()
     return out
 
 
-def _select_jobs(hyp3, *, limit: int, name_substr: str = "p024d-iw3"):
+def _select_jobs(
+    hyp3,
+    *,
+    limit: int,
+    name_substr: str = "p024d-iw3",
+    max_baseline_days: int | None = 18,
+):
     jobs = []
     for j in hyp3.find_jobs():
         if getattr(j, "status_code", None) != "SUCCEEDED":
@@ -164,6 +224,21 @@ def _select_jobs(hyp3, *, limit: int, name_substr: str = "p024d-iw3"):
             continue
         if not j.files:
             continue
+        if max_baseline_days is not None:
+            fn = (j.files or [{}])[0].get("filename") or ""
+            ref_d, acq_d = _parse_dates_from_filename(fn) or (None, None)
+            if not acq_d:
+                ref_d, acq_d = _parse_dates_from_filename(name)
+            if ref_d and acq_d:
+                try:
+                    from datetime import date as _date
+
+                    d0 = _date.fromisoformat(ref_d)
+                    d1 = _date.fromisoformat(acq_d)
+                    if abs((d1 - d0).days) > int(max_baseline_days):
+                        continue
+                except Exception:
+                    pass
         jobs.append(j)
     jobs.sort(key=lambda j: j.request_time or "", reverse=True)
     return jobs[: max(1, limit)]
@@ -292,14 +367,36 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--km-lo", type=float, default=370.0)
     ap.add_argument("--km-hi", type=float, default=380.0)
     ap.add_argument("--km-step", type=float, default=0.5)
-    ap.add_argument("--name-substr", default="p024d-iw3")
+    ap.add_argument(
+        "--name-substr",
+        default="p024d-iw3",
+        help="Job name filter; combined with --max-baseline-days for short pairs",
+    )
+    ap.add_argument(
+        "--max-baseline-days",
+        type=int,
+        default=18,
+        help="Skip HyP3 pairs with |acq-ref| days above this (0 = no filter)",
+    )
     ap.add_argument("--gcs-prefix", default=_GCS_PREFIX)
     ap.add_argument("--bq-project", default="climaticsystem")
     ap.add_argument("--bq-dataset", default="efc_clima")
     ap.add_argument("--bq-table", default=_BQ_TABLE)
     ap.add_argument("--submit-basic", action="store_true")
     ap.add_argument("--skip-bq", action="store_true")
+    ap.add_argument("--gamma-min", type=float, default=0.30, help="Coherence γ floor (corr.tif)")
+    ap.add_argument("--radius-m", type=float, default=500.0, help="Outer disk radius (m)")
+    ap.add_argument(
+        "--ring-inner-m",
+        type=float,
+        default=0.0,
+        help="Inner hole radius (m); 0 = disco sem anel",
+    )
     args = ap.parse_args(argv)
+    agg_label = (
+        f"mean_disk_{args.radius_m:g}m_gamma_ge_{args.gamma_min:g}"
+        + (f"_ring_in_{args.ring_inner_m:g}m" if args.ring_inner_m > 0 else "_no_ring")
+    )
 
     user = _secret("earthdata-user")
     pwd = _secret("earthdata-password")
@@ -318,8 +415,17 @@ def main(argv: list[str] | None = None) -> int:
     km_pts = _railway_km_points(args.km_lo, args.km_hi, step=args.km_step)
     print(f"km_pts={len(km_pts)} range={args.km_lo}-{args.km_hi}")
 
-    jobs = _select_jobs(hyp3, limit=max(args.limit * 3, args.limit), name_substr=args.name_substr)
-    print(f"candidate_jobs={len(jobs)}")
+    max_bl = None if int(args.max_baseline_days) <= 0 else int(args.max_baseline_days)
+    jobs = _select_jobs(
+        hyp3,
+        limit=max(args.limit * 5, args.limit),
+        name_substr=args.name_substr,
+        max_baseline_days=max_bl,
+    )
+    print(
+        f"candidate_jobs={len(jobs)} substr={args.name_substr!r} "
+        f"max_bl={max_bl} agg={agg_label}"
+    )
 
     all_rows: list[dict] = []
     used = 0
@@ -340,12 +446,19 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             try:
                 with zipfile.ZipFile(zpath) as zf:
-                    unw_names = [n for n in zf.namelist() if n.endswith("unw_phase.tif")]
+                    names = zf.namelist()
+                    unw_names = [n for n in names if n.endswith("unw_phase.tif")]
+                    corr_names = [n for n in names if n.endswith("corr.tif")]
                     if not unw_names:
                         print("no_unw", j.name)
                         continue
-                    zf.extract(unw_names[0], tdir / j.job_id)
-                    tif = tdir / j.job_id / unw_names[0]
+                    dest = tdir / j.job_id
+                    zf.extract(unw_names[0], dest)
+                    tif = dest / unw_names[0]
+                    corr_tif = None
+                    if corr_names:
+                        zf.extract(corr_names[0], dest)
+                        corr_tif = dest / corr_names[0]
             except Exception as exc:
                 print("unzip_fail", j.name, str(exc)[:120])
                 continue
@@ -355,11 +468,22 @@ def main(argv: list[str] | None = None) -> int:
                 if not _covers_aoi(ds):
                     print("skip_bounds", j.name)
                     continue
-            samples = _sample_mean_by_km(tif, km_pts)
+            samples = _sample_mean_by_km(
+                tif,
+                km_pts,
+                corr_path=corr_tif,
+                radius_m=args.radius_m,
+                gamma_min=args.gamma_min,
+                ring_inner_m=args.ring_inner_m,
+            )
             if not samples:
                 print("no_samples", j.name)
                 continue
             ref_d, acq_d = _parse_dates_from_filename(fname)
+            if not acq_d:
+                ref_d, acq_d = _parse_dates_from_filename(unw_names[0] if unw_names else "")
+            if not acq_d:
+                ref_d, acq_d = _parse_dates_from_filename(j.name or "")
             now = datetime.now(timezone.utc).isoformat()
             for s in samples:
                 all_rows.append(
@@ -374,7 +498,7 @@ def main(argv: list[str] | None = None) -> int:
                         "job_name": j.name,
                         "product": fname,
                         "path": 24,
-                        "aggregation": "mean_per_km",
+                        "aggregation": agg_label,
                         "ingested_at": now,
                     }
                 )
@@ -397,7 +521,13 @@ def main(argv: list[str] | None = None) -> int:
     payload = {
         "generated_at": stamp,
         "aoi": {"lat": _AOI_LAT, "lon": _AOI_LON, "km_lo": args.km_lo, "km_hi": args.km_hi},
-        "aggregation": "mean_per_km (not a blind sum)",
+        "aggregation": agg_label,
+        "method": {
+            "gamma_min": args.gamma_min,
+            "radius_m": args.radius_m,
+            "ring_inner_m": args.ring_inner_m,
+            "shape": "disk" if args.ring_inner_m <= 0 else "ring",
+        },
         "unit": "mm LOS",
         "n_rows": len(all_rows),
         "n_jobs": used,

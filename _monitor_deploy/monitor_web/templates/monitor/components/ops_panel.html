@@ -74,8 +74,9 @@
   <div class="p-4 efc-stitch-side-panel__charts" data-ops-raijin-charts
        data-url="{% murl 'home_ops_raijin_charts' %}">
     <h3 class="efc-stitch-side-panel__heading">{% if ctx.lang_pt %}Deslocamento LOS (HyP3){% else %}LOS displacement (HyP3){% endif %}</h3>
-    <div class="efc-ops-chart efc-ops-chart--combined" data-ops-chart="combined">
-      <div class="efc-ops-chart__plot efc-ops-chart__plot--tall" data-ops-plot="combined" aria-busy="true"></div>
+    <p class="efc-stitch-side-panel__chart-cap">{% if ctx.lang_pt %}γ≥0,30 · raio 500 m · disco (sem anel){% else %}γ≥0.30 · 500 m radius · disk (no ring){% endif %}</p>
+    <div class="efc-ops-chart efc-ops-chart--combined efc-ops-chart--emphasis" data-ops-chart="combined">
+      <div class="efc-ops-chart__plot efc-ops-chart__plot--xl" data-ops-plot="combined" aria-busy="true"></div>
       <p class="efc-ops-chart__note" data-ops-note="combined">{% if ctx.lang_pt %}Carregando…{% else %}Loading…{% endif %}</p>
     </div>
   </div>

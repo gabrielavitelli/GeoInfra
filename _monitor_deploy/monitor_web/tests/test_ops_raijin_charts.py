@@ -135,10 +135,11 @@ def test_critical_los_qc_rejects_long_baseline_fringes(monkeypatch):
         {"acq_date": "2026-11-16", "ref_date": "2026-11-04", "km": 375.0, "los_mm": -2.5, "job_id": "good2"},
     ]
     monkeypatch.setattr(
-        "monitor_web.services.ops_raijin_charts._load_hyp3_rows",
-        lambda **_kw: rows,
+        "monitor_web.services.ops_raijin_charts._load_hyp3_bundle",
+        lambda **_kw: (rows, {"method": {"gamma_min": 0.3, "radius_m": 500, "ring_inner_m": 0}}),
     )
     out = build_critical_los_series(days=60, lang_pt=True)
+    assert "γ≥0,30" in (out.get("method_note") or "") or "γ≥0.3" in (out.get("method_note") or "")
     assert out["available"] is True
     by_id = {p["id"]: p for p in out["points"]}
     assert "km373" in by_id

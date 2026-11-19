@@ -309,6 +309,50 @@ body.efc-body {
   padding: 0;
   cursor: pointer;
 }
+.efc-layout {
+  position: relative;
+}
+.efc-panel-edge--nav {
+  position: absolute;
+  top: 50%;
+  left: 240px;
+  z-index: 40;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 48px;
+  padding: 0;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.95);
+  color: #e2e8f0;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(2, 6, 23, 0.4);
+}
+.efc-panel-edge--nav .efc-panel-edge__arrow {
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.efc-layout.is-nav-collapsed .efc-panel-edge--nav {
+  left: 10px;
+  transform: translate(0, -50%);
+}
+.efc-layout.is-nav-collapsed .efc-panel-edge--nav .efc-panel-edge__arrow {
+  transform: scaleX(-1);
+}
+.efc-layout.is-nav-collapsed .efc-sidebar {
+  width: 0 !important;
+  min-width: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  border: 0 !important;
+  overflow: hidden !important;
+  opacity: 0;
+  pointer-events: none;
+}
 .efc-sidebar-toggle {
   display: none;
   align-items: center;

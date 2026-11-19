@@ -182,12 +182,20 @@ def load_daily_rain_30d(
     }
 
 
-def _load_hyp3_rows(*, gcs_uri: str | None = None, bq_dataset: str | None = None) -> list[dict[str, Any]]:
-    """Prefer GCS snapshot (cheap); optional BQ fallback."""
+def _load_hyp3_bundle(
+    *, gcs_uri: str | None = None, bq_dataset: str | None = None
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Prefer GCS snapshot (cheap); optional BQ fallback. Returns (rows, meta)."""
     uri = (gcs_uri or os.environ.get("HYP3_LOS_GCS") or _DEFAULT_HYP3_GCS).strip()
     payload = _read_gcs_json(uri)
     rows: list[dict[str, Any]] = []
+    meta: dict[str, Any] = {}
     if isinstance(payload, dict):
+        meta = {
+            "aggregation": payload.get("aggregation"),
+            "method": payload.get("method") or {},
+            "generated_at": payload.get("generated_at"),
+        }
         for r in payload.get("rows") or []:
             try:
                 rows.append(
@@ -197,21 +205,24 @@ def _load_hyp3_rows(*, gcs_uri: str | None = None, bq_dataset: str | None = None
                         "km": float(r["km"]),
                         "los_mm": float(r["los_mm"]) if r.get("los_mm") is not None else None,
                         "job_id": str(r.get("job_id") or ""),
+                        "aggregation": str(r.get("aggregation") or meta.get("aggregation") or ""),
                     }
                 )
             except (TypeError, ValueError, KeyError):
                 continue
     if rows:
-        return rows
+        # Prefer γ≥0.30 / 500 m disk rows when mixed with legacy 3×3 samples.
+        disk = [r for r in rows if "gamma" in (r.get("aggregation") or "").lower() or "disk" in (r.get("aggregation") or "").lower()]
+        return (disk or rows), meta
 
     client = _client()
     if client is None:
-        return []
+        return [], meta
     dataset = _bq_dataset(bq_dataset)
     try:
         pfx = _pfx(dataset)
         sql = f"""
-        SELECT acq_date, ref_date, km, los_mm, job_id
+        SELECT acq_date, ref_date, km, los_mm, job_id, aggregation
         FROM `{pfx}.hyp3_los_km`
         WHERE km BETWEEN 370 AND 376
           AND acq_date IS NOT NULL
@@ -229,10 +240,18 @@ def _load_hyp3_rows(*, gcs_uri: str | None = None, bq_dataset: str | None = None
                     "km": float(r["km"]),
                     "los_mm": float(r["los_mm"]) if r["los_mm"] is not None else None,
                     "job_id": str(r["job_id"] or ""),
+                    "aggregation": str(r.get("aggregation") or ""),
                 }
             )
+        disk = [r for r in rows if "gamma" in (r.get("aggregation") or "").lower() or "disk" in (r.get("aggregation") or "").lower()]
+        return (disk or rows), meta
     except Exception as exc:
         logger.info("hyp3 BQ fallback unavailable: %s", exc)
+    return rows, meta
+
+
+def _load_hyp3_rows(*, gcs_uri: str | None = None, bq_dataset: str | None = None) -> list[dict[str, Any]]:
+    rows, _meta = _load_hyp3_bundle(gcs_uri=gcs_uri, bq_dataset=bq_dataset)
     return rows
 
 
@@ -245,7 +264,22 @@ def build_critical_los_series(
     """Short-baseline QC + cumulative LOS for 5 critical points (+ min/max band)."""
     end = date.today()
     start = end - timedelta(days=max(7, int(days)))
-    rows = _load_hyp3_rows(bq_dataset=bq_dataset)
+    rows, hyp3_meta = _load_hyp3_bundle(bq_dataset=bq_dataset)
+    method = hyp3_meta.get("method") or {}
+    g_raw = float(method.get("gamma_min", 0.30))
+    r_raw = float(method.get("radius_m", 500))
+    g_pt = f"{g_raw:.2f}".replace(".", ",")
+    method_note = (
+        (
+            f"γ≥{g_pt} · raio {r_raw:g} m"
+            + (" · disco (sem anel)" if float(method.get("ring_inner_m") or 0) <= 0 else " · anel")
+        )
+        if lang_pt
+        else (
+            f"γ≥{g_raw:g} · {r_raw:g} m radius"
+            + (" · disk (no ring)" if float(method.get("ring_inner_m") or 0) <= 0 else " · ring")
+        )
+    )
     empty = {
         "available": False,
         "points": [],
@@ -255,6 +289,7 @@ def build_critical_los_series(
             if lang_pt
             else "Waiting for HyP3 12-day pairs."
         ),
+        "method_note": method_note,
     }
     if not rows:
         return empty
@@ -388,6 +423,7 @@ def build_critical_los_series(
             "ymax": ymax,
         },
         "note": None,
+        "method_note": method_note,
         "unit": "mm",
         "unit_label": "LOS acum. (mm)" if lang_pt else "Cum. LOS (mm)",
     }
@@ -505,12 +541,18 @@ def build_combined_los_rain(
     los = los or {}
     points = list(los.get("points") or [])
     band = los.get("band") or {"x_br": [], "ymin": [], "ymax": []}
+    method_note = los.get("method_note") or (
+        "γ≥0,30 · raio 500 m · disco (sem anel)"
+        if lang_pt
+        else "γ≥0.30 · 500 m radius · disk (no ring)"
+    )
     available = bool(points or rain.get("available"))
     if not available:
         return {
             "available": False,
             "title": title,
             "note": los.get("note") or rain.get("note"),
+            "method_note": method_note,
             "points": [],
             "band": band,
             "rain_daily": {"x_br": [], "y": []},
@@ -525,6 +567,7 @@ def build_combined_los_rain(
         "available": True,
         "title": title,
         "note": None,
+        "method_note": method_note,
         "points": points,
         "band": band,
         "rain_daily": {
