@@ -27,8 +27,24 @@ def test_combined_los_rain_mean_and_single_title():
     assert out["note"] is None
     assert out["title"].startswith("Deslocamento LOS (HyP3)")
     assert out["los"]["y"] == [1.5, -0.8]
-    # Mean across stations, not sum.
+    # Median across stations, not sum / not inflated mean.
     assert out["rain"]["y"] == [20.0, 30.0]
+
+
+def test_combined_rain_drops_absurd_monthly():
+    precip = {
+        "available": True,
+        "months": ["2026-03"],
+        "series": [
+            {"id": "ok", "y": [120.0]},
+            {"id": "bad", "y": [9000.0]},
+            {"id": "ok2", "y": [180.0]},
+        ],
+    }
+    hyp3 = {"available": False, "timeseries": {"x": [], "y": []}}
+    out = build_combined_los_rain(precip, hyp3, lang_pt=True)
+    assert out["available"] is True
+    assert out["rain"]["y"] == [150.0]  # median of 120,180 (9000 dropped)
 
 
 def test_combined_empty_when_both_missing():

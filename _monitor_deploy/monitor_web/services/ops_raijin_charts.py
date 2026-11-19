@@ -403,9 +403,11 @@ def build_combined_los_rain(
     )
 
     # Aggregate monthly precip across stations → one corridor series.
+    # Median + drop absurd monthly totals (bad hourly inflation leftovers).
     months = list((precip or {}).get("months") or [])
     rain_y: list[float] = []
     series = list((precip or {}).get("series") or [])
+    _MAX_MONTHLY_MM = 800.0  # >~Amazon wet-month extremes → treat as bad tip sum
     if months and series:
         for i, _m in enumerate(months):
             vals = []
@@ -413,13 +415,20 @@ def build_combined_los_rain(
                 y = s.get("y") or []
                 if i < len(y) and y[i] is not None:
                     try:
-                        vals.append(float(y[i]))
+                        fv = float(y[i])
                     except (TypeError, ValueError):
-                        pass
-            # Mean across stations (not blind sum of all tips).
-            rain_y.append(round(sum(vals) / len(vals), 1) if vals else 0.0)
+                        continue
+                    if 0.0 <= fv <= _MAX_MONTHLY_MM:
+                        vals.append(fv)
+            if not vals:
+                rain_y.append(0.0)
+                continue
+            vals.sort()
+            mid = len(vals) // 2
+            med = vals[mid] if len(vals) % 2 else (vals[mid - 1] + vals[mid]) / 2.0
+            rain_y.append(round(med, 1))
     rain_label = (
-        "Chuva mensal média (mm)" if lang_pt else "Mean monthly rain (mm)"
+        "Chuva mensal (mediana, mm)" if lang_pt else "Monthly rain (median, mm)"
     )
 
     available = bool(los_x or (months and rain_y))
