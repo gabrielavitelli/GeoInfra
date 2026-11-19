@@ -254,20 +254,18 @@ def _extract_day(
     km_coords: dict[int, tuple[float, float]],
     day: date,
     *,
-    extract_workers: int = 4,
+    extract_workers: int = 1,
 ) -> list[dict]:
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-
+    """Extract sequencial por arquivo (HDF5/NetCDF não é thread-safe)."""
+    del extract_workers  # API estável; paralelismo fica nos dias (processos)
     band_cols: dict[int, dict[str, float]] = defaultdict(dict)
     hours_found: dict[int, int] = defaultdict(int)
-    with ThreadPoolExecutor(max_workers=max(1, min(extract_workers, len(files) or 1))) as pool:
-        futs = [pool.submit(_extract_one_nc, h, p, km_coords) for h, p in files]
-        for fut in as_completed(futs):
-            hour, partial = fut.result()
-            for km, bands in partial.items():
-                if bands:
-                    band_cols[km].update(bands)
-                    hours_found[km] += 1
+    for h, p in files:
+        hour, partial = _extract_one_nc(h, p, km_coords)
+        for km, bands in partial.items():
+            if bands:
+                band_cols[km].update(bands)
+                hours_found[km] += 1
     rows = []
     for km, bands in band_cols.items():
         rec = {
@@ -279,6 +277,20 @@ def _extract_day(
         rec.update(bands)
         rows.append(rec)
     return rows
+
+
+def _process_one_day_job(
+    d: date,
+    km_coords: dict[int, tuple[float, float]],
+    tmp_root: str,
+    hour_workers: int,
+    extract_workers: int,
+) -> tuple[date, list[dict]]:
+    """Entry picklable p/ ProcessPoolExecutor."""
+    rows = _process_one_day(
+        d, km_coords, Path(tmp_root), hour_workers, extract_workers
+    )
+    return d, rows
 
 
 def _process_one_day(
@@ -417,19 +429,26 @@ def main() -> int:
         print("Nenhum dia para baixar.")
         return 1
 
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from concurrent.futures import ProcessPoolExecutor, as_completed
 
     tmp_root = Path(tempfile.mkdtemp(prefix="goes_hist_"))
     ok_days = 0
     args.out.parent.mkdir(parents=True, exist_ok=True)
+    km_coords_plain = {int(k): (float(v[0]), float(v[1])) for k, v in km_coords.items()}
 
-    def _job(d: date) -> tuple[date, list[dict]]:
-        return d, _process_one_day(
-            d, km_coords, tmp_root, args.hour_workers, args.extract_workers
-        )
-
-    with ThreadPoolExecutor(max_workers=max(1, args.day_workers)) as pool:
-        futs = {pool.submit(_job, d): d for d in days}
+    print(f"   ProcessPool × {args.day_workers} (HDF5 isolado por dia)")
+    with ProcessPoolExecutor(max_workers=max(1, args.day_workers)) as pool:
+        futs = {
+            pool.submit(
+                _process_one_day_job,
+                d,
+                km_coords_plain,
+                str(tmp_root),
+                args.hour_workers,
+                args.extract_workers,
+            ): d
+            for d in days
+        }
         for i, fut in enumerate(as_completed(futs), 1):
             d = futs[fut]
             try:
