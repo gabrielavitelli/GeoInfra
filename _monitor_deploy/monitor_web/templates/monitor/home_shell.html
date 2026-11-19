@@ -1,0 +1,122 @@
+{% extends "monitor/base.html" %}
+{% load static monitor_tags %}
+{% block title %}{% mt "home_title" %}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'monitor/css/stitch-home.css' %}?v={{ monitor_static_bust|default:'20261119taludes2los' }}">
+<link rel="stylesheet" href="{% static 'monitor/css/monitor_tour.css' %}?v=20260715tourV3">
+<script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js" defer></script>
+<script src="{% static 'monitor/js/monitor_tour.js' %}?v=20260716suscLayer" defer></script>
+{% endblock %}
+{% block content %}
+<div class="efc-stitch-scope efc-stitch-main efc-stitch-home"
+     id="efc-stitch-home-boot"
+     data-indicators-url="{% murl 'home_fragment_indicators' %}?date={{ selected_date }}&accum={{ accum_hours }}&km={{ fc_km }}&{{ indicators_period_qs }}"
+     data-map-url="{% murl 'home_fragment_map' %}?date={{ selected_date }}&accum={{ accum_hours }}&km={{ fc_km }}"
+     data-fc-km="{{ fc_km }}">
+  <div class="efc-load-progress" id="efc-load-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="8"></div>
+
+  <header class="efc-stitch-home-topbar">
+    <nav class="efc-stitch-home-topbar__crumb" aria-label="{% if lang_pt %}Navegação{% else %}Breadcrumb{% endif %}">
+      <span>{% if lang_pt %}Monitor EFC{% else %}EFC Monitor{% endif %}</span>
+      <span class="mx-2">/</span>
+      <strong>{% if lang_pt %}Visão Geral{% else %}Overview{% endif %}</strong>
+    </nav>
+    <div class="efc-stitch-home-topbar__filters">
+      {% include "monitor/components/home_toolbar.html" %}
+    </div>
+    <div class="efc-stitch-home-topbar__tools">
+      {% include "monitor/components/home_top_tools.html" %}
+      <span class="efc-stitch-home-topbar__status" id="efc-stitch-system-status">{% if lang_pt %}STATUS: OK{% else %}SYSTEM STATUS: OK{% endif %}</span>
+    </div>
+  </header>
+
+  {% if bq_warning %}
+  <div class="px-6 py-2 bg-tertiary-container/10 border-b border-tertiary/20 text-body-md text-on-surface">{{ bq_warning }}</div>
+  {% endif %}
+
+  <section class="bg-surface-container-lowest p-0" aria-labelledby="situation-title">
+    <h1 id="situation-title" class="hidden">{% mt "home_title" %}</h1>
+    <div id="home-day-strip"
+         hx-get="{% murl 'home_fragment_status' %}?date={{ selected_date }}&accum={{ accum_hours }}"
+         hx-trigger="load"
+         hx-timeout="90000"
+         hx-swap="innerHTML">
+      <div class="bg-tertiary-container/10 border-b border-tertiary/20 flex items-center justify-between px-6 py-3" aria-hidden="true">
+        <div class="flex items-center gap-3">
+          <span class="text-tertiary text-[24px]">⚠</span>
+          <span class="text-headline-md text-on-surface">{% if lang_pt %}Carregando situação…{% else %}Loading status…{% endif %}</span>
+        </div>
+        <span class="flex items-center gap-2 px-3 py-1 bg-tertiary-container text-on-tertiary-container rounded-full text-label-caps font-bold">…</span>
+      </div>
+      <div class="h-[64px] relative px-6 flex flex-col justify-center" aria-hidden="true">
+        <div class="relative h-2 w-full bg-surface-variant rounded-full overflow-hidden">
+          <div class="absolute inset-0 railway-gradient" style="opacity:0.35;"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="flex-1 overflow-hidden grid grid-cols-12 gap-0 efc-home-main" id="efc-home-main" aria-busy="true">
+    <div class="col-span-8 relative border-r border-outline-variant bg-surface overflow-hidden efc-home-main__map">
+      <div class="absolute inset-0 map-mesh opacity-20 pointer-events-none"></div>
+      <div id="home-map-panel" class="stitch-map-frame relative absolute inset-0"
+           hx-get="{% murl 'home_fragment_map' %}?date={{ selected_date }}&accum={{ accum_hours }}"
+           hx-trigger="load once"
+           hx-timeout="120000"
+           hx-swap="innerHTML">
+        <div class="efc-map-skel" aria-hidden="true">
+          <div class="dj-skeleton dj-skeleton--map efc-map-skel__block"></div>
+          <p class="efc-map-skel__label">{% if lang_pt %}Carregando mapa…{% else %}Loading map…{% endif %}</p>
+        </div>
+      </div>
+      <button type="button" class="efc-panel-edge efc-panel-edge--aside" id="efc-aside-collapse"
+              aria-expanded="true" aria-controls="efc-home-aside"
+              title="{% if lang_pt %}Esconder / mostrar painel direito{% else %}Hide / show right panel{% endif %}">
+        <span class="efc-panel-edge__arrow" aria-hidden="true">›</span>
+      </button>
+    </div>
+
+    <aside id="efc-home-aside" class="col-span-4 bg-surface-container-low flex flex-col overflow-y-auto border-l border-outline-variant/40 efc-home-main__aside">
+      <div id="home-alerts-slot" class="px-1 pt-1 pb-4 border-b border-outline-variant/30 efc-stitch-side-panel">
+        <h3 class="efc-stitch-side-panel__heading">{% if lang_pt %}Alertas / Trechos{% else %}Alerts / Segments{% endif %}</h3>
+        <div class="flex flex-wrap gap-2 efc-skel-chips" aria-hidden="true">
+          <span class="dj-skeleton dj-skeleton--chip"></span>
+          <span class="dj-skeleton dj-skeleton--chip"></span>
+          <span class="dj-skeleton dj-skeleton--chip"></span>
+          <span class="dj-skeleton dj-skeleton--chip"></span>
+        </div>
+      </div>
+
+      <div id="home-indicators"
+           hx-get="{% murl 'home_fragment_indicators' %}?date={{ selected_date }}&accum={{ accum_hours }}&{{ indicators_period_qs }}"
+           hx-include="#efc-acc-alerts-controls"
+           hx-trigger="load, efc-period-change from:body"
+           hx-timeout="90000"
+           hx-swap="innerHTML">
+        <div class="p-3 efc-skel-indicators" aria-hidden="true">
+          <div class="dj-skeleton dj-skeleton--line efc-skel-indicators__title"></div>
+          <div class="efc-skel-indicators__grid">
+            <div class="dj-skeleton dj-skeleton--card"></div>
+            <div class="dj-skeleton dj-skeleton--card"></div>
+            <div class="dj-skeleton dj-skeleton--card"></div>
+            <div class="dj-skeleton dj-skeleton--card"></div>
+          </div>
+        </div>
+      </div>
+
+      {% if not monitor_portal_hide_previsao %}
+      <div class="px-4 mb-4" id="efc-home-forecast-cta" data-tour-anchor="forecast-cta">
+        <a href="{% murl 'previsao' %}?km={{ fc_km }}" class="w-full py-2.5 text-[12px] bg-secondary-container text-primary border border-primary/30 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-primary hover:text-on-primary transition-all" style="text-decoration:none;">
+          {% if lang_pt %}Ver Previsão{% else %}View Forecast{% endif %}
+          <span aria-hidden="true">→</span>
+        </a>
+      </div>
+      {% endif %}
+
+      <div id="home-exceed-slot" class="px-4 pb-10" aria-live="polite"></div>
+    </aside>
+  </div>
+
+  {% include "monitor/components/stitch_fab.html" %}
+</div>
+{% endblock %}

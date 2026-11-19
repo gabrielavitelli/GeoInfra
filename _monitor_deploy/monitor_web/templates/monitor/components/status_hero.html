@@ -1,0 +1,65 @@
+{% load humanize %}
+<div class="efc-stitch-hero efc-stitch-hero--{{ hero_level }}" data-status-date="{{ selected_date }}" aria-live="polite">
+  <div class="efc-stitch-hero__main">
+    <span class="efc-stitch-hero__icon" aria-hidden="true">
+      {% if hero_level == 'ok' %}◉{% elif hero_level == 'critical' %}⚠{% else %}◐{% endif %}
+    </span>
+    <div class="efc-stitch-hero__copy">
+      <span class="efc-stitch-hero__headline">
+        <span class="efc-stitch-hero__status">
+        {% if lang_pt %}
+          {% if hero_level == 'ok' %}Normal{% elif hero_level == 'critical' %}Crítico{% else %}Atenção{% endif %}
+        {% else %}
+          {% if hero_level == 'ok' %}Normal{% elif hero_level == 'critical' %}Critical{% else %}Attention{% endif %}
+        {% endif %}
+        </span>
+        {% if hero_peak_mm is not None %}
+          <span class="efc-stitch-hero__sep">·</span>
+          <span class="efc-stitch-hero__metrics">{{ hero_peak_mm|floatformat:1 }} mm{% if hero_peak_km is not None %} · km {{ hero_peak_km }}{% endif %}</span>
+        {% elif hero_peak_line %}
+          <span class="efc-stitch-hero__sep">·</span>
+          <span class="efc-stitch-hero__metrics">{{ hero_peak_line }}</span>
+        {% endif %}
+        {% if hero_n_crit %}
+          <span class="efc-stitch-hero__sep">·</span>
+          <span class="efc-stitch-hero__count">{{ hero_n_crit|intcomma }} {% if lang_pt %}{% if hero_n_crit == 1 %}trecho{% else %}trechos{% endif %}{% else %}{% if hero_n_crit == 1 %}segment{% else %}segments{% endif %}{% endif %}</span>
+        {% endif %}
+      </span>
+      {% if selected_display %}
+      <span class="efc-stitch-hero__date">{{ selected_display }}</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="efc-stitch-hero__chrome" id="efc-status-map-chrome" aria-label="{% if lang_pt %}Controles do mapa{% else %}Map controls{% endif %}"
+       {% if taludes_monitorados_json %}data-taludes="{{ taludes_monitorados_json|escape }}"{% endif %}
+       {% if tuneis_monitorados_json %}data-tuneis="{{ tuneis_monitorados_json|escape }}"{% endif %}>
+    <span class="efc-stitch-hero__basemap-label" data-basemap-label aria-live="polite"
+          title="{% if lang_pt %}Imagem de fundo: Satélite (padrão) ou Ortofoto via botão Ortofoto{% else %}Basemap: Satellite (default) or Orthophoto via Ortofoto button{% endif %}">Satélite</span>
+    <div class="efc-stitch-hero__taludes" data-taludes-menu>
+      <button type="button"
+              class="efc-stitch-hero__taludes-btn"
+              data-taludes-toggle
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              aria-controls="efc-taludes-list"
+              title="{% if lang_pt %}Ir para taludes monitorados (Zentra){% else %}Jump to monitored slopes (Zentra){% endif %}">
+        {% if lang_pt %}Taludes Monitorados{% else %}Monitored slopes{% endif %}
+        <span aria-hidden="true">▾</span>
+      </button>
+      <ul class="efc-stitch-hero__taludes-list" id="efc-taludes-list" role="listbox" hidden data-taludes-list></ul>
+    </div>
+    <div class="efc-stitch-hero__taludes efc-stitch-hero__tuneis" data-tuneis-menu>
+      <button type="button"
+              class="efc-stitch-hero__taludes-btn efc-stitch-hero__tuneis-btn"
+              data-tuneis-toggle
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              aria-controls="efc-tuneis-list"
+              title="{% if lang_pt %}Ir para cortes rochosos / túneis{% else %}Jump to rock cuts / tunnels{% endif %}">
+        {% if lang_pt %}Túnel{% else %}Tunnel{% endif %}
+        <span aria-hidden="true">▾</span>
+      </button>
+      <ul class="efc-stitch-hero__taludes-list" id="efc-tuneis-list" role="listbox" hidden data-tuneis-list></ul>
+    </div>
+  </div>
+</div>

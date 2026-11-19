@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 58" width="280" height="58">
+  <rect width="280" height="58" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="1"/>
+  <text x="12" y="21" fill="#f8fafc" font-family="system-ui,Segoe UI,sans-serif" font-size="11.5" font-weight="700">Sistema de Monitoramento</text>
+  <text x="12" y="36" fill="#f8fafc" font-family="system-ui,Segoe UI,sans-serif" font-size="11.5" font-weight="700">Climático</text>
+  <text x="12" y="51" fill="#94a3b8" font-family="system-ui,Segoe UI,sans-serif" font-size="9">USP &#183; GeoInfra-USP</text>
+  <circle cx="252" cy="29" r="10" fill="none" stroke="#22c55e" stroke-width="2"/>
+  <path d="M246 29 L250 33 L258 23" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/>
+</svg>

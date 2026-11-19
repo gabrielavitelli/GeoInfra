@@ -1,0 +1,60 @@
+{# Shared Zentra/Orion inspection — light Plotly card gallery (Sensores + map modal) #}
+<div class="efc-sensor-inspect efc-sensor-inspect--gallery"
+     data-sensor-inspect
+     data-series-api="{{ sensor_series_api }}"
+     data-lang="{% if lang_pt %}pt{% else %}en{% endif %}"
+     {% if initial_sensor_id %}data-initial-id="{{ initial_sensor_id }}"{% endif %}>
+  <div class="efc-sensor-inspect__top">
+    <aside class="efc-sensor-inspect__identity-row">
+      <div class="efc-sensor-inspect__mini-map" data-sensor-mini-map role="img"
+           aria-label="{% if lang_pt %}Mapa do sensor{% else %}Sensor map{% endif %}"></div>
+      <div class="efc-sensor-inspect__identity">
+        <h2 class="efc-sensor-inspect__title" data-sensor-title>—</h2>
+        <p class="efc-sensor-inspect__sub" data-sensor-sub></p>
+        <div class="efc-sensor-inspect__chips" data-sensor-latest></div>
+      </div>
+    </aside>
+    <div class="efc-sensor-inspect__controls">
+      <div class="efc-sensor-inspect__field efc-sensor-inspect__field--ports">
+        <span>{% if lang_pt %}Porta{% else %}Port{% endif %}</span>
+        <div class="efc-sensor-inspect__port-chips" data-sensor-ports role="group"
+             aria-label="{% if lang_pt %}Porta / série{% else %}Port / series{% endif %}"></div>
+        <select data-sensor-family class="efc-sensor-inspect__fallback-select" hidden></select>
+      </div>
+      <div class="efc-sensor-inspect__field efc-sensor-inspect__field--vars" hidden>
+        <span>{% if lang_pt %}Séries{% else %}Series{% endif %}</span>
+        <div class="efc-sensor-inspect__var-chips" data-sensor-vars role="group"
+             aria-label="{% if lang_pt %}Variáveis{% else %}Variables{% endif %}"></div>
+        <select data-sensor-variable class="efc-sensor-inspect__fallback-select" hidden></select>
+      </div>
+      <div class="efc-sensor-inspect__windows" role="group"
+           aria-label="{% if lang_pt %}Janela{% else %}Window{% endif %}">
+        <button type="button" data-sensor-days="7" class="efc-sensor-inspect__win">7d</button>
+        <button type="button" data-sensor-days="30" class="efc-sensor-inspect__win is-active">30d</button>
+        <button type="button" data-sensor-days="90" class="efc-sensor-inspect__win">90d</button>
+      </div>
+      <div class="efc-sensor-inspect__range" data-sensor-range>
+        <label>{% if lang_pt %}De{% else %}From{% endif %}
+          <input type="date" data-sensor-start>
+        </label>
+        <label>{% if lang_pt %}Até{% else %}To{% endif %}
+          <input type="date" data-sensor-end>
+        </label>
+        <button type="button" class="efc-sensor-inspect__export-btn" data-sensor-range-apply>
+          {% if lang_pt %}Aplicar{% else %}Apply{% endif %}
+        </button>
+      </div>
+      <span class="efc-sensor-inspect__fresh" data-sensor-fresh></span>
+    </div>
+  </div>
+  <p class="efc-sensor-inspect__data-span" data-sensor-data-span hidden></p>
+  <div class="efc-sensor-inspect__exports" data-sensor-exports></div>
+  <div class="efc-sensor-inspect__gallery" data-sensor-gallery>
+    <p class="efc-muted efc-sensor-inspect__empty" data-sensor-chart-placeholder>
+      {% if lang_pt %}Selecione um sensor para ver as séries.{% else %}Select a sensor to view series.{% endif %}
+    </p>
+  </div>
+  {# Legacy single-chart host kept for API binding fallbacks (hidden). #}
+  <div class="efc-sensor-inspect__chart" data-sensor-chart hidden></div>
+  <p class="efc-sensor-inspect__hint" data-sensor-hint hidden></p>
+</div>

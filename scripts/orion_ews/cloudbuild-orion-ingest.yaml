@@ -1,0 +1,44 @@
+# Cheap Orion precip refresh (hourly-friendly).
+# Pull last N calendar days of Rainfall only → GCS → BQ hourly buckets.
+#
+# Manual:
+#   gcloud builds submit --config=scripts/orion_ews/cloudbuild-orion-ingest.yaml \
+#     --project=climaticsystem --substitutions=_DAYS=1
+#
+# Cost: precip-only + 1 day lookback ≈ few thousand rows; Cloud Build small machine.
+# 24×/day is fine (~$2–8/mês tipicamente). Prefer 24×; if budget tight use 8× (*/3).
+
+substitutions:
+  _DAYS: "1"
+  _BQ_DATASET: "efc_clima"
+  _GCS_PREFIX: "gs://efc-clima-data/obs/ews/"
+
+steps:
+  - name: python:3.11-slim
+    id: ingest-precip-hourly
+    entrypoint: bash
+    secretEnv: ["ORION_USER_KEY"]
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        pip install -q -r scripts/orion_ews/requirements.txt google-cloud-bigquery google-cloud-storage
+        python -m scripts.orion_ews.ingest doctor --ping --no-from-secret
+        python -m scripts.orion_ews.ingest readings \
+          --precip-only \
+          --days ${_DAYS} \
+          --out /workspace/orion_readings.ndjson \
+          --bq-project $$PROJECT_ID \
+          --bq-dataset ${_BQ_DATASET} \
+          --gcs-prefix ${_GCS_PREFIX}
+    env:
+      - "PROJECT_ID=$PROJECT_ID"
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/orion-user-key/versions/latest
+      env: ORION_USER_KEY
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_MEDIUM

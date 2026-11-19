@@ -1,0 +1,35 @@
+# Monitor EFC (Django) — Google Cloud Run
+# Build: docker build -f gcp/Dockerfile.monitor -t gcr.io/PROJECT_ID/monitor-v2 .
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgeos-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY gcp/requirements_monitor_cloudrun.txt /app/requirements_monitor_cloudrun.txt
+RUN pip install --no-cache-dir -r /app/requirements_monitor_cloudrun.txt
+
+COPY manage.py monitor_i18n.py lib_efc.py lib_merge_ev.py components_efc.py validation_efc.py percentile_efc.py ./
+COPY efc_site/ ./efc_site/
+COPY monitor_web/ ./monitor_web/
+COPY gcp/ ./gcp/
+COPY assets/ ./assets/
+
+RUN mkdir -p /app/data
+COPY data/shapefile/ /app/data/shapefile/
+COPY data/EFC.kmz.kml /app/data/EFC.kmz.kml
+COPY data/merge_uniplu_efc/merge_grid_meta.json /app/data/merge_uniplu_efc/merge_grid_meta.json
+COPY data/bndmet_estacoes_efc.csv data/ana_estacoes_efc.csv /app/data/
+
+ENV PYTHONUNBUFFERED=1
+ENV USE_BQ=1
+ENV DJANGO_DEBUG=0
+ENV DJANGO_ALLOWED_HOSTS=.run.app,localhost,127.0.0.1
+ENV PORT=8080
+EXPOSE 8080
+
+RUN python manage.py collectstatic --noinput
+
+CMD ["sh", "-c", "python manage.py migrate --noinput 2>/dev/null || true; python manage.py seed_portal_gestores --only-if-env MONITOR_SEED_PORTAL_USERS 2>/dev/null || true; python manage.py seed_internal_demo --only-if-env MONITOR_SEED_INTERNAL_DEMO 2>/dev/null || true; exec gunicorn efc_site.wsgi:application --bind 0.0.0.0:${PORT} --workers 2 --threads 4 --timeout 300"]
