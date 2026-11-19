@@ -894,6 +894,118 @@ def _roc_block(y, s, pred) -> dict:
     }
 
 
+def _merge_hist_goes(df: pd.DataFrame, hist: pd.DataFrame) -> pd.DataFrame:
+    """Une features GOES históricas reais; marca is_synth_goes=0."""
+    if hist is None or hist.empty:
+        return df
+    h = hist.copy()
+    h["day"] = pd.to_datetime(h["day"]).dt.normalize()
+    h["km_efc"] = pd.to_numeric(h["km_efc"], errors="coerce").astype(int)
+    h["is_synth_goes"] = 0
+    h["is_densified"] = h.get("is_densified", 0)
+    # remove do df linhas que serão cobertas pelo hist (mesmo day×km)
+    keys = set(zip(h["day"].astype(str), h["km_efc"].astype(int)))
+    base = df.copy()
+    base["day"] = pd.to_datetime(base["day"]).dt.normalize()
+    if "is_synth_goes" not in base.columns:
+        base["is_synth_goes"] = 0
+    keep = ~pd.Series(
+        list(zip(base["day"].astype(str), base["km_efc"].astype(int))), index=base.index
+    ).isin(keys)
+    base = base.loc[keep]
+    # alinha colunas
+    for c in base.columns:
+        if c not in h.columns:
+            h[c] = np.nan
+    for c in h.columns:
+        if c not in base.columns:
+            base[c] = np.nan
+    cols = list(dict.fromkeys(list(base.columns) + list(h.columns)))
+    out = pd.concat([base[cols], h[cols]], ignore_index=True, sort=False)
+    return out
+
+
+def _holdout_threshold_table(
+    day_df: pd.DataFrame,
+    *,
+    test_start: str = "2026-04-01",
+    t_gate: float = 10.0,
+    out_csv: Path | None = None,
+    out_png: Path | None = None,
+) -> dict:
+    """Varre limiares SVM no holdout; escolhe Youden; grava tabela POD/FAR."""
+    hold = day_df[day_df["day"] >= pd.Timestamp(test_start)].copy()
+    if len(hold) < 5 or hold["label_combo"].nunique() < 2:
+        return {"ok": False, "reason": "holdout insuficiente"}
+    y = hold["label_combo"].values.astype(int)
+    s = hold["svm_score"].values.astype(float)
+    precip = pd.to_numeric(hold.get("gate_precip_mm"), errors="coerce").fillna(0).values
+    # candidatos: percentis do score + limiar treino se existir
+    thr_cand = np.unique(np.quantile(s, np.linspace(0.05, 0.95, 19)))
+    if "t_svm" in hold.columns:
+        thr_cand = np.unique(np.concatenate([thr_cand, [float(hold["t_svm"].iloc[0])]]))
+    rows = []
+    best = None
+    for thr in thr_cand:
+        pred = ((s >= thr) & (precip >= t_gate)).astype(int)
+        tp = int(((pred == 1) & (y == 1)).sum())
+        fp = int(((pred == 1) & (y == 0)).sum())
+        fn = int(((pred == 0) & (y == 1)).sum())
+        tn = int(((pred == 0) & (y == 0)).sum())
+        pod = tp / (tp + fn) if (tp + fn) else 0.0
+        far = fp / (tp + fp) if (tp + fp) else 0.0
+        prec = tp / (tp + fp) if (tp + fp) else 0.0
+        fpr = fp / (fp + tn) if (fp + tn) else 0.0
+        youden = pod - fpr
+        rec = {
+            "t_svm": float(thr),
+            "t_gate": float(t_gate),
+            "pod": pod,
+            "far": far,
+            "precision": prec,
+            "fpr": fpr,
+            "youden": youden,
+            "tp": tp,
+            "fp": fp,
+            "fn": fn,
+            "tn": tn,
+            "n": int(len(y)),
+            "n_pos": int(y.sum()),
+        }
+        rows.append(rec)
+        if best is None or youden > best["youden"]:
+            best = rec
+    tab = pd.DataFrame(rows).sort_values("t_svm")
+    if out_csv is not None:
+        tab.to_csv(out_csv, index=False)
+    if out_png is not None and not tab.empty:
+        fig, ax = plt.subplots(figsize=(7.2, 4.6))
+        ax.plot(tab["t_svm"], tab["pod"], "o-", color="#059669", lw=2, label="POD")
+        ax.plot(tab["t_svm"], tab["far"], "s-", color="#dc2626", lw=2, label="FAR")
+        ax.plot(tab["t_svm"], tab["precision"], "^-", color="#1d4ed8", lw=1.5, label="Precision")
+        if best:
+            ax.axvline(best["t_svm"], color="#64748b", ls="--", lw=1.2, label=f"Youden t={best['t_svm']:.2f}")
+        ax.set_xlabel("Limiar SVM (holdout)")
+        ax.set_ylabel("Taxa")
+        ax.set_ylim(-0.02, 1.05)
+        ax.set_title(
+            f"Holdout ≥{test_start} — POD/FAR × limiar (gate≥{t_gate:g} mm)\n"
+            f"melhor Youden: POD={best['pod']:.2f} FAR={best['far']:.2f} prec={best['precision']:.2f}"
+        )
+        ax.legend(fontsize=8)
+        ax.grid(True, alpha=0.25)
+        fig.tight_layout()
+        fig.savefig(out_png, dpi=160, bbox_inches="tight")
+        plt.close(fig)
+    return {
+        "ok": True,
+        "best_youden": best,
+        "n_thresholds": len(tab),
+        "table_csv": str(out_csv) if out_csv else None,
+        "table_png": str(out_png) if out_png else None,
+    }
+
+
 def _plot_roc(day_df: pd.DataFrame, out: Path, title: str, test_start: str = "2026-04-01") -> dict:
     """ROC no nível dia (protocolo do treino) — verão completo + holdout abr–mai."""
     full = _roc_block(
@@ -1153,6 +1265,18 @@ def main() -> int:
         default=0,
         help="Força ~50/50 no fit: N positivos e N negativos (reais+eigen). Ex.: 2000",
     )
+    ap.add_argument(
+        "--hist-goes",
+        type=Path,
+        default=None,
+        help="CSV de features GOES históricas reais (build_hist_goes_features.py)",
+    )
+    ap.add_argument(
+        "--holdout-start",
+        type=str,
+        default="2026-04-01",
+        help="Início do holdout para ROC e tabela de limiares",
+    )
     args = ap.parse_args()
     out_dir = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1166,14 +1290,40 @@ def main() -> int:
     df = pd.read_csv(feat_path, parse_dates=["day"])
     df["day"] = pd.to_datetime(df["day"]).dt.normalize()
     df = df[df["day"].dt.month.isin(SUMMER_MONTHS)].copy()
+    df["is_synth_goes"] = 0
     d0, d1 = df["day"].min().date(), df["day"].max().date()
     print(f"   Período features verão: {d0} → {d1} · {len(df)} linhas · {df['km_efc'].nunique()} km")
+
+    # GOES histórico real (substitui synth nos dias cobertos)
+    hist_path = args.hist_goes
+    if hist_path is None:
+        # defaults locais / artefato
+        for cand in (
+            Path("/opt/cursor/artifacts/raijin_eval/features_goes_hist_202410_202512.csv"),
+            Path.home() / "raijin_eval" / "features_goes_hist_202410_202512.csv",
+            work / "features_goes_hist_202410_202512.csv",
+        ):
+            if cand.is_file() and cand.stat().st_size > 0:
+                hist_path = cand
+                break
+    if hist_path and hist_path.is_file():
+        print(f"1b) Mesclando GOES histórico real ← {hist_path}")
+        hist = pd.read_csv(hist_path, parse_dates=["day"])
+        before = len(df)
+        df = _merge_hist_goes(df, hist)
+        d0, d1 = df["day"].min().date(), df["day"].max().date()
+        print(
+            f"   {before} → {len(df)} linhas · dias={df['day'].nunique()} · "
+            f"período {d0}→{d1} · hist_rows={len(hist)}"
+        )
+    else:
+        print("1b) Sem --hist-goes (só cascade_v2 + synth se extend)")
 
     print("2) Rótulos EWS + UNIPLU (+ MERGE se extend)…")
     df["ews_mm"] = pd.to_numeric(df.get("ews_mm"), errors="coerce")
     df["label_ews"] = (df["ews_mm"].fillna(0) >= THRESHOLD_MM).astype(int)
     kms0 = sorted(df["km_efc"].dropna().astype(int).unique())
-    extend_d0 = args.extend_start.strip() or "2025-01-01"
+    extend_d0 = args.extend_start.strip() or str(d0)
     uni = _load_uniplu_near_kms(
         kms=kms0,
         d0=extend_d0,
@@ -1181,15 +1331,20 @@ def main() -> int:
         catalog=args.uniplu_catalog,
     )
     if not uni.empty:
+        # evita colunas duplicadas se já veio do hist merge
+        if "uniplu_mm" in df.columns:
+            df = df.drop(columns=["uniplu_mm"])
         df = df.merge(uni, on=["day", "km_efc"], how="left")
     else:
-        df["uniplu_mm"] = np.nan
+        if "uniplu_mm" not in df.columns:
+            df["uniplu_mm"] = np.nan
     df["label_uniplu"] = (pd.to_numeric(df["uniplu_mm"], errors="coerce").fillna(0) >= THRESHOLD_MM).astype(int)
     df["label_combo"] = ((df["label_ews"] == 1) | (df["label_uniplu"] == 1)).astype(int)
     n_u = int(df["uniplu_mm"].notna().sum())
     print(
         f"   EWS+={df['label_ews'].sum()} · UNIPLU rows matched={n_u} · "
-        f"UNIPLU+={df['label_uniplu'].sum()} · combo+={df['label_combo'].sum()}"
+        f"UNIPLU+={df['label_uniplu'].sum()} · combo+={df['label_combo'].sum()} · "
+        f"dias evento={int(df.groupby('day')['label_combo'].max().sum())}"
     )
     n_base = len(df)
 
@@ -1319,8 +1474,27 @@ def main() -> int:
             f"rótulo EWS∪UNIPLU ≥{THRESHOLD_MM:g} mm · "
             f"fit×{pack['n_train_fit'] / max(n_base, 1):.1f} · subsample neg={args.keep_frac:.0%}"
         ),
+        test_start=args.holdout_start,
     )
     _plot_svm(day_df, pack, out_dir / "fig_svm_decision.png")
+
+    print("7b) Tabela POD/FAR × limiar no holdout…")
+    thr_info = _holdout_threshold_table(
+        day_df,
+        test_start=args.holdout_start,
+        t_gate=t_gate,
+        out_csv=out_dir / "holdout_threshold_table.csv",
+        out_png=out_dir / "fig_holdout_thresholds.png",
+    )
+    if thr_info.get("ok") and thr_info.get("best_youden"):
+        b = thr_info["best_youden"]
+        print(
+            f"   Youden holdout: t_svm={b['t_svm']:.3f} · "
+            f"POD={b['pod']:.2f} FAR={b['far']:.2f} prec={b['precision']:.2f}"
+        )
+        metrics["holdout_best_youden"] = b
+    else:
+        print(f"   holdout limiar: {thr_info}")
 
     print("8) AG compacto sobre pool pós-VIF…")
     ag = _run_ag_compact(
@@ -1390,12 +1564,15 @@ def main() -> int:
         },
         "deployed_features": list(pack_deployed["features"]),
         "svm_features_post_vif": list(pack["features"]),
+        "holdout_thresholds": thr_info,
         "figures": [
             "fig_roc_auc_verao.png",
             "fig_ag_fitness.png",
             "fig_svm_decision.png",
             "fig_vif_filter.png",
-            *(["fig_eigen_synth.png"] if args.synth_factor > 0 else []),
+            "fig_holdout_thresholds.png",
+            "holdout_threshold_table.csv",
+            *(["fig_eigen_synth.png"] if (synth_factor > 0 or args.balance_per_class > 0) else []),
         ],
     }
     (out_dir / "eval_summary.json").write_text(
