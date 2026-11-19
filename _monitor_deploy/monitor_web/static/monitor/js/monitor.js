@@ -6563,6 +6563,114 @@
     }, 80);
   }
 
+  function ensureSiteLoggersModal() {
+    var existing = document.getElementById("efc-site-loggers-modal");
+    if (existing) return existing;
+    if (!document.getElementById("efc-site-modal-css")) {
+      var st = document.createElement("style");
+      st.id = "efc-site-modal-css";
+      st.textContent =
+        ".efc-modal--site .efc-modal__panel{width:min(1120px,96vw);max-height:min(88vh,920px);display:flex;flex-direction:column;background:#f8fafc;border:1px solid #e2e8f0;color:#0f172a}" +
+        ".efc-modal--site .efc-modal__head{background:#0f172a;color:#f8fafc;border-bottom:1px solid #1e293b}" +
+        ".efc-modal--site .efc-modal__body{padding:.85rem 1rem 1.1rem;overflow:auto}" +
+        ".efc-site-modal__sub{margin:0 0 .85rem;font-size:.82rem;color:#64748b}" +
+        ".efc-site-modal__grid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.85rem}" +
+        ".efc-site-modal__grid .efc-sensores__logger{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:.75rem;box-shadow:0 10px 24px rgba(15,23,42,.06);display:flex;flex-direction:column;gap:.55rem}" +
+        ".efc-site-modal__grid .efc-sensores__logger-name{display:block;font-weight:750;color:#1c1917}" +
+        ".efc-site-modal__grid .efc-sensores__logger-sub{display:block;margin-top:.15rem;font-size:.72rem;color:#78716c}" +
+        ".efc-site-modal__grid .efc-sensores__ports--nested{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.45rem;border:0}" +
+        ".efc-site-modal__grid .efc-sensores__port-row{display:flex;flex-direction:column;gap:.3rem;padding:.55rem .6rem;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0}" +
+        ".efc-site-modal__grid .efc-sensores__port-val{font-size:1.02rem;font-weight:750;color:#1f77b4}" +
+        ".efc-site-modal__grid .efc-sensores__details-btn--sm{align-self:flex-start}" +
+        "body.efc-site-modal-open{overflow:hidden}" +
+        "@media(max-width:720px){.efc-site-modal__grid{grid-template-columns:1fr}}";
+      document.head.appendChild(st);
+    }
+    var modal = document.createElement("div");
+    modal.id = "efc-site-loggers-modal";
+    modal.className = "efc-modal efc-modal--site";
+    modal.hidden = true;
+    var langPt =
+      (document.documentElement.lang || "").toLowerCase().indexOf("pt") === 0 ||
+      !!(document.body && document.body.getAttribute("data-lang") === "pt");
+    modal.innerHTML =
+      '<div class="efc-modal__backdrop" data-site-modal-close></div>' +
+      '<div class="efc-modal__panel" role="dialog" aria-modal="true" aria-labelledby="efc-site-modal-title">' +
+      '<div class="efc-modal__head">' +
+      '<strong id="efc-site-modal-title" data-site-modal-title>Site</strong>' +
+      '<button type="button" class="efc-btn efc-btn--ghost efc-btn--sm" data-site-modal-close aria-label="' +
+      (langPt ? "Fechar" : "Close") +
+      '">×</button>' +
+      "</div>" +
+      '<div class="efc-modal__body">' +
+      '<p class="efc-site-modal__sub" data-site-modal-sub></p>' +
+      '<ul class="efc-site-modal__grid" data-site-modal-grid></ul>' +
+      "</div></div>";
+    document.body.appendChild(modal);
+    function closeSiteModal() {
+      modal.hidden = true;
+      document.body.classList.remove("efc-site-modal-open");
+    }
+    modal.__efcClose = closeSiteModal;
+    modal.querySelectorAll("[data-site-modal-close]").forEach(function (el) {
+      el.addEventListener("click", closeSiteModal);
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape" && !modal.hidden) closeSiteModal();
+    });
+    return modal;
+  }
+
+  function openSiteLoggersWindow(card) {
+    if (!card) return;
+    var panel = card.querySelector("[data-sensor-loggers]");
+    if (!panel) return;
+    var langPt =
+      (document.documentElement.lang || "").toLowerCase().indexOf("pt") === 0 ||
+      !!(document.body && document.body.getAttribute("data-lang") === "pt");
+    var modal = ensureSiteLoggersModal();
+    var titleEl = modal.querySelector("[data-site-modal-title]");
+    var subEl = modal.querySelector("[data-site-modal-sub]");
+    var grid = modal.querySelector("[data-site-modal-grid]");
+    var siteName = card.getAttribute("data-name") || "Site";
+    var nLoggers = card.getAttribute("data-n-loggers") || "";
+    var km = card.getAttribute("data-km");
+    if (titleEl) titleEl.textContent = siteName;
+    if (subEl) {
+      var bits = [];
+      if (km) bits.push("km " + km);
+      if (nLoggers) bits.push(nLoggers + " loggers");
+      bits.push(langPt ? "toque em Séries para o gráfico" : "tap Series for charts");
+      subEl.textContent = bits.join(" · ");
+    }
+    if (grid) {
+      grid.innerHTML = "";
+      panel.querySelectorAll(".efc-sensores__logger").forEach(function (li) {
+        var clone = li.cloneNode(true);
+        clone.classList.add("efc-sensores__logger--card");
+        clone.removeAttribute("hidden");
+        grid.appendChild(clone);
+      });
+      grid.querySelectorAll("[data-sensor-pick]").forEach(function (btn) {
+        btn.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          openSensorDetail({
+            location_id: btn.getAttribute("data-location-id"),
+            source: btn.getAttribute("data-source") || "zentra",
+            lat: btn.getAttribute("data-lat"),
+            lon: btn.getAttribute("data-lon"),
+            name: btn.getAttribute("data-name"),
+            km: btn.getAttribute("data-km"),
+            port: btn.getAttribute("data-port") || "",
+          });
+        });
+      });
+    }
+    modal.hidden = false;
+    document.body.classList.add("efc-site-modal-open");
+  }
+
   function initSensorLandingFilters(page) {
     if (!page || page.__efcSensorFilters) return;
     page.__efcSensorFilters = 1;
@@ -6578,13 +6686,27 @@
         ev.stopPropagation();
         var card = btn.closest(".efc-sensores__card");
         if (!card) return;
-        var panel =
-          card.querySelector("[data-sensor-loggers]") ||
-          card.querySelector("[data-sensor-ports]");
+        var loggers = card.querySelector("[data-sensor-loggers]");
+        if (loggers) {
+          btn.setAttribute("aria-expanded", "true");
+          openSiteLoggersWindow(card);
+          return;
+        }
+        var panel = card.querySelector("[data-sensor-ports]");
         if (!panel) return;
         var open = panel.hidden;
         panel.hidden = !open;
         btn.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+    });
+
+    // Multi-logger site card click → open card window (ignore map / buttons).
+    page.querySelectorAll(".efc-sensores__card--site").forEach(function (card) {
+      card.addEventListener("click", function (ev) {
+        if (ev.target.closest("button,a,input,select,textarea,[data-sensor-card-map]")) {
+          return;
+        }
+        openSiteLoggersWindow(card);
       });
     });
 
