@@ -221,7 +221,7 @@ def home_charts_api(request):
 
 @require_GET
 def home_ops_raijin_charts_api(request):
-    """Painel Alertas Raijin: chuva mensal + deslocamento HyP3 (Plotly JSON)."""
+    """Painel Alertas Raijin: LOS crítico HyP3 + chuva diária (JSON leve)."""
     lang = get_lang(request)
     lang_pt = lang == "pt"
     try:
@@ -234,11 +234,14 @@ def home_ops_raijin_charts_api(request):
         from monitor_web.services.ops_raijin_charts import build_ops_raijin_charts_payload
 
         payload = build_ops_raijin_charts_payload(bq_dataset=dataset, lang_pt=lang_pt)
-        return JsonResponse(sanitize_for_json(payload))
+        resp = JsonResponse(sanitize_for_json(payload))
+        # Browser + CDN can reuse for a few minutes; server also TTL-caches 10 min.
+        resp["Cache-Control"] = "private, max-age=120, stale-while-revalidate=300"
+        return resp
     except Exception as exc:
         logger.exception("home_ops_raijin_charts_api")
         return JsonResponse(
-            {"available": False, "error": str(exc), "precip": {}, "hyp3": {}},
+            {"available": False, "error": str(exc), "combined": {}},
             status=500,
         )
 

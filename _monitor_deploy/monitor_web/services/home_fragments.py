@@ -62,7 +62,7 @@ MAP_KM_STEP = max(2, int(os.environ.get("MONITOR_MAP_KM_STEP", "10") or "10"))
 # v53: suscetibilidade raster 4096px (pixels GeoTIFF); inclui bust via env.
 _susc_bust = (os.environ.get("SUSCETIBILIDADE_CACHE_BUST") or "").strip()
 # v56: lazy 3D + parallel catalogs + clima_series-only map accum (fast cold).
-MAP_CACHE_VER = (os.environ.get("MONITOR_MAP_CACHE_VER") or "folium_v66_tunnel_estaca").strip()
+MAP_CACHE_VER = (os.environ.get("MONITOR_MAP_CACHE_VER") or "folium_v67_terrain1").strip()
 if _susc_bust:
     MAP_CACHE_VER = f"{MAP_CACHE_VER}_{_susc_bust}"
 

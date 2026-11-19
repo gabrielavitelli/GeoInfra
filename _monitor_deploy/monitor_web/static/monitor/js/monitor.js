@@ -4522,50 +4522,11 @@
     var muted = "#94a3b8";
     var grid = "rgba(148,163,184,.18)";
     var paper = "rgba(0,0,0,0)";
+    var loaded = false;
 
     function setNote(key, text) {
       var el = host.querySelector('[data-ops-note="' + key + '"]');
       if (el) el.textContent = text || "";
-    }
-
-    function darkLayout(extra) {
-      var base = {
-        paper_bgcolor: paper,
-        plot_bgcolor: paper,
-        font: {
-          color: ink,
-          size: 11,
-          family: "IBM Plex Sans, Segoe UI, sans-serif",
-        },
-        margin: { t: 28, r: 12, b: 36, l: 42 },
-        hovermode: "closest",
-        showlegend: true,
-        legend: {
-          orientation: "h",
-          y: 1.12,
-          x: 0,
-          font: { size: 10, color: muted },
-          bgcolor: "rgba(0,0,0,0)",
-        },
-        xaxis: {
-          showgrid: true,
-          gridcolor: grid,
-          tickfont: { size: 10, color: muted },
-          color: muted,
-        },
-        yaxis: {
-          showgrid: true,
-          gridcolor: grid,
-          tickfont: { size: 10, color: muted },
-          color: muted,
-        },
-      };
-      if (extra) {
-        Object.keys(extra).forEach(function (k) {
-          base[k] = extra[k];
-        });
-      }
-      return base;
     }
 
     function plotCombined(payload) {
@@ -4582,40 +4543,106 @@
         el.setAttribute("aria-busy", "false");
         return;
       }
-      var los = payload.los || {};
-      var rain = payload.rain || {};
+      var axes = payload.axes || {};
+      var points = payload.points || [];
+      var band = payload.band || {};
+      var rainDaily = payload.rain_daily || {};
+      var rainAccum = payload.rain_accum || {};
       var traces = [];
-      if ((rain.x || []).length && (rain.y || []).length) {
+
+      // Faixa min–max (sem legenda) — cobre todos os pontos críticos.
+      if ((band.x_br || []).length && (band.ymin || []).length && (band.ymax || []).length) {
         traces.push({
-          type: "bar",
-          name: rain.label || (langPt ? "Chuva" : "Rain"),
-          x: rain.x,
-          y: rain.y,
-          yaxis: "y2",
-          marker: {
-            color: "rgba(56,189,248,0.55)",
-            line: { width: 0 },
-          },
-          hovertemplate:
-            "<b>%{x}</b><br>" +
-            (langPt ? "Chuva" : "Rain") +
-            ": <b>%{y:.1f}</b> mm<extra></extra>",
+          type: "scatter",
+          mode: "lines",
+          x: (band.x_br || []).concat((band.x_br || []).slice().reverse()),
+          y: (band.ymax || []).concat((band.ymin || []).slice().reverse()),
+          fill: "toself",
+          fillcolor: "rgba(251,113,133,0.14)",
+          line: { color: "rgba(0,0,0,0)", width: 0 },
+          hoverinfo: "skip",
+          showlegend: false,
+          yaxis: "y",
         });
       }
-      if ((los.x || []).length && (los.y || []).length) {
+
+      function brFull(iso) {
+        if (typeof iso !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return iso || "";
+        var p = iso.slice(0, 10).split("-");
+        return p[2] + "/" + p[1] + "/" + p[0];
+      }
+
+      if ((rainDaily.x_br || []).length && (rainDaily.y || []).length) {
+        traces.push({
+          type: "bar",
+          name: rainDaily.label || (langPt ? "Chuva diária" : "Daily rain"),
+          x: rainDaily.x_br,
+          y: rainDaily.y,
+          customdata: (rainDaily.x_iso || []).map(brFull),
+          yaxis: "y2",
+          marker: { color: "rgba(56,189,248,0.45)", line: { width: 0 } },
+          hovertemplate:
+            "<b>%{customdata}</b><br>" +
+            (langPt ? "Chuva diária" : "Daily rain") +
+            ": <b>%{y:.1f}</b> mm/d<extra></extra>",
+        });
+      }
+      if ((rainAccum.x_br || []).length && (rainAccum.y || []).length) {
+        traces.push({
+          type: "scatter",
+          mode: "lines",
+          name: rainAccum.label || (langPt ? "Acumulado mensal" : "Month-to-date"),
+          x: rainAccum.x_br,
+          y: rainAccum.y,
+          customdata: (rainAccum.x_iso || []).map(brFull),
+          yaxis: "y2",
+          line: { color: "#fbbf24", width: 2.4 },
+          hovertemplate:
+            "<b>%{customdata}</b><br>" +
+            (langPt ? "Acumulado no mês" : "Month-to-date") +
+            ": <b>%{y:.1f}</b> mm/mês<extra></extra>",
+        });
+      }
+
+      points.forEach(function (pt) {
+        if (!(pt.x_br || []).length || !(pt.y || []).length) return;
         traces.push({
           type: "scatter",
           mode: "lines+markers",
-          name: los.label || "LOS médio",
-          x: los.x,
-          y: los.y,
+          name: pt.label || pt.id || "LOS",
+          x: pt.x_br,
+          y: pt.y,
+          customdata: (pt.x_iso || []).map(brFull),
           yaxis: "y",
-          line: { color: "#f97316", width: 2.4 },
-          marker: { size: 7, color: "#fdba74", line: { width: 1, color: "#ea580c" } },
+          line: {
+            color: pt.color || "#38bdf8",
+            width: pt.monitored ? 2.6 : 2,
+          },
+          marker: { size: pt.monitored ? 7 : 6, color: pt.color || "#38bdf8" },
           hovertemplate:
-            "<b>%{x}</b><br>LOS: <b>%{y:.2f}</b> mm<extra></extra>",
+            "<b>%{fullData.name}</b><br>%{customdata}<br>LOS: <b>%{y:.1f}</b> mm<extra></extra>",
+        });
+      });
+
+      // Legacy fallback (single LOS + monthly rain).
+      if (!points.length && payload.los && (payload.los.x || []).length) {
+        traces.push({
+          type: "scatter",
+          mode: "lines+markers",
+          name: payload.los.label || "LOS",
+          x: (payload.los.x || []).map(function (x) {
+            if (typeof x === "string" && /^\d{4}-\d{2}-\d{2}/.test(x)) {
+              var p = x.slice(0, 10).split("-");
+              return p[2] + "/" + p[1] + "/" + p[0];
+            }
+            return x;
+          }),
+          y: payload.los.y,
+          line: { color: "#f97316", width: 2.4 },
+          marker: { size: 7, color: "#fdba74" },
         });
       }
+
       if (!traces.length) {
         setNote(
           "combined",
@@ -4624,30 +4651,47 @@
         el.setAttribute("aria-busy", "false");
         return;
       }
-      // Title lives once in the panel heading — do not repeat inside Plotly.
+
       Plotly.newPlot(
         el,
         traces,
-        darkLayout({
-          margin: { t: 28, r: 52, b: 40, l: 48 },
+        {
+          paper_bgcolor: paper,
+          plot_bgcolor: paper,
+          font: {
+            color: ink,
+            size: 11,
+            family: "IBM Plex Sans, Segoe UI, sans-serif",
+          },
+          margin: { t: 8, r: 48, b: 72, l: 52 },
+          hovermode: "x unified",
           showlegend: true,
           legend: {
             orientation: "h",
-            y: 1.14,
-            x: 0,
+            y: -0.22,
+            x: 0.5,
+            xanchor: "center",
             font: { size: 10, color: muted },
-            bgcolor: "rgba(0,0,0,0)",
+            bgcolor: "rgba(15,23,42,0.55)",
+          },
+          xaxis: {
+            showgrid: true,
+            gridcolor: grid,
+            tickfont: { size: 10, color: muted },
+            color: muted,
+            tickangle: -30,
+            automargin: true,
           },
           yaxis: {
             showgrid: true,
             gridcolor: grid,
-            tickfont: { size: 10, color: "#fdba74" },
+            tickfont: { size: 10, color: muted },
             title: {
-              text: langPt ? "LOS médio (mm)" : "Mean LOS (mm)",
-              font: { size: 11, color: "#fdba74" },
+              text: axes.y_los || (langPt ? "LOS acum. (mm)" : "Cum. LOS (mm)"),
+              font: { size: 11, color: muted },
             },
             zeroline: true,
-            zerolinecolor: "rgba(251,191,36,.35)",
+            zerolinecolor: "rgba(248,250,252,.25)",
           },
           yaxis2: {
             overlaying: "y",
@@ -4655,36 +4699,78 @@
             showgrid: false,
             tickfont: { size: 10, color: "#7dd3fc" },
             title: {
-              text: langPt ? "Chuva (mm)" : "Rain (mm)",
+              text:
+                axes.y_rain ||
+                (langPt ? "Chuva (mm/d · mm/mês)" : "Rain (mm/d · mm/month)"),
               font: { size: 11, color: "#7dd3fc" },
             },
             rangemode: "tozero",
           },
-          bargap: 0.35,
-        }),
-        plotlyConfig(el)
+          bargap: 0.25,
+        },
+        Object.assign({}, plotlyConfig(el), {
+          responsive: true,
+          displayModeBar: false,
+        })
       );
       el.setAttribute("aria-busy", "false");
       setNote("combined", "");
     }
 
-    ensurePlotlyLoaded()
-      .then(function () {
-        return fetch(url, { credentials: "same-origin" }).then(function (r) {
-          if (!r.ok) throw new Error("HTTP " + r.status);
-          return r.json();
+    function fetchAndPlot() {
+      if (loaded) return;
+      loaded = true;
+      ensurePlotlyLoaded()
+        .then(function () {
+          return fetch(url, {
+            credentials: "same-origin",
+            headers: { Accept: "application/json" },
+          }).then(function (r) {
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            return r.json();
+          });
+        })
+        .then(function (payload) {
+          plotCombined((payload && payload.combined) || null);
+        })
+        .catch(function (err) {
+          loaded = false;
+          setNote(
+            "combined",
+            langPt ? "Falha ao carregar gráfico." : "Failed to load chart."
+          );
+          console.warn("ops raijin charts", err);
         });
-      })
-      .then(function (payload) {
-        plotCombined((payload && payload.combined) || null);
-      })
-      .catch(function (err) {
-        setNote(
-          "combined",
-          langPt ? "Falha ao carregar gráfico." : "Failed to load chart."
-        );
-        console.warn("ops raijin charts", err);
-      });
+    }
+
+    // Lazy + idle: only fetch when the side panel chart is near viewport.
+    function scheduleLoad() {
+      var run = function () {
+        fetchAndPlot();
+      };
+      if (typeof requestIdleCallback === "function") {
+        requestIdleCallback(run, { timeout: 2500 });
+      } else {
+        setTimeout(run, 200);
+      }
+    }
+    if (typeof IntersectionObserver === "function") {
+      var io = new IntersectionObserver(
+        function (entries) {
+          for (var i = 0; i < entries.length; i++) {
+            if (entries[i].isIntersecting) {
+              io.disconnect();
+              scheduleLoad();
+              break;
+            }
+          }
+        },
+        { root: null, rootMargin: "80px", threshold: 0.01 }
+      );
+      io.observe(host);
+    } else {
+      scheduleLoad();
+    }
   }
 
   function initMapLayerStrip() {
